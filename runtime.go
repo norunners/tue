@@ -7,9 +7,21 @@ import (
 )
 
 // Context is passed to optional component Init methods.
-type Context interface{}
+type Context interface {
+	OnCleanup(func())
+}
 
-type contextValue struct{}
+type contextValue struct {
+	component *Comp
+}
+
+// OnCleanup registers a function to run before OnUnmounted.
+func (c *contextValue) OnCleanup(cleanup func()) {
+	if c == nil || c.component == nil {
+		return
+	}
+	c.component.addCleanup(cleanup)
+}
 
 // Prop is the read interface exposed to component code.
 type Prop[T any] interface {
@@ -162,27 +174,94 @@ func Fragment(children []VNode) VNode {
 type Comp struct {
 	Component any
 	Render    func() VNode
+
+	cleanups []func()
 }
 
 type initComponent interface {
 	Init(Context)
 }
 
+type mountedComponent interface {
+	OnMounted()
+}
+
+type updatedComponent interface {
+	OnUpdated()
+}
+
+type unmountedComponent interface {
+	OnUnmounted()
+}
+
 // CompOf returns a component wrapper for generated code.
 func CompOf[C any](component *C, render func(*C) VNode) *Comp {
-	if initializable, ok := any(component).(initComponent); ok {
-		initializable.Init(contextValue{})
-	}
-	return &Comp{
-		Component: component,
-		Render: func() VNode {
+	comp := &Comp{Component: component}
+	if render != nil {
+		comp.Render = func() VNode {
 			return render(component)
-		},
+		}
+	}
+	if initializable, ok := any(component).(initComponent); ok {
+		initializable.Init(&contextValue{component: comp})
+	}
+	return comp
+}
+
+func (c *Comp) renderVNode() VNode {
+	if c == nil || c.Render == nil {
+		return Fragment(nil)
+	}
+	return c.Render()
+}
+
+func (c *Comp) addCleanup(cleanup func()) {
+	if c == nil || cleanup == nil {
+		return
+	}
+	c.cleanups = append(c.cleanups, cleanup)
+}
+
+func (c *Comp) runCleanups() {
+	if c == nil {
+		return
+	}
+	cleanups := c.cleanups
+	c.cleanups = nil
+	for _, cleanup := range cleanups {
+		cleanup()
+	}
+}
+
+func (c *Comp) mounted() {
+	if c == nil {
+		return
+	}
+	if component, ok := c.Component.(mountedComponent); ok {
+		component.OnMounted()
+	}
+}
+
+func (c *Comp) updated() {
+	if c == nil {
+		return
+	}
+	if component, ok := c.Component.(updatedComponent); ok {
+		component.OnUpdated()
+	}
+}
+
+func (c *Comp) unmounted() {
+	if c == nil {
+		return
+	}
+	if component, ok := c.Component.(unmountedComponent); ok {
+		component.OnUnmounted()
 	}
 }
 
 // Mount renders a component into a browser target under js/wasm.
-func Mount(target string, component *Comp) error {
+func Mount(target string, component *Comp) (*Mounted, error) {
 	return mount(target, component)
 }
 

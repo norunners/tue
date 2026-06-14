@@ -7,19 +7,29 @@ import (
 	"syscall/js"
 )
 
-func mount(target string, component *Comp) error {
-	if target == "" {
-		return fmt.Errorf("mount target is required")
-	}
-	if component == nil {
-		return fmt.Errorf("component is required")
+func mount(target string, component *Comp) (*Mounted, error) {
+	if err := validateMount(target, component); err != nil {
+		return nil, err
 	}
 
 	document := js.Global().Get("document")
 	element := document.Call("querySelector", target)
 	if element.IsNull() || element.IsUndefined() {
-		return fmt.Errorf("mount target %q not found", target)
+		return nil, fmt.Errorf("mount target %q not found", target)
 	}
-	element.Set("innerHTML", RenderHTML(component.Render()))
+	return mountComponent(component, jsMountTarget{element: element})
+}
+
+type jsMountTarget struct {
+	element js.Value
+}
+
+func (t jsMountTarget) render(node VNode) error {
+	t.element.Set("innerHTML", RenderHTML(node))
+	return nil
+}
+
+func (t jsMountTarget) clear() error {
+	t.element.Set("innerHTML", "")
 	return nil
 }
