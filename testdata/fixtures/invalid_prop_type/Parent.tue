@@ -7,7 +7,7 @@
 <script lang="go">
 package invalidproptype
 
-import tue "github.com/norunners/vue"
+import tue "github.com/norunners/tue"
 
 type Parent struct {
 	name string

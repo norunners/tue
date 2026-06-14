@@ -8,12 +8,11 @@ examples have been removed. Reviewable Tue implementation slices will land in
 follow-up changes.
 
 The pre-migration Vue runtime and examples remain available on the
-[`vue` branch](https://github.com/norunners/vue/tree/vue).
+[`vue` branch](https://github.com/norunners/tue/tree/vue).
 
 ## Current State
 
-- The GitHub repository and Go module path are still `github.com/norunners/vue`
-  until the planned repository/module rename lands separately.
+- The GitHub repository and Go module path are `github.com/norunners/tue`.
 - The active root package is intentionally a placeholder until the Tue runtime
   is rebuilt in reviewable slices.
 - Initial `.tue` source fixtures live under `testdata/fixtures/`; they define
