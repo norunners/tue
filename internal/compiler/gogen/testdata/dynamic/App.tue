@@ -1,0 +1,14 @@
+<template>
+<button v-if="visible" @click="save" :class="kind">Save</button>
+<UserBadge />
+</template>
+<script lang="go">
+package app
+
+type App struct {
+	visible bool
+	kind    string
+}
+
+func (a *App) save() {}
+</script>

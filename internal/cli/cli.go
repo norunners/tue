@@ -11,6 +11,7 @@ import (
 	"sort"
 
 	"github.com/norunners/tue/internal/compiler/checker"
+	"github.com/norunners/tue/internal/compiler/gogen"
 	"github.com/norunners/tue/internal/compiler/script"
 	"github.com/norunners/tue/internal/compiler/sfc"
 	compilerTemplate "github.com/norunners/tue/internal/compiler/template"
@@ -35,7 +36,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitOK
 	case "check":
 		return runCheck(args[1:], stdout, stderr)
-	case "build", "dev", "fmt":
+	case "build":
+		return runBuild(args[1:], stdout, stderr)
+	case "dev", "fmt":
 		return runStub(args[0], args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "tue: unknown command %q\n\n", args[0])
@@ -75,6 +78,60 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "tue check: checked %d .tue file(s) in %s\n", len(files), filepath.Clean(root))
 	for _, file := range files {
 		fmt.Fprintf(stdout, "%s\n", file)
+	}
+
+	return exitOK
+}
+
+func runBuild(args []string, stdout, stderr io.Writer) int {
+	root, code, ok := parseProjectRoot("build", args, stdout, stderr)
+	if !ok {
+		return code
+	}
+
+	files, err := discoverTueFiles(root)
+	if err != nil {
+		fmt.Fprintf(stderr, "tue build: %v\n", err)
+		return exitError
+	}
+
+	parsedFiles, parseDiagnostics, err := parseParsedTueFiles(root, files)
+	if err != nil {
+		fmt.Fprintf(stderr, "tue build: %v\n", err)
+		return exitError
+	}
+	if len(parseDiagnostics) != 0 {
+		printDiagnostics(stderr, parseDiagnostics)
+		return exitError
+	}
+
+	checkFiles := make([]checker.File, len(parsedFiles))
+	gogenFiles := make([]gogen.File, len(parsedFiles))
+	for i, file := range parsedFiles {
+		checkFiles[i] = file.CheckerFile
+		gogenFiles[i] = file.gogenFile()
+	}
+
+	checkDiagnostics := checker.CheckProject(checker.Project{Files: checkFiles})
+	if len(checkDiagnostics) != 0 {
+		printDiagnostics(stderr, checkDiagnostics)
+		return exitError
+	}
+
+	manifest, buildDiagnostics, err := gogen.WriteProject(root, gogen.Project{Files: gogenFiles})
+	if err != nil {
+		fmt.Fprintf(stderr, "tue build: %v\n", err)
+		return exitError
+	}
+	if len(buildDiagnostics) != 0 {
+		printDiagnostics(stderr, gogenDiagnosticsFor(buildDiagnostics))
+		return exitError
+	}
+
+	fmt.Fprintf(stdout, "tue build: generated %d component(s) in %s\n", len(manifest.Files), filepath.Join(filepath.Clean(root), gogen.CacheDir))
+	for _, file := range manifest.Files {
+		fmt.Fprintf(stdout, "%s\n", file.ScriptFile)
+		fmt.Fprintf(stdout, "%s\n", file.RenderFile)
 	}
 
 	return exitOK
@@ -158,8 +215,35 @@ func discoverTueFiles(root string) ([]string, error) {
 	return files, nil
 }
 
+type parsedTueFile struct {
+	CheckerFile  checker.File
+	ScriptSource string
+}
+
+func (f parsedTueFile) gogenFile() gogen.File {
+	return gogen.File{
+		Path:         f.CheckerFile.Path,
+		Template:     f.CheckerFile.Template,
+		Script:       f.CheckerFile.Script,
+		ScriptSource: f.ScriptSource,
+	}
+}
+
 func parseTueFiles(root string, paths []string) ([]checker.File, []checker.Diagnostic, error) {
-	files := make([]checker.File, 0, len(paths))
+	parsedFiles, diagnostics, err := parseParsedTueFiles(root, paths)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	files := make([]checker.File, len(parsedFiles))
+	for i, file := range parsedFiles {
+		files[i] = file.CheckerFile
+	}
+	return files, diagnostics, nil
+}
+
+func parseParsedTueFiles(root string, paths []string) ([]parsedTueFile, []checker.Diagnostic, error) {
+	files := make([]parsedTueFile, 0, len(paths))
 	var diagnostics []checker.Diagnostic
 
 	for _, path := range paths {
@@ -169,22 +253,25 @@ func parseTueFiles(root string, paths []string) ([]checker.File, []checker.Diagn
 		}
 		diagnostics = append(diagnostics, fileDiagnostics...)
 		if len(fileDiagnostics) == 0 {
-			files = append(files, file)
+			if file == nil {
+				return nil, nil, fmt.Errorf("parse %s: missing parsed file", path)
+			}
+			files = append(files, *file)
 		}
 	}
 
 	return files, diagnostics, nil
 }
 
-func parseTueFile(root string, path string) (checker.File, []checker.Diagnostic, error) {
+func parseTueFile(root string, path string) (*parsedTueFile, []checker.Diagnostic, error) {
 	source, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
 	if err != nil {
-		return checker.File{}, nil, fmt.Errorf("read %s: %w", path, err)
+		return nil, nil, fmt.Errorf("read %s: %w", path, err)
 	}
 
 	sfcFile, sfcDiagnostics := sfc.Parse(path, source)
 	if len(sfcDiagnostics) != 0 {
-		return checker.File{}, sfcDiagnosticsFor(path, sfcDiagnostics), nil
+		return nil, sfcDiagnosticsFor(path, sfcDiagnostics), nil
 	}
 
 	templateTree, templateDiagnostics := compilerTemplate.ParseBlock(sfcFile.Template)
@@ -193,13 +280,16 @@ func parseTueFile(root string, path string) (checker.File, []checker.Diagnostic,
 	diagnostics = append(diagnostics, templateDiagnosticsFor(path, templateDiagnostics)...)
 	diagnostics = append(diagnostics, scriptDiagnosticsFor(path, scriptDiagnostics)...)
 	if len(diagnostics) != 0 {
-		return checker.File{}, diagnostics, nil
+		return nil, diagnostics, nil
 	}
 
-	return checker.File{
-		Path:     path,
-		Template: templateTree,
-		Script:   scriptFile,
+	return &parsedTueFile{
+		CheckerFile: checker.File{
+			Path:     path,
+			Template: templateTree,
+			Script:   scriptFile,
+		},
+		ScriptSource: sfcFile.Script.Content,
 	}, nil, nil
 }
 
@@ -239,6 +329,18 @@ func scriptDiagnosticsFor(path string, diagnostics []script.Diagnostic) []checke
 	return converted
 }
 
+func gogenDiagnosticsFor(diagnostics []gogen.Diagnostic) []checker.Diagnostic {
+	converted := make([]checker.Diagnostic, len(diagnostics))
+	for i, diagnostic := range diagnostics {
+		converted[i] = checker.Diagnostic{
+			Path:    diagnostic.Path,
+			Message: diagnostic.Message,
+			Span:    diagnostic.Span,
+		}
+	}
+	return converted
+}
+
 func printDiagnostics(stderr io.Writer, diagnostics []checker.Diagnostic) {
 	for _, diagnostic := range diagnostics {
 		if diagnostic.Span.Start.Line > 0 && diagnostic.Span.Start.Column > 0 {
@@ -268,7 +370,7 @@ func printUsage(out io.Writer) {
 
 Commands:
   check [project-root]  Parse and check .tue files under a project root.
-  build [project-root]  Build a Tue project. Not implemented yet.
+  build [project-root]  Generate Go files under .tue-cache.
   dev [project-root]    Start the Tue dev server. Not implemented yet.
   fmt [project-root]    Format Tue source files. Not implemented yet.
 `)

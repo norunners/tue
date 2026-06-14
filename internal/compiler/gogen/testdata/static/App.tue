@@ -1,0 +1,14 @@
+<template>
+<main class="page" data-title="A & B">Hello, {{ name }}!
+	<span>{{ count + 1 }}</span></main>
+</template>
+<script lang="go">
+package app
+
+import tue "github.com/norunners/tue"
+
+type App struct {
+	name  tue.Prop[string] `prop:"name"`
+	count tue.Ref[int]
+}
+</script>
