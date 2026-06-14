@@ -4,12 +4,9 @@ package tue
 
 import "fmt"
 
-func mount(target string, component *Comp) error {
-	if target == "" {
-		return fmt.Errorf("mount target is required")
+func mount(target string, component *Comp) (*Mounted, error) {
+	if err := validateMount(target, component); err != nil {
+		return nil, err
 	}
-	if component == nil {
-		return fmt.Errorf("component is required")
-	}
-	return fmt.Errorf("mount is only supported under js/wasm")
+	return nil, fmt.Errorf("mount is only supported under js/wasm")
 }
