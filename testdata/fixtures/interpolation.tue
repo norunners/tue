@@ -7,7 +7,7 @@
 <script lang="go">
 package fixtures
 
-import tue "github.com/norunners/vue"
+import tue "github.com/norunners/tue"
 
 type Interpolation struct {
 	greeting string

@@ -8,7 +8,7 @@
 <script lang="go">
 package parentchildprops
 
-import tue "github.com/norunners/vue"
+import tue "github.com/norunners/tue"
 
 type UserBadge struct {
 	name    tue.Prop[string] `prop:"name,required"`
