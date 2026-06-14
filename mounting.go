@@ -84,6 +84,8 @@ func (m *Mounted) Unmount() error {
 		m.renderEffect.stop()
 	}
 	m.component.runCleanups()
+	cleanupMountedVNode(m.tree)
+	m.tree = nil
 	err := m.target.clear()
 	m.component.unmounted()
 	if err != nil {

@@ -15,7 +15,7 @@ type tueImporter struct {
 func newTueImporter() *tueImporter {
 	return &tueImporter{
 		fallback: importer.Default(),
-		tue:      fakeTuePackage(),
+		tue:      stubTuePackage(),
 	}
 }
 
@@ -39,7 +39,7 @@ func (i *tueImporter) ImportFrom(path string, dir string, mode types.ImportMode)
 	return i.Import(path)
 }
 
-func fakeTuePackage() *types.Package {
+func stubTuePackage() *types.Package {
 	pkg := types.NewPackage(tueImportPath, "tue")
 	scope := pkg.Scope()
 	emptyInterface := types.NewInterfaceType(nil, nil).Complete()

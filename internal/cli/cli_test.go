@@ -132,13 +132,13 @@ func TestRunBuildGeneratesCacheFiles(t *testing.T) {
 
 func TestRunBuildReportsGenerationDiagnostics(t *testing.T) {
 	root := t.TempDir()
-	if err := writeFile(filepath.Join(root, "App.tue"), `<template><button @click="save">Save</button></template>
+	if err := writeFile(filepath.Join(root, "App.tue"), `<template><button :class="kind">Save</button></template>
 <script lang="go">
 package app
 
-type App struct{}
-
-func (a *App) save() {}
+type App struct {
+	kind string
+}
 </script>
 `); err != nil {
 		t.Fatalf("setup App.tue: %v", err)
@@ -155,7 +155,7 @@ func (a *App) save() {}
 	if stdout.Len() != 0 {
 		t.Errorf("stdout actual = %q, expected empty", stdout.String())
 	}
-	expected := `App.tue:1:19: event attribute "@click" generation is not supported in the static render slice`
+	expected := `App.tue:1:19: bound attribute ":class" generation is not supported in the static render slice`
 	if !strings.Contains(stderr.String(), expected) {
 		t.Errorf("stderr actual = %q, expected %q", stderr.String(), expected)
 	}

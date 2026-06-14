@@ -42,7 +42,7 @@ func TestMountComponentRunsLifecycleInOrder(t *testing.T) {
 		*fixture.events = append(*fixture.events, "render:"+fixture.value)
 		return Text(fixture.value)
 	})
-	target := newFakeDOMTarget()
+	target := newStubDOMTarget()
 
 	mounted, err := mountComponent(comp, target)
 	if err != nil {
@@ -91,7 +91,7 @@ func TestMountedReactiveRerendersWhenRenderDependencyChanges(t *testing.T) {
 	count := RefOf(0)
 	renderCount := 0
 	component := &reactiveRenderFixture{}
-	target := newFakeDOMTarget()
+	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(component, func(*reactiveRenderFixture) VNode {
 		renderCount++
 		return Text(fmt.Sprintf("count:%d", count.Get()))
@@ -131,7 +131,7 @@ func TestMountedReactiveRerendersCoalesceInsideBatch(t *testing.T) {
 	count := RefOf(0)
 	renderCount := 0
 	component := &reactiveRenderFixture{}
-	target := newFakeDOMTarget()
+	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(component, func(*reactiveRenderFixture) VNode {
 		renderCount++
 		return Text(fmt.Sprint(count.Get()))
@@ -175,7 +175,7 @@ func TestMountedReactiveRerenderStopsOnUnmount(t *testing.T) {
 	count := RefOf(0)
 	renderCount := 0
 	component := &reactiveRenderFixture{}
-	target := newFakeDOMTarget()
+	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(component, func(*reactiveRenderFixture) VNode {
 		renderCount++
 		return Text(fmt.Sprint(count.Get()))
@@ -211,7 +211,7 @@ func TestMountedReactiveRerenderDoesNotTrackUpdatedHookReads(t *testing.T) {
 		events:    &events,
 		hookValue: hookValue,
 	}
-	target := newFakeDOMTarget()
+	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(component, func(*reactiveUpdatedHookFixture) VNode {
 		events = append(events, fmt.Sprintf("render:%d", count.Get()))
 		return Text(fmt.Sprint(count.Get()))
@@ -242,7 +242,7 @@ func TestMountedReactiveRerenderDoesNotTrackUpdatedHookReads(t *testing.T) {
 func TestMountedUpdateRejectsUnmountedComponent(t *testing.T) {
 	mounted, err := mountComponent(CompOf(&initFixture{}, func(*initFixture) VNode {
 		return Text("value")
-	}), newFakeDOMTarget())
+	}), newStubDOMTarget())
 	if err != nil {
 		t.Fatalf("mountComponent returned error: %v", err)
 	}

@@ -17,10 +17,12 @@ type scope struct {
 }
 
 type symbol struct {
-	Name     string
-	Type     string
-	Writable bool
-	Method   bool
+	Name       string
+	Type       string
+	Writable   bool
+	Method     bool
+	Parameters int
+	Results    int
 }
 
 func componentScope(component *script.Component) *scope {
@@ -42,7 +44,7 @@ func componentScope(component *script.Component) *scope {
 		scope.add(symbol{Name: field.Name, Type: fieldType(field)})
 	}
 	for _, method := range component.Methods {
-		scope.add(symbol{Name: method.Name, Type: funcType, Method: true})
+		scope.add(symbol{Name: method.Name, Type: funcType, Method: true, Parameters: len(method.Parameters), Results: len(method.Results)})
 	}
 	return scope
 }

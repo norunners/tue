@@ -1,0 +1,15 @@
+<template>
+	<button type="button" @click="save(1)">Bad args</button>
+	<button type="button" @click="needsValue">Bad signature</button>
+	<button type="button" @click="missing">Missing</button>
+</template>
+
+<script lang="go">
+package app
+
+type App struct{}
+
+func (a *App) save() {}
+
+func (a *App) needsValue(value string) {}
+</script>

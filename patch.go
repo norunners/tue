@@ -14,12 +14,26 @@ type domBoundary interface {
 	setText(node domNode, text string) error
 	setAttr(node domNode, attr Attribute) error
 	removeAttr(node domNode, name string) error
+	addEventListener(node domNode, name string, handler func()) (func(), error)
 }
 
 type mountedVNode struct {
 	vnode    VNode
 	nodes    []domNode
 	children []*mountedVNode
+	events   map[string]*mountedEvent
+}
+
+type mountedEvent struct {
+	handler func()
+	cleanup func()
+}
+
+func (e *mountedEvent) handle() {
+	if e == nil || e.handler == nil {
+		return
+	}
+	e.handler()
 }
 
 func mountVNode(dom domBoundary, parent domNode, before domNode, vnode VNode) (*mountedVNode, error) {
@@ -45,6 +59,10 @@ func mountElement(dom domBoundary, parent domNode, before domNode, vnode VNode) 
 			return nil, fmt.Errorf("set attribute %q: %w", attr.Name, err)
 		}
 	}
+	events, err := mountEvents(dom, node, vnode.Events)
+	if err != nil {
+		return nil, err
+	}
 
 	children := make([]*mountedVNode, 0, len(vnode.Children))
 	for _, child := range vnode.Children {
@@ -58,7 +76,7 @@ func mountElement(dom domBoundary, parent domNode, before domNode, vnode VNode) 
 	if err := insertNode(dom, parent, node, before); err != nil {
 		return nil, fmt.Errorf("insert element %q: %w", vnode.Tag, err)
 	}
-	return &mountedVNode{vnode: vnode, nodes: []domNode{node}, children: children}, nil
+	return &mountedVNode{vnode: vnode, nodes: []domNode{node}, children: children, events: events}, nil
 }
 
 func mountText(dom domBoundary, parent domNode, before domNode, vnode VNode) (*mountedVNode, error) {
@@ -137,12 +155,17 @@ func patchElement(dom domBoundary, old *mountedVNode, next VNode) (*mountedVNode
 	if err := patchAttrs(dom, node, old.vnode.Attrs, next.Attrs); err != nil {
 		return nil, err
 	}
+	events, err := patchEvents(dom, node, old.events, next.Events)
+	if err != nil {
+		return nil, err
+	}
 	children, err := patchChildren(dom, node, nil, old.children, next.Children)
 	if err != nil {
 		return nil, err
 	}
 	old.vnode = next
 	old.children = children
+	old.events = events
 	return old, nil
 }
 
@@ -226,6 +249,68 @@ func attrsByName(attrs []Attribute) map[string]Attribute {
 	return byName
 }
 
+func mountEvents(dom domBoundary, node domNode, events []EventBinding) (map[string]*mountedEvent, error) {
+	nextEvents := eventsByName(events)
+	if len(nextEvents) == 0 {
+		return nil, nil
+	}
+
+	mounted := make(map[string]*mountedEvent, len(nextEvents))
+	for name, event := range nextEvents {
+		mountedEvent := &mountedEvent{handler: event.Handler}
+		cleanup, err := dom.addEventListener(node, name, mountedEvent.handle)
+		if err != nil {
+			cleanupEvents(mounted)
+			return nil, fmt.Errorf("add event listener %q: %w", name, err)
+		}
+		mountedEvent.cleanup = cleanup
+		mounted[name] = mountedEvent
+	}
+	return mounted, nil
+}
+
+func patchEvents(dom domBoundary, node domNode, old map[string]*mountedEvent, next []EventBinding) (map[string]*mountedEvent, error) {
+	nextEvents := eventsByName(next)
+	for name, event := range nextEvents {
+		if mounted, ok := old[name]; ok {
+			mounted.handler = event.Handler
+			continue
+		}
+		mounted := &mountedEvent{handler: event.Handler}
+		cleanup, err := dom.addEventListener(node, name, mounted.handle)
+		if err != nil {
+			return old, fmt.Errorf("add event listener %q: %w", name, err)
+		}
+		mounted.cleanup = cleanup
+		if old == nil {
+			old = make(map[string]*mountedEvent, len(nextEvents))
+		}
+		old[name] = mounted
+	}
+	for name, mounted := range old {
+		if _, ok := nextEvents[name]; ok {
+			continue
+		}
+		cleanupEvent(mounted)
+		delete(old, name)
+	}
+	if len(old) == 0 {
+		return nil, nil
+	}
+	return old, nil
+}
+
+func eventsByName(events []EventBinding) map[string]EventBinding {
+	byName := make(map[string]EventBinding, len(events))
+	for _, event := range events {
+		if event.Name == "" {
+			continue
+		}
+		byName[event.Name] = event
+	}
+	return byName
+}
+
 func sameVNode(old VNode, next VNode) bool {
 	if old.Type != next.Type || old.Key != next.Key {
 		return false
@@ -247,12 +332,39 @@ func removeMountedVNode(dom domBoundary, parent domNode, mounted *mountedVNode) 
 	if mounted == nil {
 		return nil
 	}
+	cleanupMountedVNode(mounted)
 	for _, node := range mounted.nodes {
 		if err := dom.removeChild(parent, node); err != nil {
 			return fmt.Errorf("remove node: %w", err)
 		}
 	}
 	return nil
+}
+
+func cleanupMountedVNode(mounted *mountedVNode) {
+	if mounted == nil {
+		return
+	}
+	cleanupEvents(mounted.events)
+	mounted.events = nil
+	for _, child := range mounted.children {
+		cleanupMountedVNode(child)
+	}
+}
+
+func cleanupEvents(events map[string]*mountedEvent) {
+	for _, event := range events {
+		cleanupEvent(event)
+	}
+}
+
+func cleanupEvent(event *mountedEvent) {
+	if event == nil || event.cleanup == nil {
+		return
+	}
+	event.cleanup()
+	event.cleanup = nil
+	event.handler = nil
 }
 
 func firstDOMNode(mounted *mountedVNode) domNode {

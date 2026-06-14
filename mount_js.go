@@ -102,6 +102,24 @@ func (t jsMountTarget) removeAttr(node domNode, name string) error {
 	return nil
 }
 
+func (t jsMountTarget) addEventListener(node domNode, name string, handler func()) (func(), error) {
+	nodeValue, ok := node.(js.Value)
+	if !ok {
+		return nil, fmt.Errorf("expected js.Value element node, got %T", node)
+	}
+	listener := js.FuncOf(func(this js.Value, args []js.Value) any {
+		if handler != nil {
+			handler()
+		}
+		return nil
+	})
+	nodeValue.Call("addEventListener", name, listener)
+	return func() {
+		nodeValue.Call("removeEventListener", name, listener)
+		listener.Release()
+	}, nil
+}
+
 func (t jsMountTarget) clear() error {
 	t.element.Set("textContent", "")
 	return nil

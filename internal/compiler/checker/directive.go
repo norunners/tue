@@ -39,7 +39,7 @@ func (c *fileChecker) checkEvent(attr gotemplate.Attr, scope *scope) {
 
 	switch typed := expr.(type) {
 	case *ast.Ident:
-		c.expectMethod(typed.Name, exprChecker.nodeSpan(typed), scope)
+		c.expectEventMethod(typed.Name, exprChecker.nodeSpan(typed), scope, true)
 	case *ast.CallExpr:
 		c.checkCallEvent(typed, exprChecker, scope)
 	default:
@@ -57,7 +57,10 @@ func (c *fileChecker) checkCallEvent(call *ast.CallExpr, exprChecker *exprChecke
 
 	switch callee := call.Fun.(type) {
 	case *ast.Ident:
-		c.expectMethod(callee.Name, exprChecker.nodeSpan(callee), scope)
+		_, ok := c.expectEventMethod(callee.Name, exprChecker.nodeSpan(callee), scope, len(call.Args) == 0)
+		if ok && len(call.Args) != 0 {
+			c.add(fmt.Sprintf("event handler %q does not accept arguments", callee.Name), exprChecker.nodeSpan(call))
+		}
 	case *ast.SelectorExpr:
 		exprChecker.eval(callee)
 	default:
@@ -112,11 +115,17 @@ func (c *fileChecker) checkModel(attr gotemplate.Attr, scope *scope) {
 	}
 }
 
-func (c *fileChecker) expectMethod(name string, span sfc.Span, scope *scope) {
-	symbol, ok := scope.lookup(name)
-	if !ok || !symbol.Method {
+func (c *fileChecker) expectEventMethod(name string, span sfc.Span, scope *scope, requireFuncSignature bool) (symbol, bool) {
+	method, ok := scope.lookup(name)
+	if !ok || !method.Method {
 		c.add(fmt.Sprintf("event handler %q is not a method on %s", name, c.component.Name), span)
+		return symbol{}, false
 	}
+	if requireFuncSignature && (method.Parameters != 0 || method.Results != 0) {
+		c.add(fmt.Sprintf("event handler %q must have signature func()", name), span)
+		return method, false
+	}
+	return method, true
 }
 
 type forClause struct {

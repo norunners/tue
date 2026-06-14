@@ -1,0 +1,14 @@
+<template>
+	<button type="button" @click="increment(1)">Bad args</button>
+	<button type="button" @click="save">Bad signature</button>
+</template>
+
+<script lang="go">
+package fixtures
+
+type Parent struct{}
+
+func (p *Parent) increment() {}
+
+func (p *Parent) save(value string) {}
+</script>
