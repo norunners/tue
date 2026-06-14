@@ -1,0 +1,91 @@
+package script
+
+import "github.com/norunners/tue/internal/compiler/sfc"
+
+// File is the extracted contract view of one Go script block.
+type File struct {
+	Path        string
+	PackageName string
+	PackageSpan sfc.Span
+	Imports     []Import
+	Component   *Component
+}
+
+// Import is a Go import declaration used by the script block.
+type Import struct {
+	Name     string
+	Path     string
+	Span     sfc.Span
+	NameSpan sfc.Span
+	PathSpan sfc.Span
+}
+
+// Component is the contract extracted from the expected component struct.
+type Component struct {
+	Name       string
+	Span       sfc.Span
+	NameSpan   sfc.Span
+	Props      []Prop
+	State      []Field
+	Refs       []Field
+	Computed   []Field
+	Resources  []Field
+	Methods    []Method
+	Init       *Method
+	Allocation Allocation
+}
+
+// Allocation describes the generated-code construction shape for a component.
+type Allocation struct {
+	ComponentName string
+	PropFields    []string
+	CallsInit     bool
+}
+
+// Prop is a component prop field plus prop-specific metadata.
+type Prop struct {
+	Field    Field
+	Name     string
+	Required bool
+}
+
+// Field is a named field on the component struct.
+type Field struct {
+	Kind      FieldKind
+	Name      string
+	Exported  bool
+	Type      string
+	ValueType string
+	Tag       string
+	Span      sfc.Span
+	NameSpan  sfc.Span
+	TypeSpan  sfc.Span
+	TagSpan   sfc.Span
+}
+
+// Method is a method declared on the component type.
+type Method struct {
+	Name            string
+	ReceiverName    string
+	PointerReceiver bool
+	Parameters      []Parameter
+	Results         []Parameter
+	Span            sfc.Span
+	NameSpan        sfc.Span
+	ReceiverSpan    sfc.Span
+}
+
+// Parameter is a method parameter or result.
+type Parameter struct {
+	Name     string
+	Type     string
+	Span     sfc.Span
+	NameSpan sfc.Span
+	TypeSpan sfc.Span
+}
+
+// Diagnostic is a source-mapped script extraction diagnostic.
+type Diagnostic struct {
+	Message string
+	Span    sfc.Span
+}
