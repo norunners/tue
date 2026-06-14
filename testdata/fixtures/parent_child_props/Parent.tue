@@ -1,0 +1,21 @@
+<template>
+	<main>
+		<UserBadge :name="name" :isAdmin='role == "admin"' />
+	</main>
+</template>
+
+<script lang="go">
+package parentchildprops
+
+import tue "github.com/norunners/vue"
+
+type Parent struct {
+	name string
+	role string
+}
+
+func (p *Parent) Init(ctx tue.Context) {
+	p.name = "Ada"
+	p.role = "admin"
+}
+</script>

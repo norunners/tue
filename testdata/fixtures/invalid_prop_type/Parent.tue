@@ -1,0 +1,19 @@
+<template>
+	<main>
+		<UserBadge :name="name" :isAdmin='"yes"' />
+	</main>
+</template>
+
+<script lang="go">
+package invalidproptype
+
+import tue "github.com/norunners/vue"
+
+type Parent struct {
+	name string
+}
+
+func (p *Parent) Init(ctx tue.Context) {
+	p.name = "Ada"
+}
+</script>
