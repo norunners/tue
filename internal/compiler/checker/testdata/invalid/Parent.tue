@@ -1,0 +1,30 @@
+<template>
+	<main>
+		<UserBadge :name="missing" :isAdmin='"yes"' :extra="name" />
+		<UnknownCard />
+		<button type="button" @click="missingHandler">Save</button>
+		<input v-model="title" />
+		<ul>
+			<li v-for="todo in todos">{{ todo.Text }}</li>
+		</ul>
+		<p>{{ missing }}</p>
+		<p v-if="name">Bad condition</p>
+	</main>
+</template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type Todo struct {
+	ID   int
+	Text string
+}
+
+type Parent struct {
+	title tue.Prop[string]
+	name  string
+	todos []Todo
+}
+</script>

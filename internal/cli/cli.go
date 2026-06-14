@@ -9,6 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/norunners/tue/internal/compiler/checker"
+	"github.com/norunners/tue/internal/compiler/script"
+	"github.com/norunners/tue/internal/compiler/sfc"
+	compilerTemplate "github.com/norunners/tue/internal/compiler/template"
 )
 
 const (
@@ -51,7 +56,23 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
-	fmt.Fprintf(stdout, "tue check: found %d .tue file(s) in %s\n", len(files), filepath.Clean(root))
+	parsedFiles, parseDiagnostics, err := parseTueFiles(root, files)
+	if err != nil {
+		fmt.Fprintf(stderr, "tue check: %v\n", err)
+		return exitError
+	}
+	if len(parseDiagnostics) != 0 {
+		printDiagnostics(stderr, parseDiagnostics)
+		return exitError
+	}
+
+	checkDiagnostics := checker.CheckProject(checker.Project{Files: parsedFiles})
+	if len(checkDiagnostics) != 0 {
+		printDiagnostics(stderr, checkDiagnostics)
+		return exitError
+	}
+
+	fmt.Fprintf(stdout, "tue check: checked %d .tue file(s) in %s\n", len(files), filepath.Clean(root))
 	for _, file := range files {
 		fmt.Fprintf(stdout, "%s\n", file)
 	}
@@ -137,6 +158,101 @@ func discoverTueFiles(root string) ([]string, error) {
 	return files, nil
 }
 
+func parseTueFiles(root string, paths []string) ([]checker.File, []checker.Diagnostic, error) {
+	files := make([]checker.File, 0, len(paths))
+	var diagnostics []checker.Diagnostic
+
+	for _, path := range paths {
+		file, fileDiagnostics, err := parseTueFile(root, path)
+		if err != nil {
+			return nil, nil, err
+		}
+		diagnostics = append(diagnostics, fileDiagnostics...)
+		if len(fileDiagnostics) == 0 {
+			files = append(files, file)
+		}
+	}
+
+	return files, diagnostics, nil
+}
+
+func parseTueFile(root string, path string) (checker.File, []checker.Diagnostic, error) {
+	source, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
+	if err != nil {
+		return checker.File{}, nil, fmt.Errorf("read %s: %w", path, err)
+	}
+
+	sfcFile, sfcDiagnostics := sfc.Parse(path, source)
+	if len(sfcDiagnostics) != 0 {
+		return checker.File{}, sfcDiagnosticsFor(path, sfcDiagnostics), nil
+	}
+
+	templateTree, templateDiagnostics := compilerTemplate.ParseBlock(sfcFile.Template)
+	scriptFile, scriptDiagnostics := script.ParseSFC(sfcFile)
+	diagnostics := make([]checker.Diagnostic, 0, len(templateDiagnostics)+len(scriptDiagnostics))
+	diagnostics = append(diagnostics, templateDiagnosticsFor(path, templateDiagnostics)...)
+	diagnostics = append(diagnostics, scriptDiagnosticsFor(path, scriptDiagnostics)...)
+	if len(diagnostics) != 0 {
+		return checker.File{}, diagnostics, nil
+	}
+
+	return checker.File{
+		Path:     path,
+		Template: templateTree,
+		Script:   scriptFile,
+	}, nil, nil
+}
+
+func sfcDiagnosticsFor(path string, diagnostics []sfc.Diagnostic) []checker.Diagnostic {
+	converted := make([]checker.Diagnostic, len(diagnostics))
+	for i, diagnostic := range diagnostics {
+		converted[i] = checker.Diagnostic{
+			Path:    path,
+			Message: diagnostic.Message,
+			Span:    diagnostic.Span,
+		}
+	}
+	return converted
+}
+
+func templateDiagnosticsFor(path string, diagnostics []compilerTemplate.Diagnostic) []checker.Diagnostic {
+	converted := make([]checker.Diagnostic, len(diagnostics))
+	for i, diagnostic := range diagnostics {
+		converted[i] = checker.Diagnostic{
+			Path:    path,
+			Message: diagnostic.Message,
+			Span:    diagnostic.Span,
+		}
+	}
+	return converted
+}
+
+func scriptDiagnosticsFor(path string, diagnostics []script.Diagnostic) []checker.Diagnostic {
+	converted := make([]checker.Diagnostic, len(diagnostics))
+	for i, diagnostic := range diagnostics {
+		converted[i] = checker.Diagnostic{
+			Path:    path,
+			Message: diagnostic.Message,
+			Span:    diagnostic.Span,
+		}
+	}
+	return converted
+}
+
+func printDiagnostics(stderr io.Writer, diagnostics []checker.Diagnostic) {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Span.Start.Line > 0 && diagnostic.Span.Start.Column > 0 {
+			fmt.Fprintf(stderr, "%s:%d:%d: %s\n", diagnostic.Path, diagnostic.Span.Start.Line, diagnostic.Span.Start.Column, diagnostic.Message)
+			continue
+		}
+		if diagnostic.Path != "" {
+			fmt.Fprintf(stderr, "%s: %s\n", diagnostic.Path, diagnostic.Message)
+			continue
+		}
+		fmt.Fprintf(stderr, "%s\n", diagnostic.Message)
+	}
+}
+
 func shouldSkipDir(name string) bool {
 	switch name {
 	case ".git", ".tue-cache", "node_modules":
@@ -151,7 +267,7 @@ func printUsage(out io.Writer) {
   tue <command> [project-root]
 
 Commands:
-  check [project-root]  Discover .tue files under a project root.
+  check [project-root]  Parse and check .tue files under a project root.
   build [project-root]  Build a Tue project. Not implemented yet.
   dev [project-root]    Start the Tue dev server. Not implemented yet.
   fmt [project-root]    Format Tue source files. Not implemented yet.

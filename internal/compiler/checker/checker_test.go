@@ -1,0 +1,196 @@
+package checker
+
+import (
+	"bytes"
+	"embed"
+	"fmt"
+	"io/fs"
+	"path/filepath"
+	"testing"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/norunners/tue/internal/compiler/script"
+	"github.com/norunners/tue/internal/compiler/sfc"
+	gotemplate "github.com/norunners/tue/internal/compiler/template"
+)
+
+//go:embed testdata/valid/*.tue testdata/invalid/*.tue testdata/missing_required_prop/*.tue
+var testFixtures embed.FS
+
+func TestCheckProjectAcceptsValidProject(t *testing.T) {
+	project, err := parseProjectFixture("testdata/valid")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	diagnostics := CheckProject(project)
+	if diff := cmp.Diff([]diagnosticSummary{}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestCheckProjectReportsTemplateDiagnostics(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	diagnostics := CheckProject(project)
+	if diff := cmp.Diff([]diagnosticSummary{
+		{Path: "testdata/invalid/Parent.tue", Message: `unknown identifier "missing"`, Line: 3, Column: 21},
+		{Path: "testdata/invalid/Parent.tue", Message: `component "UserBadge" prop "isAdmin" expects bool, got string`, Line: 3, Column: 40},
+		{Path: "testdata/invalid/Parent.tue", Message: `component "UserBadge" has no prop "extra"`, Line: 3, Column: 48},
+		{Path: "testdata/invalid/Parent.tue", Message: `component "UnknownCard" is not registered`, Line: 4, Column: 4},
+		{Path: "testdata/invalid/Parent.tue", Message: `event handler "missingHandler" is not a method on Parent`, Line: 5, Column: 33},
+		{Path: "testdata/invalid/Parent.tue", Message: `v-model target "title" is not writable`, Line: 6, Column: 19},
+		{Path: "testdata/invalid/Parent.tue", Message: `v-for requires a :key attribute`, Line: 8, Column: 8},
+		{Path: "testdata/invalid/Parent.tue", Message: `unknown identifier "missing"`, Line: 10, Column: 9},
+		{Path: "testdata/invalid/Parent.tue", Message: `v-if expects bool, got string`, Line: 11, Column: 12},
+	}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestCheckProjectReportsMissingRequiredComponentProp(t *testing.T) {
+	project, err := parseProjectFixture("testdata/missing_required_prop")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	diagnostics := CheckProject(project)
+	if diff := cmp.Diff([]diagnosticSummary{
+		{Path: "testdata/missing_required_prop/Parent.tue", Message: `component "UserBadge" requires prop "name"`, Line: 3, Column: 4},
+	}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestCheckProjectUsesExpressionSourceSpans(t *testing.T) {
+	source, err := testFixture("testdata/invalid/Parent.tue")
+	if err != nil {
+		t.Fatalf("read span fixture: %v", err)
+	}
+	project, err := parseProjectFixture("testdata/invalid")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	diagnostics := CheckProject(project)
+	diagnostic, ok := findDiagnostic(diagnostics, `component "UserBadge" prop "isAdmin" expects bool, got string`)
+	if !ok {
+		t.Fatalf("diagnostic not found in %#v", summarizeDiagnostics(diagnostics))
+	}
+
+	expectedOffset := bytes.Index(source, []byte(`"yes"`))
+	if expectedOffset == -1 {
+		t.Fatal(`embedded fixture does not contain ""yes""`)
+	}
+	if diff := cmp.Diff(expectedOffset, diagnostic.Span.Start.Offset); diff != "" {
+		t.Errorf("mismatch diagnostic start offset (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff(sfc.Position{Offset: expectedOffset, Line: 3, Column: 40}, diagnostic.Span.Start); diff != "" {
+		t.Errorf("mismatch diagnostic start position (-expected, +actual):\n%s", diff)
+	}
+}
+
+func parseProjectFixture(dir string) (Project, error) {
+	entries, err := fs.ReadDir(testFixtures, dir)
+	if err != nil {
+		return Project{}, fmt.Errorf("read embedded fixture dir %s: %w", dir, err)
+	}
+
+	project := Project{Files: make([]File, 0, len(entries))}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".tue" {
+			continue
+		}
+
+		path := filepath.ToSlash(filepath.Join(dir, entry.Name()))
+		source, err := testFixture(path)
+		if err != nil {
+			return Project{}, err
+		}
+		sfcFile, sfcDiagnostics := sfc.Parse(path, source)
+		if len(sfcDiagnostics) != 0 {
+			return Project{}, fmt.Errorf("sfc.Parse(%s) diagnostics = %#v, want none", path, sfcDiagnosticMessages(sfcDiagnostics))
+		}
+
+		templateTree, templateDiagnostics := gotemplate.ParseBlock(sfcFile.Template)
+		if len(templateDiagnostics) != 0 {
+			return Project{}, fmt.Errorf("template.ParseBlock(%s) diagnostics = %#v, want none", path, templateDiagnosticMessages(templateDiagnostics))
+		}
+
+		scriptFile, scriptDiagnostics := script.ParseSFC(sfcFile)
+		if len(scriptDiagnostics) != 0 {
+			return Project{}, fmt.Errorf("script.ParseSFC(%s) diagnostics = %#v, want none", path, scriptDiagnosticMessages(scriptDiagnostics))
+		}
+
+		project.Files = append(project.Files, File{
+			Path:     path,
+			Template: templateTree,
+			Script:   scriptFile,
+		})
+	}
+	return project, nil
+}
+
+func testFixture(path string) ([]byte, error) {
+	source, err := testFixtures.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read embedded fixture %s: %w", path, err)
+	}
+	return source, nil
+}
+
+func findDiagnostic(diagnostics []Diagnostic, message string) (Diagnostic, bool) {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Message == message {
+			return diagnostic, true
+		}
+	}
+	return Diagnostic{}, false
+}
+
+type diagnosticSummary struct {
+	Path    string
+	Message string
+	Line    int
+	Column  int
+}
+
+func summarizeDiagnostics(diagnostics []Diagnostic) []diagnosticSummary {
+	summaries := make([]diagnosticSummary, len(diagnostics))
+	for i, diagnostic := range diagnostics {
+		summaries[i] = diagnosticSummary{
+			Path:    diagnostic.Path,
+			Message: diagnostic.Message,
+			Line:    diagnostic.Span.Start.Line,
+			Column:  diagnostic.Span.Start.Column,
+		}
+	}
+	return summaries
+}
+
+func sfcDiagnosticMessages(diagnostics []sfc.Diagnostic) []string {
+	messages := make([]string, len(diagnostics))
+	for i, diagnostic := range diagnostics {
+		messages[i] = diagnostic.Message
+	}
+	return messages
+}
+
+func templateDiagnosticMessages(diagnostics []gotemplate.Diagnostic) []string {
+	messages := make([]string, len(diagnostics))
+	for i, diagnostic := range diagnostics {
+		messages[i] = diagnostic.Message
+	}
+	return messages
+}
+
+func scriptDiagnosticMessages(diagnostics []script.Diagnostic) []string {
+	messages := make([]string, len(diagnostics))
+	for i, diagnostic := range diagnostics {
+		messages[i] = diagnostic.Message
+	}
+	return messages
+}

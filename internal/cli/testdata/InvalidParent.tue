@@ -1,0 +1,9 @@
+<template>
+	<UserBadge />
+</template>
+
+<script lang="go">
+package app
+
+type InvalidParent struct{}
+</script>
