@@ -23,112 +23,6 @@ func (c *contextValue) OnCleanup(cleanup func()) {
 	c.component.addCleanup(cleanup)
 }
 
-// Prop is the read interface exposed to component code.
-type Prop[T any] interface {
-	Get() T
-	Watch(func(T)) func()
-}
-
-// PropValue is the concrete runtime storage for a prop.
-type PropValue[T any] struct {
-	get func() T
-}
-
-// PropOf returns a prop with a fixed value.
-func PropOf[T any](value T) *PropValue[T] {
-	return PropOfFunc(func() T {
-		return value
-	})
-}
-
-// PropOfFunc returns a prop backed by a getter function.
-func PropOfFunc[T any](get func() T) *PropValue[T] {
-	return &PropValue[T]{get: get}
-}
-
-// Get returns the current prop value.
-func (p *PropValue[T]) Get() T {
-	if p == nil || p.get == nil {
-		var zero T
-		return zero
-	}
-	return p.get()
-}
-
-// Watch observes prop changes. Dependency tracking is added in a later slice.
-func (p *PropValue[T]) Watch(func(T)) func() {
-	return func() {}
-}
-
-// Ref is the read/write interface exposed to component code.
-type Ref[T any] interface {
-	Get() T
-	Set(T)
-	Watch(func(T)) func()
-}
-
-// RefValue is the concrete runtime storage for a ref.
-type RefValue[T any] struct {
-	value T
-}
-
-// RefOf returns a ref with an initial value.
-func RefOf[T any](value T) *RefValue[T] {
-	return &RefValue[T]{value: value}
-}
-
-// Get returns the current ref value.
-func (r *RefValue[T]) Get() T {
-	if r == nil {
-		var zero T
-		return zero
-	}
-	return r.value
-}
-
-// Set updates the ref value.
-func (r *RefValue[T]) Set(value T) {
-	if r == nil {
-		return
-	}
-	r.value = value
-}
-
-// Watch observes ref changes. Dependency tracking is added in a later slice.
-func (r *RefValue[T]) Watch(func(T)) func() {
-	return func() {}
-}
-
-// Computed is the read interface exposed to component code.
-type Computed[T any] interface {
-	Get() T
-	Watch(func(T)) func()
-}
-
-// ComputedValue is the concrete runtime storage for a computed value.
-type ComputedValue[T any] struct {
-	compute func() T
-}
-
-// ComputedOfFunc returns a computed value backed by a function.
-func ComputedOfFunc[T any](compute func() T) *ComputedValue[T] {
-	return &ComputedValue[T]{compute: compute}
-}
-
-// Get returns the current computed value.
-func (c *ComputedValue[T]) Get() T {
-	if c == nil || c.compute == nil {
-		var zero T
-		return zero
-	}
-	return c.compute()
-}
-
-// Watch observes computed changes. Dependency tracking is added in a later slice.
-func (c *ComputedValue[T]) Watch(func(T)) func() {
-	return func() {}
-}
-
 // VNode is the generated render tree consumed by the runtime.
 type VNode struct {
 	Type     VNodeType
@@ -175,7 +69,8 @@ type Comp struct {
 	Component any
 	Render    func() VNode
 
-	cleanups []func()
+	effectCleanups []func()
+	cleanups       []func()
 }
 
 type initComponent interface {
@@ -203,7 +98,9 @@ func CompOf[C any](component *C, render func(*C) VNode) *Comp {
 		}
 	}
 	if initializable, ok := any(component).(initComponent); ok {
-		initializable.Init(&contextValue{component: comp})
+		withComponentScope(comp, func() {
+			initializable.Init(&contextValue{component: comp})
+		})
 	}
 	return comp
 }
@@ -222,10 +119,23 @@ func (c *Comp) addCleanup(cleanup func()) {
 	c.cleanups = append(c.cleanups, cleanup)
 }
 
+func (c *Comp) addEffectCleanup(cleanup func()) {
+	if c == nil || cleanup == nil {
+		return
+	}
+	c.effectCleanups = append(c.effectCleanups, cleanup)
+}
+
 func (c *Comp) runCleanups() {
 	if c == nil {
 		return
 	}
+	effectCleanups := c.effectCleanups
+	c.effectCleanups = nil
+	for _, cleanup := range effectCleanups {
+		cleanup()
+	}
+
 	cleanups := c.cleanups
 	c.cleanups = nil
 	for _, cleanup := range cleanups {

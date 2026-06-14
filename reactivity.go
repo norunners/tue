@@ -1,0 +1,406 @@
+package tue
+
+// Prop is the read interface exposed to component code.
+type Prop[T any] interface {
+	Get() T
+	Watch(func(T)) func()
+}
+
+// PropValue is the concrete runtime storage for a prop.
+type PropValue[T any] struct {
+	get func() T
+	dep dependency
+}
+
+// PropOf returns a prop with a fixed value.
+func PropOf[T any](value T) *PropValue[T] {
+	return PropOfFunc(func() T {
+		return value
+	})
+}
+
+// PropOfFunc returns a prop backed by a getter function.
+func PropOfFunc[T any](get func() T) *PropValue[T] {
+	return &PropValue[T]{get: get}
+}
+
+// Get returns the current prop value.
+func (p *PropValue[T]) Get() T {
+	if p == nil || p.get == nil {
+		var zero T
+		return zero
+	}
+	p.dep.track()
+	return p.get()
+}
+
+// Watch observes prop changes and returns a stop function.
+func (p *PropValue[T]) Watch(effect func(T)) func() {
+	if effect == nil {
+		return func() {}
+	}
+	return Watch(func() {
+		effect(p.Get())
+	})
+}
+
+// Ref is the read/write interface exposed to component code.
+type Ref[T any] interface {
+	Get() T
+	Set(T)
+	Watch(func(T)) func()
+}
+
+// RefValue is the concrete runtime storage for a ref.
+type RefValue[T any] struct {
+	value T
+	dep   dependency
+}
+
+// RefOf returns a ref with an initial value.
+func RefOf[T any](value T) *RefValue[T] {
+	return &RefValue[T]{value: value}
+}
+
+// Get returns the current ref value.
+func (r *RefValue[T]) Get() T {
+	if r == nil {
+		var zero T
+		return zero
+	}
+	r.dep.track()
+	return r.value
+}
+
+// Set updates the ref value and invalidates dependents.
+func (r *RefValue[T]) Set(value T) {
+	if r == nil {
+		return
+	}
+	r.value = value
+	r.dep.notify()
+}
+
+// Watch observes ref changes and returns a stop function.
+func (r *RefValue[T]) Watch(effect func(T)) func() {
+	if effect == nil {
+		return func() {}
+	}
+	return Watch(func() {
+		effect(r.Get())
+	})
+}
+
+// Computed is the read interface exposed to component code.
+type Computed[T any] interface {
+	Get() T
+	Watch(func(T)) func()
+}
+
+// ComputedValue is the concrete runtime storage for a computed value.
+type ComputedValue[T any] struct {
+	compute func() T
+	value   T
+	dirty   bool
+	dep     dependency
+	deps    map[*dependency]struct{}
+}
+
+// ComputedOfFunc returns a lazy, cached computed value backed by a function.
+func ComputedOfFunc[T any](compute func() T) *ComputedValue[T] {
+	computed := &ComputedValue[T]{
+		compute: compute,
+		dirty:   true,
+		deps:    make(map[*dependency]struct{}),
+	}
+	registerEffectCleanup(computed.dispose)
+	return computed
+}
+
+// Get returns the current computed value, recomputing only when dirty.
+func (c *ComputedValue[T]) Get() T {
+	if c == nil || c.compute == nil {
+		var zero T
+		return zero
+	}
+	c.dep.track()
+	if c.dirty {
+		c.dispose()
+		pushSubscriber(c)
+		defer popSubscriber()
+
+		c.value = c.compute()
+		c.dirty = false
+	}
+	return c.value
+}
+
+// Watch observes computed changes and returns a stop function.
+func (c *ComputedValue[T]) Watch(effect func(T)) func() {
+	if effect == nil {
+		return func() {}
+	}
+	return Watch(func() {
+		effect(c.Get())
+	})
+}
+
+func (c *ComputedValue[T]) addDependency(dep *dependency) {
+	if c == nil || dep == nil {
+		return
+	}
+	if c.deps == nil {
+		c.deps = make(map[*dependency]struct{})
+	}
+	if _, ok := c.deps[dep]; ok {
+		return
+	}
+	c.deps[dep] = struct{}{}
+	dep.addSubscriber(c)
+}
+
+func (c *ComputedValue[T]) invalidate() {
+	if c == nil || c.dirty {
+		return
+	}
+	c.dirty = true
+	c.dep.notify()
+}
+
+func (c *ComputedValue[T]) dispose() {
+	if c == nil {
+		return
+	}
+	for dep := range c.deps {
+		dep.removeSubscriber(c)
+		delete(c.deps, dep)
+	}
+}
+
+// Batch deduplicates watcher reruns until the outermost batch returns.
+func Batch(fn func()) {
+	if fn == nil {
+		return
+	}
+	scheduler.batchDepth++
+	defer func() {
+		scheduler.batchDepth--
+		if scheduler.batchDepth == 0 {
+			flushWatchers()
+		}
+	}()
+	fn()
+}
+
+// Watch runs effect immediately, tracks reactive reads, and returns a stop function.
+func Watch(effect func()) func() {
+	if effect == nil {
+		return func() {}
+	}
+
+	watcher := &watcher{
+		effect: effect,
+		deps:   make(map[*dependency]struct{}),
+	}
+	registerEffectCleanup(watcher.stop)
+	watcher.run()
+	return watcher.stop
+}
+
+type reactiveSubscriber interface {
+	addDependency(*dependency)
+	invalidate()
+}
+
+type dependency struct {
+	subscribers map[reactiveSubscriber]struct{}
+}
+
+func (d *dependency) track() {
+	subscriber := currentSubscriber()
+	if d == nil || subscriber == nil {
+		return
+	}
+	subscriber.addDependency(d)
+}
+
+func (d *dependency) addSubscriber(subscriber reactiveSubscriber) {
+	if d == nil || subscriber == nil {
+		return
+	}
+	if d.subscribers == nil {
+		d.subscribers = make(map[reactiveSubscriber]struct{})
+	}
+	d.subscribers[subscriber] = struct{}{}
+}
+
+func (d *dependency) removeSubscriber(subscriber reactiveSubscriber) {
+	if d == nil || d.subscribers == nil || subscriber == nil {
+		return
+	}
+	delete(d.subscribers, subscriber)
+}
+
+func (d *dependency) notify() {
+	if d == nil || len(d.subscribers) == 0 {
+		return
+	}
+	subscribers := make([]reactiveSubscriber, 0, len(d.subscribers))
+	for subscriber := range d.subscribers {
+		subscribers = append(subscribers, subscriber)
+	}
+	for _, subscriber := range subscribers {
+		subscriber.invalidate()
+	}
+}
+
+type watcher struct {
+	effect  func()
+	deps    map[*dependency]struct{}
+	stopped bool
+	queued  bool
+}
+
+func (w *watcher) run() {
+	if w == nil || w.stopped {
+		return
+	}
+	w.dispose()
+	pushSubscriber(w)
+	defer popSubscriber()
+	w.effect()
+}
+
+func (w *watcher) addDependency(dep *dependency) {
+	if w == nil || dep == nil {
+		return
+	}
+	if w.deps == nil {
+		w.deps = make(map[*dependency]struct{})
+	}
+	if _, ok := w.deps[dep]; ok {
+		return
+	}
+	w.deps[dep] = struct{}{}
+	dep.addSubscriber(w)
+}
+
+func (w *watcher) invalidate() {
+	if w == nil || w.stopped {
+		return
+	}
+	queueWatcher(w)
+}
+
+func (w *watcher) stop() {
+	if w == nil || w.stopped {
+		return
+	}
+	w.stopped = true
+	w.dispose()
+	removeQueuedWatcher(w)
+}
+
+func (w *watcher) dispose() {
+	if w == nil {
+		return
+	}
+	for dep := range w.deps {
+		dep.removeSubscriber(w)
+		delete(w.deps, dep)
+	}
+}
+
+var subscriberStack []reactiveSubscriber
+
+func pushSubscriber(subscriber reactiveSubscriber) {
+	subscriberStack = append(subscriberStack, subscriber)
+}
+
+func popSubscriber() {
+	if len(subscriberStack) == 0 {
+		return
+	}
+	subscriberStack = subscriberStack[:len(subscriberStack)-1]
+}
+
+func currentSubscriber() reactiveSubscriber {
+	if len(subscriberStack) == 0 {
+		return nil
+	}
+	return subscriberStack[len(subscriberStack)-1]
+}
+
+type schedulerState struct {
+	batchDepth int
+	flushing   bool
+	pending    []*watcher
+}
+
+var scheduler schedulerState
+
+func queueWatcher(w *watcher) {
+	if w == nil || w.stopped || w.queued {
+		return
+	}
+	w.queued = true
+	scheduler.pending = append(scheduler.pending, w)
+	if scheduler.batchDepth == 0 {
+		flushWatchers()
+	}
+}
+
+func removeQueuedWatcher(w *watcher) {
+	if w == nil || !w.queued {
+		return
+	}
+	for i, pending := range scheduler.pending {
+		if pending == w {
+			scheduler.pending = append(scheduler.pending[:i], scheduler.pending[i+1:]...)
+			break
+		}
+	}
+	w.queued = false
+}
+
+func flushWatchers() {
+	if scheduler.flushing {
+		return
+	}
+	scheduler.flushing = true
+	defer func() {
+		scheduler.flushing = false
+	}()
+
+	for len(scheduler.pending) > 0 {
+		pending := scheduler.pending
+		scheduler.pending = nil
+		for _, watcher := range pending {
+			watcher.queued = false
+			watcher.run()
+		}
+	}
+}
+
+var componentScopeStack []*Comp
+
+func withComponentScope(component *Comp, fn func()) {
+	componentScopeStack = append(componentScopeStack, component)
+	defer func() {
+		componentScopeStack = componentScopeStack[:len(componentScopeStack)-1]
+	}()
+	fn()
+}
+
+func currentComponentScope() *Comp {
+	if len(componentScopeStack) == 0 {
+		return nil
+	}
+	return componentScopeStack[len(componentScopeStack)-1]
+}
+
+func registerEffectCleanup(cleanup func()) {
+	if component := currentComponentScope(); component != nil {
+		component.addEffectCleanup(cleanup)
+	}
+}
