@@ -1,88 +1,59 @@
-# vue
-[![GoDoc](https://godoc.org/github.com/norunners/vue?status.svg)](https://godoc.org/github.com/norunners/vue)
+# Tue
 
-Package `vue` is the progressive framework for [WebAssembly](https://github.com/golang/go/wiki/WebAssembly) applications.
+Tue is an experimental `.tue` single-file component compiler and small Go
+WebAssembly runtime.
 
-## Install
-```bash
-GOARCH=wasm GOOS=js go get github.com/norunners/vue
-```
-*Requires Go 1.12 or higher.*
-
-## Goals
-* Provide a unified solution for a framework, state manager and router in the frontend space.
-* Leverage [templating](https://github.com/norunners/vueg) to separate application logic from frontend rendering.
-* Simplify data binding to ease the relation of state management to rendering.
-* Encourage component reuse to promote development productivity.
-* Follow an idiomatic Go translation of the familiar Vue API.
-
-## Hello World!
-The `main.go` file is compiled to a `.wasm` WebAssembly file.
-```go
-package main
-
-import "github.com/norunners/vue"
-
-type Data struct {
-	Message string
-}
-
-func main() {
-	vue.New(
-		vue.El("#app"),
-		vue.Template("<p>{{ Message }}</p>"),
-		vue.Data(Data{Message: "Hello WebAssembly!"}),
-	)
-
-	select {}
-}
-```
-
-The `index.wasmgo.html` file fetches and runs a `.wasm` WebAssembly file.
-```html
-<!doctype html>
-<html>
-    <head>
-        <meta charset="utf-8">
-        <script src="{{ .Script }}"></script>
-    </head>
-    <body>
-        <div id="app"></div>
-        <script src="{{ .Loader }}"></script>
-    </body>
-</html>
-```
-*Note, the example above is compatible with [wasmgo](https://github.com/dave/wasmgo).*
-
-## Serve Examples
-Install `wasmgo` to serve examples.
-```bash
-go get -u github.com/dave/wasmgo
-```
-
-Serve an example [locally](http://localhost:8080/).
-```bash
-cd examples/01-declarative-rendering
-wasmgo serve
-```
+The old Vue-style reflection/template interpreter has been removed from the
+active tree. Tue now moves through the ahead-of-time compiler path documented in
+`docs/`.
 
 ## Status
-Alpha - The state of this project is experimental until the common features of Vue are implemented.
-The plan is to follow the Vue API closely except for areas of major simplification, which may lead to a subset of the Vue API.
-During this stage, the API is expected to encounter minor breaking changes but increase in stability as the project progresses.
 
-## F.A.Q.
+This repository is mid-migration:
 
-#### Why Vue?
-One of the common themes of existing frameworks is to combine component application logic with frontend rendering.
-This can lead to a confusing mental model to reason about because both concerns may be mixed together in the same logic.
-By design, Vue renders components with templates which ensures application logic is developed separately from frontend rending.
+- `tue check` discovers `.tue` files and reports parser/type diagnostics.
+- `tue build` generates Go files under `.tue-cache`.
+- `tue dev` and `tue fmt` are command stubs for later implementation phases.
+- The repository and module still use `github.com/norunners/vue` until the
+  planned repository/module rename lands.
 
-Another commonality of existing frameworks is to unnecessarily expose the relation of state management to rendering in the API.
-By design, Vue binds data in both directions which ensures automatic updating and rendering when state changes.
+## Current Commands
 
-This project aims to combine the simplicity of Vue with the power of Go WebAssembly.
+Run diagnostics for the fixtures:
+
+```bash
+go run ./cmd/tue check ./testdata/fixtures
+```
+
+Generate Go for a fixture project:
+
+```bash
+go run ./cmd/tue build ./testdata/fixtures
+```
+
+Run the Go test suite:
+
+```bash
+go test ./...
+```
+
+## Project Shape
+
+- `cmd/tue/` contains the CLI entry point.
+- `internal/compiler/` contains the SFC parser, template parser, script parser,
+  checker, and Jennifer-backed Go generator.
+- Root package files contain the current runtime primitives used by generated
+  components.
+- `testdata/fixtures/` contains current `.tue` compiler fixtures.
+- `docs/` contains the high-level design, implementation plan, naming notes, and
+  repository migration plan.
+
+## Examples
+
+Legacy examples were retired with the old runtime. New examples should be
+rebuilt as `.tue` projects when the compiler/runtime supports each feature.
 
 License
 -------
+
 * [MIT License](LICENSE)

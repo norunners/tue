@@ -1,0 +1,12 @@
+<template>
+	<main class="page">
+		<h1>Hello Tue</h1>
+		<p>Static markup renders without component state.</p>
+	</main>
+</template>
+
+<script lang="go">
+package fixtures
+
+type StaticHello struct{}
+</script>

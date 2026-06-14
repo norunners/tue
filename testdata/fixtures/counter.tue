@@ -1,0 +1,26 @@
+<template>
+	<main>
+		<p>Count: {{ count }}</p>
+		<button type="button" @click="increment">Increment</button>
+	</main>
+</template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/vue"
+
+type Counter struct {
+	count     tue.Ref[int]
+	increment func()
+}
+
+func (c *Counter) Init(ctx tue.Context) {
+	count := tue.RefOf(0)
+
+	c.count = count
+	c.increment = func() {
+		count.Set(count.Get() + 1)
+	}
+}
+</script>

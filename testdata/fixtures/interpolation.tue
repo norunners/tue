@@ -1,0 +1,21 @@
+<template>
+	<main>
+		<p>{{ greeting }}, {{ name }}!</p>
+	</main>
+</template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/vue"
+
+type Interpolation struct {
+	greeting string
+	name     string
+}
+
+func (i *Interpolation) Init(ctx tue.Context) {
+	i.greeting = "Hello"
+	i.name = "Tue"
+}
+</script>
