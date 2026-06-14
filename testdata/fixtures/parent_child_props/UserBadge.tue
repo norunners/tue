@@ -1,0 +1,17 @@
+<template>
+	<span class="badge">
+		{{ name }}
+		<strong v-if="isAdmin">Admin</strong>
+	</span>
+</template>
+
+<script lang="go">
+package parentchildprops
+
+import tue "github.com/norunners/vue"
+
+type UserBadge struct {
+	name    tue.Prop[string] `prop:"name,required"`
+	isAdmin tue.Prop[bool]   `prop:"isAdmin"`
+}
+</script>
