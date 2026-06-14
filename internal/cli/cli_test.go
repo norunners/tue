@@ -20,13 +20,13 @@ func TestRunRequiresCommand(t *testing.T) {
 	code := Run(nil, &stdout, &stderr)
 
 	if code != exitUsage {
-		t.Errorf("Run(nil) exit code = %d, want %d", code, exitUsage)
+		t.Errorf("Run(nil) exit code actual = %d, expected %d", code, exitUsage)
 	}
 	if stdout.Len() != 0 {
-		t.Errorf("stdout = %q, want empty", stdout.String())
+		t.Errorf("stdout actual = %q, expected empty", stdout.String())
 	}
 	if !strings.Contains(stderr.String(), "Usage:") {
-		t.Errorf("stderr = %q, want usage", stderr.String())
+		t.Errorf("stderr actual = %q, expected usage", stderr.String())
 	}
 }
 
@@ -37,13 +37,13 @@ func TestRunPrintsHelp(t *testing.T) {
 	code := Run([]string{"--help"}, &stdout, &stderr)
 
 	if code != exitOK {
-		t.Errorf("Run(--help) exit code = %d, want %d", code, exitOK)
+		t.Errorf("Run(--help) exit code actual = %d, expected %d", code, exitOK)
 	}
 	if !strings.Contains(stdout.String(), "tue <command>") {
-		t.Errorf("stdout = %q, want top-level usage", stdout.String())
+		t.Errorf("stdout actual = %q, expected top-level usage", stdout.String())
 	}
 	if stderr.Len() != 0 {
-		t.Errorf("stderr = %q, want empty", stderr.String())
+		t.Errorf("stderr actual = %q, expected empty", stderr.String())
 	}
 }
 
@@ -54,13 +54,13 @@ func TestRunPrintsCommandHelp(t *testing.T) {
 	code := Run([]string{"check", "--help"}, &stdout, &stderr)
 
 	if code != exitOK {
-		t.Errorf("Run(check --help) exit code = %d, want %d", code, exitOK)
+		t.Errorf("Run(check --help) exit code actual = %d, expected %d", code, exitOK)
 	}
 	if !strings.Contains(stdout.String(), "tue check [project-root]") {
-		t.Errorf("stdout = %q, want command usage", stdout.String())
+		t.Errorf("stdout actual = %q, expected command usage", stdout.String())
 	}
 	if stderr.Len() != 0 {
-		t.Errorf("stderr = %q, want empty", stderr.String())
+		t.Errorf("stderr actual = %q, expected empty", stderr.String())
 	}
 }
 
@@ -71,18 +71,18 @@ func TestRunRejectsUnknownCommand(t *testing.T) {
 	code := Run([]string{"create"}, &stdout, &stderr)
 
 	if code != exitUsage {
-		t.Errorf("Run(create) exit code = %d, want %d", code, exitUsage)
+		t.Errorf("Run(create) exit code actual = %d, expected %d", code, exitUsage)
 	}
 	if stdout.Len() != 0 {
-		t.Errorf("stdout = %q, want empty", stdout.String())
+		t.Errorf("stdout actual = %q, expected empty", stdout.String())
 	}
 	if !strings.Contains(stderr.String(), `unknown command "create"`) {
-		t.Errorf("stderr = %q, want unknown command", stderr.String())
+		t.Errorf("stderr actual = %q, expected unknown command", stderr.String())
 	}
 }
 
 func TestRunStubCommandsReturnNotImplemented(t *testing.T) {
-	for _, command := range []string{"build", "dev", "fmt"} {
+	for _, command := range []string{"dev", "fmt"} {
 		t.Run(command, func(t *testing.T) {
 			var stdout bytes.Buffer
 			var stderr bytes.Buffer
@@ -90,16 +90,74 @@ func TestRunStubCommandsReturnNotImplemented(t *testing.T) {
 			code := Run([]string{command}, &stdout, &stderr)
 
 			if code != exitError {
-				t.Errorf("Run(%s) exit code = %d, want %d", command, code, exitError)
+				t.Errorf("Run(%s) exit code actual = %d, expected %d", command, code, exitError)
 			}
 			if stdout.Len() != 0 {
-				t.Errorf("stdout = %q, want empty", stdout.String())
+				t.Errorf("stdout actual = %q, expected empty", stdout.String())
 			}
-			want := "tue " + command + ": not implemented yet"
-			if !strings.Contains(stderr.String(), want) {
-				t.Errorf("stderr = %q, want %q", stderr.String(), want)
+			expected := "tue " + command + ": not implemented yet"
+			if !strings.Contains(stderr.String(), expected) {
+				t.Errorf("stderr actual = %q, expected %q", stderr.String(), expected)
 			}
 		})
+	}
+}
+
+func TestRunBuildGeneratesCacheFiles(t *testing.T) {
+	root := t.TempDir()
+	if err := writeFixture(filepath.Join(root, "App.tue"), "testdata/App.tue"); err != nil {
+		t.Fatalf("setup App.tue: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{"build", root}, &stdout, &stderr)
+
+	if code != exitOK {
+		t.Errorf("Run(build) exit code actual = %d, expected %d; stderr = %q", code, exitOK, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr actual = %q, expected empty", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "tue build: generated 1 component(s)") {
+		t.Errorf("stdout actual = %q, expected generated summary", stdout.String())
+	}
+	for _, path := range []string{"App_tue.go", "App_render_tue.go", "manifest.json"} {
+		if _, err := os.Stat(filepath.Join(root, ".tue-cache", path)); err != nil {
+			t.Errorf("generated file %s should exist: %v", path, err)
+		}
+	}
+}
+
+func TestRunBuildReportsGenerationDiagnostics(t *testing.T) {
+	root := t.TempDir()
+	if err := writeFile(filepath.Join(root, "App.tue"), `<template><button @click="save">Save</button></template>
+<script lang="go">
+package app
+
+type App struct{}
+
+func (a *App) save() {}
+</script>
+`); err != nil {
+		t.Fatalf("setup App.tue: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{"build", root}, &stdout, &stderr)
+
+	if code != exitError {
+		t.Errorf("Run(build invalid) exit code actual = %d, expected %d", code, exitError)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout actual = %q, expected empty", stdout.String())
+	}
+	expected := `App.tue:1:19: event attribute "@click" generation is not supported in the static render slice`
+	if !strings.Contains(stderr.String(), expected) {
+		t.Errorf("stderr actual = %q, expected %q", stderr.String(), expected)
 	}
 }
 
@@ -130,21 +188,21 @@ func TestRunCheckDiscoversTueFiles(t *testing.T) {
 	code := Run([]string{"check", root}, &stdout, &stderr)
 
 	if code != exitOK {
-		t.Errorf("Run(check) exit code = %d, want %d; stderr = %q", code, exitOK, stderr.String())
+		t.Errorf("Run(check) exit code actual = %d, expected %d; stderr = %q", code, exitOK, stderr.String())
 	}
 	if stderr.Len() != 0 {
-		t.Errorf("stderr = %q, want empty", stderr.String())
+		t.Errorf("stderr actual = %q, expected empty", stderr.String())
 	}
 
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
 	if len(lines) != 3 {
-		t.Errorf("stdout lines = %#v, want summary plus 2 files", lines)
+		t.Errorf("stdout lines actual = %#v, expected summary plus 2 files", lines)
 	}
 	if len(lines) > 0 && !strings.Contains(lines[0], "checked 2 .tue file(s)") {
-		t.Errorf("summary = %q, want checked count", lines[0])
+		t.Errorf("summary actual = %q, expected checked count", lines[0])
 	}
 	if len(lines) > 2 && (lines[1] != "App.tue" || lines[2] != "components/UserBadge.tue") {
-		t.Errorf("file lines = %#v, want sorted relative paths", lines[1:])
+		t.Errorf("file lines actual = %#v, expected sorted relative paths", lines[1:])
 	}
 }
 
@@ -161,10 +219,10 @@ func TestRunCheckDefaultsToWorkingDirectory(t *testing.T) {
 	code := Run([]string{"check"}, &stdout, &stderr)
 
 	if code != exitOK {
-		t.Errorf("Run(check) exit code = %d, want %d; stderr = %q", code, exitOK, stderr.String())
+		t.Errorf("Run(check) exit code actual = %d, expected %d; stderr = %q", code, exitOK, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "App.tue") {
-		t.Errorf("stdout = %q, want default-root file", stdout.String())
+		t.Errorf("stdout actual = %q, expected default-root file", stdout.String())
 	}
 }
 
@@ -183,14 +241,14 @@ func TestRunCheckReportsDiagnostics(t *testing.T) {
 	code := Run([]string{"check", root}, &stdout, &stderr)
 
 	if code != exitError {
-		t.Errorf("Run(check invalid) exit code = %d, want %d", code, exitError)
+		t.Errorf("Run(check invalid) exit code actual = %d, expected %d", code, exitError)
 	}
 	if stdout.Len() != 0 {
-		t.Errorf("stdout = %q, want empty", stdout.String())
+		t.Errorf("stdout actual = %q, expected empty", stdout.String())
 	}
-	want := `InvalidParent.tue:2:3: component "UserBadge" requires prop "name"`
-	if !strings.Contains(stderr.String(), want) {
-		t.Errorf("stderr = %q, want %q", stderr.String(), want)
+	expected := `InvalidParent.tue:2:3: component "UserBadge" requires prop "name"`
+	if !strings.Contains(stderr.String(), expected) {
+		t.Errorf("stderr actual = %q, expected %q", stderr.String(), expected)
 	}
 }
 
@@ -201,13 +259,13 @@ func TestRunCheckRejectsInvalidProjectRoot(t *testing.T) {
 	code := Run([]string{"check", filepath.Join(t.TempDir(), "missing")}, &stdout, &stderr)
 
 	if code != exitError {
-		t.Errorf("Run(check missing) exit code = %d, want %d", code, exitError)
+		t.Errorf("Run(check missing) exit code actual = %d, expected %d", code, exitError)
 	}
 	if stdout.Len() != 0 {
-		t.Errorf("stdout = %q, want empty", stdout.String())
+		t.Errorf("stdout actual = %q, expected empty", stdout.String())
 	}
 	if !strings.Contains(stderr.String(), "stat project root") {
-		t.Errorf("stderr = %q, want stat error", stderr.String())
+		t.Errorf("stderr actual = %q, expected stat error", stderr.String())
 	}
 }
 
@@ -218,13 +276,13 @@ func TestRunCheckRejectsExtraProjectRoots(t *testing.T) {
 	code := Run([]string{"check", "one", "two"}, &stdout, &stderr)
 
 	if code != exitUsage {
-		t.Errorf("Run(check one two) exit code = %d, want %d", code, exitUsage)
+		t.Errorf("Run(check one two) exit code actual = %d, expected %d", code, exitUsage)
 	}
 	if stdout.Len() != 0 {
-		t.Errorf("stdout = %q, want empty", stdout.String())
+		t.Errorf("stdout actual = %q, expected empty", stdout.String())
 	}
 	if !strings.Contains(stderr.String(), "expected at most one project root") {
-		t.Errorf("stderr = %q, want arity error", stderr.String())
+		t.Errorf("stderr actual = %q, expected arity error", stderr.String())
 	}
 }
 

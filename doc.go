@@ -1,3 +1,2 @@
-// Package tue is temporarily empty while the legacy runtime is removed and Tue
-// implementation slices are rebuilt.
+// Package tue contains the runtime contracts used by generated Tue components.
 package tue
