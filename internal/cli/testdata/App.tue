@@ -1,0 +1,11 @@
+<template>
+	<p>{{ name }}</p>
+</template>
+
+<script lang="go">
+package app
+
+type App struct {
+	name string
+}
+</script>

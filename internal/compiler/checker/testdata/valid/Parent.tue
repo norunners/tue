@@ -1,0 +1,35 @@
+<template>
+	<main>
+		<UserBadge :name="name" :isAdmin='role == "admin"' @select="selectUser" />
+		<ul>
+			<li v-for="todo in todos" :key="todo.ID">{{ todo.Text }}</li>
+		</ul>
+		<input v-model="query" />
+		<button type="button" @click="increment">Increment</button>
+		<p v-if="ready">Count: {{ count }}</p>
+	</main>
+</template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type Todo struct {
+	ID   int
+	Text string
+}
+
+type Parent struct {
+	name  string
+	role  string
+	todos []Todo
+	query string
+	ready bool
+	count tue.Ref[int]
+}
+
+func (p *Parent) increment() {}
+
+func (p *Parent) selectUser() {}
+</script>

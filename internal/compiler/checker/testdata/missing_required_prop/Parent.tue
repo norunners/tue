@@ -1,0 +1,13 @@
+<template>
+	<main>
+		<UserBadge :isAdmin="enabled" />
+	</main>
+</template>
+
+<script lang="go">
+package fixtures
+
+type Parent struct {
+	enabled bool
+}
+</script>
