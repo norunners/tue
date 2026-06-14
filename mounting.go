@@ -6,12 +6,15 @@ import "fmt"
 type Mounted struct {
 	component *Comp
 	target    mountTarget
+	tree      *mountedVNode
 
 	unmounted bool
 }
 
 type mountTarget interface {
-	render(VNode) error
+	domBoundary
+
+	root() domNode
 	clear() error
 }
 
@@ -32,11 +35,17 @@ func mountComponent(component *Comp, target mountTarget) (*Mounted, error) {
 	if target == nil {
 		return nil, fmt.Errorf("mount target is required")
 	}
-	if err := target.render(component.renderVNode()); err != nil {
+
+	node := component.renderVNode()
+	if err := target.clear(); err != nil {
+		return nil, fmt.Errorf("clear mount target: %w", err)
+	}
+	tree, err := mountVNode(target, target.root(), nil, node)
+	if err != nil {
 		return nil, fmt.Errorf("render mount target: %w", err)
 	}
 	component.mounted()
-	return &Mounted{component: component, target: target}, nil
+	return &Mounted{component: component, target: target, tree: tree}, nil
 }
 
 // Update renders the component again and then calls optional OnUpdated.
@@ -47,9 +56,11 @@ func (m *Mounted) Update() error {
 	if m.unmounted {
 		return fmt.Errorf("mounted component is unmounted")
 	}
-	if err := m.target.render(m.component.renderVNode()); err != nil {
-		return fmt.Errorf("render mount target: %w", err)
+	tree, err := patchVNode(m.target, m.target.root(), m.tree, m.component.renderVNode())
+	if err != nil {
+		return fmt.Errorf("patch mount target: %w", err)
 	}
+	m.tree = tree
 	m.component.updated()
 	return nil
 }

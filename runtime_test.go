@@ -42,14 +42,14 @@ func TestMountComponentRunsLifecycleInOrder(t *testing.T) {
 		*fixture.events = append(*fixture.events, "render:"+fixture.value)
 		return Text(fixture.value)
 	})
-	target := &recordingMountTarget{}
+	target := newFakeDOMTarget()
 
 	mounted, err := mountComponent(comp, target)
 	if err != nil {
 		t.Fatalf("mountComponent returned error: %v", err)
 	}
-	if diff := cmp.Diff([]string{"first"}, target.rendered); diff != "" {
-		t.Errorf("mismatch mounted target renders (-expected, +actual):\n%s", diff)
+	if diff := cmp.Diff("first", target.html()); diff != "" {
+		t.Errorf("mismatch mounted target HTML (-expected, +actual):\n%s", diff)
 	}
 	if diff := cmp.Diff([]string{"init", "render:first", "mounted"}, events); diff != "" {
 		t.Errorf("mismatch lifecycle after mount (-expected, +actual):\n%s", diff)
@@ -59,8 +59,8 @@ func TestMountComponentRunsLifecycleInOrder(t *testing.T) {
 	if err := mounted.Update(); err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
-	if diff := cmp.Diff([]string{"first", "second"}, target.rendered); diff != "" {
-		t.Errorf("mismatch mounted target renders after update (-expected, +actual):\n%s", diff)
+	if diff := cmp.Diff("second", target.html()); diff != "" {
+		t.Errorf("mismatch mounted target HTML after update (-expected, +actual):\n%s", diff)
 	}
 	if diff := cmp.Diff([]string{"init", "render:first", "mounted", "render:second", "updated"}, events); diff != "" {
 		t.Errorf("mismatch lifecycle after update (-expected, +actual):\n%s", diff)
@@ -69,8 +69,8 @@ func TestMountComponentRunsLifecycleInOrder(t *testing.T) {
 	if err := mounted.Unmount(); err != nil {
 		t.Fatalf("Unmount returned error: %v", err)
 	}
-	if diff := cmp.Diff(1, target.cleared); diff != "" {
-		t.Errorf("mismatch target clear count (-expected, +actual):\n%s", diff)
+	if diff := cmp.Diff("", target.html()); diff != "" {
+		t.Errorf("mismatch mounted target HTML after unmount (-expected, +actual):\n%s", diff)
 	}
 	if diff := cmp.Diff([]string{"init", "render:first", "mounted", "render:second", "updated", "cleanup", "unmounted"}, events); diff != "" {
 		t.Errorf("mismatch lifecycle after unmount (-expected, +actual):\n%s", diff)
@@ -79,8 +79,8 @@ func TestMountComponentRunsLifecycleInOrder(t *testing.T) {
 	if err := mounted.Unmount(); err != nil {
 		t.Errorf("second Unmount returned error: %v", err)
 	}
-	if diff := cmp.Diff(1, target.cleared); diff != "" {
-		t.Errorf("mismatch target clear count after second unmount (-expected, +actual):\n%s", diff)
+	if diff := cmp.Diff("", target.html()); diff != "" {
+		t.Errorf("mismatch mounted target HTML after second unmount (-expected, +actual):\n%s", diff)
 	}
 	if diff := cmp.Diff([]string{"init", "render:first", "mounted", "render:second", "updated", "cleanup", "unmounted"}, events); diff != "" {
 		t.Errorf("mismatch lifecycle after second unmount (-expected, +actual):\n%s", diff)
@@ -90,7 +90,7 @@ func TestMountComponentRunsLifecycleInOrder(t *testing.T) {
 func TestMountedUpdateRejectsUnmountedComponent(t *testing.T) {
 	mounted, err := mountComponent(CompOf(&initFixture{}, func(*initFixture) VNode {
 		return Text("value")
-	}), &recordingMountTarget{})
+	}), newFakeDOMTarget())
 	if err != nil {
 		t.Fatalf("mountComponent returned error: %v", err)
 	}
@@ -167,21 +167,6 @@ func (f *lifecycleFixture) OnUpdated() {
 
 func (f *lifecycleFixture) OnUnmounted() {
 	*f.events = append(*f.events, "unmounted")
-}
-
-type recordingMountTarget struct {
-	rendered []string
-	cleared  int
-}
-
-func (t *recordingMountTarget) render(node VNode) error {
-	t.rendered = append(t.rendered, RenderHTML(node))
-	return nil
-}
-
-func (t *recordingMountTarget) clear() error {
-	t.cleared++
-	return nil
 }
 
 func errorString(err error) string {

@@ -26,6 +26,7 @@ func (c *contextValue) OnCleanup(cleanup func()) {
 // VNode is the generated render tree consumed by the runtime.
 type VNode struct {
 	Type     VNodeType
+	Key      string
 	Tag      string
 	Attrs    []Attribute
 	Children []VNode
