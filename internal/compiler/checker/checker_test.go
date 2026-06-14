@@ -14,7 +14,7 @@ import (
 	gotemplate "github.com/norunners/tue/internal/compiler/template"
 )
 
-//go:embed testdata/valid/*.tue testdata/invalid/*.tue testdata/missing_required_prop/*.tue
+//go:embed testdata/valid/*.tue testdata/invalid/*.tue testdata/invalid_event_handler/*.tue testdata/missing_required_prop/*.tue
 var testFixtures embed.FS
 
 func TestCheckProjectAcceptsValidProject(t *testing.T) {
@@ -60,6 +60,21 @@ func TestCheckProjectReportsMissingRequiredComponentProp(t *testing.T) {
 	diagnostics := CheckProject(project)
 	if diff := cmp.Diff([]diagnosticSummary{
 		{Path: "testdata/missing_required_prop/Parent.tue", Message: `component "UserBadge" requires prop "name"`, Line: 3, Column: 4},
+	}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestCheckProjectReportsUnsupportedEventHandlerShapes(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_event_handler")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	diagnostics := CheckProject(project)
+	if diff := cmp.Diff([]diagnosticSummary{
+		{Path: "testdata/invalid_event_handler/Parent.tue", Message: `event handler "increment" does not accept arguments`, Line: 2, Column: 32},
+		{Path: "testdata/invalid_event_handler/Parent.tue", Message: `event handler "save" must have signature func()`, Line: 3, Column: 32},
 	}, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}

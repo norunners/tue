@@ -29,6 +29,7 @@ type VNode struct {
 	Key      string
 	Tag      string
 	Attrs    []Attribute
+	Events   []EventBinding
 	Children []VNode
 	Text     string
 }
@@ -53,6 +54,11 @@ func BoolAttr(name string) Attribute {
 // Element returns an element VNode.
 func Element(tag string, attrs []Attribute, children []VNode) VNode {
 	return VNode{Type: VNodeTypeElement, Tag: tag, Attrs: attrs, Children: children}
+}
+
+// ElementWithEvents returns an element VNode with native event bindings.
+func ElementWithEvents(tag string, attrs []Attribute, events []EventBinding, children []VNode) VNode {
+	return VNode{Type: VNodeTypeElement, Tag: tag, Attrs: attrs, Events: events, Children: children}
 }
 
 // Text returns a text VNode.

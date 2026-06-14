@@ -167,7 +167,7 @@ func TestComponentScopedEffectsStopBeforeUserCleanup(t *testing.T) {
 		return Text("cleanup")
 	})
 
-	mounted, err := mountComponent(comp, newFakeDOMTarget())
+	mounted, err := mountComponent(comp, newStubDOMTarget())
 	if err != nil {
 		t.Fatalf("mountComponent returned error: %v", err)
 	}

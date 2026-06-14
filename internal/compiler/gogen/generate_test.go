@@ -7,6 +7,7 @@ import (
 	goparser "go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -16,7 +17,7 @@ import (
 	gotemplate "github.com/norunners/tue/internal/compiler/template"
 )
 
-//go:embed testdata/static/*.tue testdata/dynamic/*.tue testdata/golden/*.go
+//go:embed testdata/static/*.tue testdata/dynamic/*.tue testdata/events/*.tue testdata/invalid_events/*.tue testdata/golden/*.go
 var testFixtures embed.FS
 
 func TestGenerateProjectEmitsStaticRenderFiles(t *testing.T) {
@@ -96,11 +97,68 @@ func TestGenerateProjectReportsUnsupportedStaticSliceConstructs(t *testing.T) {
 
 	if diff := cmp.Diff([]diagnosticSummary{
 		{Path: "App.tue", Message: `directive "v-if" generation is not supported in the static render slice`, Line: 2, Column: 9},
-		{Path: "App.tue", Message: `event attribute "@click" generation is not supported in the static render slice`, Line: 2, Column: 24},
 		{Path: "App.tue", Message: `bound attribute ":class" generation is not supported in the static render slice`, Line: 2, Column: 38},
 		{Path: "App.tue", Message: `component "UserBadge" generation is not supported in the static render slice`, Line: 3, Column: 2},
 	}, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestGenerateProjectEmitsNativeEventHandlers(t *testing.T) {
+	project, err := parseProjectFixture("testdata/events/Counter.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	result, diagnostics := GenerateProject(project)
+	if result == nil {
+		t.Fatal("GenerateProject result is nil")
+	}
+
+	if diff := cmp.Diff([]diagnosticSummary{}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"Counter_tue.go", "Counter_render_tue.go"}, generatedPaths(result.Files)); diff != "" {
+		t.Errorf("mismatch generated paths (-expected, +actual):\n%s", diff)
+	}
+	expectedRender, err := testFixtureString("testdata/golden/Counter_render_tue.go")
+	if err != nil {
+		t.Fatalf("read expected counter render fixture: %v", err)
+	}
+	actualRender, err := generatedSource(result, "Counter_render_tue.go")
+	if err != nil {
+		t.Fatalf("read actual generated counter render: %v", err)
+	}
+	if diff := cmp.Diff(expectedRender, string(actualRender)); diff != "" {
+		t.Errorf("mismatch generated counter render (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestGenerateProjectReportsUnsupportedEventHandlers(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_events/App.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	_, diagnostics := GenerateProject(project)
+
+	if diff := cmp.Diff([]diagnosticSummary{
+		{Path: "App.tue", Message: `event handler "save" does not accept arguments`, Line: 2, Column: 32},
+		{Path: "App.tue", Message: `event handler "needsValue" must have signature func()`, Line: 3, Column: 32},
+		{Path: "App.tue", Message: `event handler "missing" is not a method on App`, Line: 4, Column: 32},
+	}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestGeneratedCounterFixtureCompilesForWASM(t *testing.T) {
+	project, err := parseProjectFixture("testdata/events/Counter.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	if err := compileGeneratedProjectForWASM(t.TempDir(), project); err != nil {
+		t.Fatalf("compile generated counter fixture for WASM: %v", err)
 	}
 }
 
@@ -149,7 +207,7 @@ func parseProjectFixture(path string) (Project, error) {
 	if err != nil {
 		return Project{}, err
 	}
-	sfcFile, sfcDiagnostics := sfc.Parse("App.tue", source)
+	sfcFile, sfcDiagnostics := sfc.Parse(filepath.Base(path), source)
 	if len(sfcDiagnostics) != 0 {
 		return Project{}, fmt.Errorf("sfc.Parse diagnostics = %#v, expected none", sfcDiagnosticMessages(sfcDiagnostics))
 	}
@@ -170,6 +228,45 @@ func parseProjectFixture(path string) (Project, error) {
 		Script:       scriptFile,
 		ScriptSource: sfcFile.Script.Content,
 	}}}, nil
+}
+
+func compileGeneratedProjectForWASM(root string, project Project) error {
+	result, diagnostics := GenerateProject(project)
+	if len(diagnostics) != 0 {
+		return fmt.Errorf("GenerateProject diagnostics = %#v, expected none", summarizeDiagnostics(diagnostics))
+	}
+	if result == nil {
+		return fmt.Errorf("GenerateProject result is nil")
+	}
+
+	packageDir := filepath.Join(root, "generated")
+	if err := os.MkdirAll(packageDir, 0o755); err != nil {
+		return fmt.Errorf("create generated package dir: %w", err)
+	}
+	for _, file := range result.Files {
+		if err := os.WriteFile(filepath.Join(packageDir, file.Path), file.Source, 0o644); err != nil {
+			return fmt.Errorf("write generated file %s: %w", file.Path, err)
+		}
+	}
+
+	repoRoot, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		return fmt.Errorf("resolve repo root: %w", err)
+	}
+	goMod := fmt.Sprintf("module generatedcounter\n\ngo 1.26.4\n\nrequire github.com/norunners/tue v0.0.0\n\nreplace github.com/norunners/tue => %s\n", filepath.ToSlash(repoRoot))
+	if err := os.WriteFile(filepath.Join(packageDir, "go.mod"), []byte(goMod), 0o644); err != nil {
+		return fmt.Errorf("write generated go.mod: %w", err)
+	}
+
+	output := filepath.Join(root, "counter.test")
+	command := exec.Command("go", "test", "-c", "-o", output, ".")
+	command.Dir = packageDir
+	command.Env = append(os.Environ(), "GOOS=js", "GOARCH=wasm")
+	combined, err := command.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("go test -c: %w\n%s", err, combined)
+	}
+	return nil
 }
 
 func generatedPaths(files []GeneratedFile) []string {
