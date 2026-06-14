@@ -4,7 +4,8 @@ package tue
 type VNodeType string
 
 const (
-	VNodeTypeElement  VNodeType = "element"
-	VNodeTypeText     VNodeType = "text"
-	VNodeTypeFragment VNodeType = "fragment"
+	VNodeTypeElement   VNodeType = "element"
+	VNodeTypeText      VNodeType = "text"
+	VNodeTypeFragment  VNodeType = "fragment"
+	VNodeTypeComponent VNodeType = "component"
 )

@@ -18,10 +18,11 @@ type domBoundary interface {
 }
 
 type mountedVNode struct {
-	vnode    VNode
-	nodes    []domNode
-	children []*mountedVNode
-	events   map[string]*mountedEvent
+	vnode     VNode
+	nodes     []domNode
+	children  []*mountedVNode
+	events    map[string]*mountedEvent
+	component *Mounted
 }
 
 type mountedEvent struct {
@@ -44,6 +45,8 @@ func mountVNode(dom domBoundary, parent domNode, before domNode, vnode VNode) (*
 		return mountText(dom, parent, before, vnode)
 	case VNodeTypeFragment:
 		return mountFragment(dom, parent, before, vnode)
+	case VNodeTypeComponent:
+		return mountComponentVNode(dom, parent, before, vnode)
 	default:
 		return mountText(dom, parent, before, VNode{Type: VNodeTypeText, Text: fmt.Sprint(vnode.Text)})
 	}
@@ -123,12 +126,16 @@ func mountFragment(dom domBoundary, parent domNode, before domNode, vnode VNode)
 }
 
 func patchVNode(dom domBoundary, parent domNode, old *mountedVNode, next VNode) (*mountedVNode, error) {
+	return patchVNodeAt(dom, parent, nil, old, next)
+}
+
+func patchVNodeAt(dom domBoundary, parent domNode, before domNode, old *mountedVNode, next VNode) (*mountedVNode, error) {
 	if old == nil {
-		return mountVNode(dom, parent, nil, next)
+		return mountVNode(dom, parent, before, next)
 	}
 	if !sameVNode(old.vnode, next) {
-		before := firstDOMNode(old)
-		mounted, err := mountVNode(dom, parent, before, next)
+		insertBefore := firstDOMNode(old)
+		mounted, err := mountVNode(dom, parent, insertBefore, next)
 		if err != nil {
 			return nil, err
 		}
@@ -145,6 +152,8 @@ func patchVNode(dom domBoundary, parent domNode, old *mountedVNode, next VNode) 
 		return patchText(dom, old, next)
 	case VNodeTypeFragment:
 		return patchFragment(dom, parent, old, next)
+	case VNodeTypeComponent:
+		return patchComponentVNode(old, next)
 	default:
 		return patchText(dom, old, VNode{Type: VNodeTypeText, Text: fmt.Sprint(next.Text)})
 	}
@@ -188,6 +197,49 @@ func patchFragment(dom domBoundary, parent domNode, old *mountedVNode, next VNod
 	old.vnode = next
 	old.children = children
 	old.nodes = fragmentNodes(firstDOMNode(old), children, end)
+	return old, nil
+}
+
+func mountComponentVNode(dom domBoundary, parent domNode, before domNode, vnode VNode) (*mountedVNode, error) {
+	if vnode.ComponentFactory == nil {
+		return nil, fmt.Errorf("component %q factory is required", vnode.Tag)
+	}
+	component := vnode.ComponentFactory()
+	if component == nil {
+		return nil, fmt.Errorf("component %q factory returned nil", vnode.Tag)
+	}
+
+	mounted := &mountedVNode{vnode: vnode}
+	child := &Mounted{
+		component:    component,
+		target:       childMountTarget{domBoundary: dom, parent: parent},
+		owner:        mounted,
+		insertBefore: before,
+	}
+	child.renderEffect = newComponentRenderEffect(child)
+	child.renderEffect.run()
+	if child.renderErr != nil {
+		child.renderEffect.stop()
+		child.component.runCleanups()
+		return nil, child.renderErr
+	}
+	child.mounted = true
+	component.mounted()
+
+	mounted.component = child
+	mounted.nodes = mountedNodes(child.tree)
+	return mounted, nil
+}
+
+func patchComponentVNode(old *mountedVNode, next VNode) (*mountedVNode, error) {
+	if old.component == nil {
+		return nil, fmt.Errorf("mounted component %q is required", old.vnode.Tag)
+	}
+	old.vnode = next
+	if err := old.component.Update(); err != nil {
+		return nil, err
+	}
+	old.nodes = mountedNodes(old.component.tree)
 	return old, nil
 }
 
@@ -315,7 +367,7 @@ func sameVNode(old VNode, next VNode) bool {
 	if old.Type != next.Type || old.Key != next.Key {
 		return false
 	}
-	if old.Type == VNodeTypeElement {
+	if old.Type == VNodeTypeElement || old.Type == VNodeTypeComponent {
 		return old.Tag == next.Tag
 	}
 	return true
@@ -343,6 +395,11 @@ func removeMountedVNode(dom domBoundary, parent domNode, mounted *mountedVNode) 
 
 func cleanupMountedVNode(mounted *mountedVNode) {
 	if mounted == nil {
+		return
+	}
+	if mounted.component != nil {
+		_ = mounted.component.unmount(false)
+		mounted.component = nil
 		return
 	}
 	cleanupEvents(mounted.events)
@@ -387,4 +444,24 @@ func fragmentNodes(start domNode, children []*mountedVNode, end domNode) []domNo
 		nodes = append(nodes, child.nodes...)
 	}
 	return append(nodes, end)
+}
+
+func mountedNodes(mounted *mountedVNode) []domNode {
+	if mounted == nil {
+		return nil
+	}
+	return mounted.nodes
+}
+
+type childMountTarget struct {
+	domBoundary
+	parent domNode
+}
+
+func (t childMountTarget) root() domNode {
+	return t.parent
+}
+
+func (t childMountTarget) clear() error {
+	return nil
 }
