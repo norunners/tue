@@ -87,6 +87,158 @@ func TestMountComponentRunsLifecycleInOrder(t *testing.T) {
 	}
 }
 
+func TestMountedReactiveRerendersWhenRenderDependencyChanges(t *testing.T) {
+	count := RefOf(0)
+	renderCount := 0
+	component := &reactiveRenderFixture{}
+	target := newFakeDOMTarget()
+	mounted, err := mountComponent(CompOf(component, func(*reactiveRenderFixture) VNode {
+		renderCount++
+		return Text(fmt.Sprintf("count:%d", count.Get()))
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	if diff := cmp.Diff("count:0", target.html()); diff != "" {
+		t.Errorf("mismatch initial reactive render HTML (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff(1, renderCount); diff != "" {
+		t.Errorf("mismatch initial reactive render count (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff(0, component.updateCount); diff != "" {
+		t.Errorf("mismatch initial update count (-expected, +actual):\n%s", diff)
+	}
+
+	count.Set(1)
+
+	if diff := cmp.Diff("count:1", target.html()); diff != "" {
+		t.Errorf("mismatch updated reactive render HTML (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff(2, renderCount); diff != "" {
+		t.Errorf("mismatch updated reactive render count (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff(1, component.updateCount); diff != "" {
+		t.Errorf("mismatch updated lifecycle count (-expected, +actual):\n%s", diff)
+	}
+
+	if err := mounted.Unmount(); err != nil {
+		t.Fatalf("Unmount returned error: %v", err)
+	}
+}
+
+func TestMountedReactiveRerendersCoalesceInsideBatch(t *testing.T) {
+	count := RefOf(0)
+	renderCount := 0
+	component := &reactiveRenderFixture{}
+	target := newFakeDOMTarget()
+	mounted, err := mountComponent(CompOf(component, func(*reactiveRenderFixture) VNode {
+		renderCount++
+		return Text(fmt.Sprint(count.Get()))
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	Batch(func() {
+		count.Set(1)
+		count.Set(2)
+		count.Set(3)
+
+		if diff := cmp.Diff("0", target.html()); diff != "" {
+			t.Errorf("mismatch batched reactive render HTML before flush (-expected, +actual):\n%s", diff)
+		}
+		if diff := cmp.Diff(1, renderCount); diff != "" {
+			t.Errorf("mismatch batched reactive render count before flush (-expected, +actual):\n%s", diff)
+		}
+		if diff := cmp.Diff(0, component.updateCount); diff != "" {
+			t.Errorf("mismatch batched update count before flush (-expected, +actual):\n%s", diff)
+		}
+	})
+
+	if diff := cmp.Diff("3", target.html()); diff != "" {
+		t.Errorf("mismatch batched reactive render HTML after flush (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff(2, renderCount); diff != "" {
+		t.Errorf("mismatch batched reactive render count after flush (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff(1, component.updateCount); diff != "" {
+		t.Errorf("mismatch batched update count after flush (-expected, +actual):\n%s", diff)
+	}
+
+	if err := mounted.Unmount(); err != nil {
+		t.Fatalf("Unmount returned error: %v", err)
+	}
+}
+
+func TestMountedReactiveRerenderStopsOnUnmount(t *testing.T) {
+	count := RefOf(0)
+	renderCount := 0
+	component := &reactiveRenderFixture{}
+	target := newFakeDOMTarget()
+	mounted, err := mountComponent(CompOf(component, func(*reactiveRenderFixture) VNode {
+		renderCount++
+		return Text(fmt.Sprint(count.Get()))
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	Batch(func() {
+		count.Set(1)
+		if err := mounted.Unmount(); err != nil {
+			t.Fatalf("Unmount returned error: %v", err)
+		}
+	})
+	count.Set(2)
+
+	if diff := cmp.Diff("", target.html()); diff != "" {
+		t.Errorf("mismatch unmounted reactive render HTML (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff(1, renderCount); diff != "" {
+		t.Errorf("mismatch unmounted reactive render count (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff(0, component.updateCount); diff != "" {
+		t.Errorf("mismatch unmounted update count (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestMountedReactiveRerenderDoesNotTrackUpdatedHookReads(t *testing.T) {
+	count := RefOf(0)
+	hookValue := RefOf("initial")
+	events := []string{}
+	component := &reactiveUpdatedHookFixture{
+		events:    &events,
+		hookValue: hookValue,
+	}
+	target := newFakeDOMTarget()
+	mounted, err := mountComponent(CompOf(component, func(*reactiveUpdatedHookFixture) VNode {
+		events = append(events, fmt.Sprintf("render:%d", count.Get()))
+		return Text(fmt.Sprint(count.Get()))
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	count.Set(1)
+	hookValue.Set("changed")
+
+	if diff := cmp.Diff("1", target.html()); diff != "" {
+		t.Errorf("mismatch hook-read reactive render HTML (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{
+		"render:0",
+		"render:1",
+		"updated:initial",
+	}, events); diff != "" {
+		t.Errorf("mismatch hook-read reactive render events (-expected, +actual):\n%s", diff)
+	}
+
+	if err := mounted.Unmount(); err != nil {
+		t.Fatalf("Unmount returned error: %v", err)
+	}
+}
+
 func TestMountedUpdateRejectsUnmountedComponent(t *testing.T) {
 	mounted, err := mountComponent(CompOf(&initFixture{}, func(*initFixture) VNode {
 		return Text("value")
@@ -167,6 +319,23 @@ func (f *lifecycleFixture) OnUpdated() {
 
 func (f *lifecycleFixture) OnUnmounted() {
 	*f.events = append(*f.events, "unmounted")
+}
+
+type reactiveRenderFixture struct {
+	updateCount int
+}
+
+func (f *reactiveRenderFixture) OnUpdated() {
+	f.updateCount++
+}
+
+type reactiveUpdatedHookFixture struct {
+	events    *[]string
+	hookValue *RefValue[string]
+}
+
+func (f *reactiveUpdatedHookFixture) OnUpdated() {
+	*f.events = append(*f.events, "updated:"+f.hookValue.Get())
 }
 
 func errorString(err error) string {

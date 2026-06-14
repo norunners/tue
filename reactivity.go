@@ -177,7 +177,7 @@ func (c *ComputedValue[T]) dispose() {
 	}
 }
 
-// Batch deduplicates watcher reruns until the outermost batch returns.
+// Batch deduplicates reactive effect reruns until the outermost batch returns.
 func Batch(fn func()) {
 	if fn == nil {
 		return
@@ -186,7 +186,7 @@ func Batch(fn func()) {
 	defer func() {
 		scheduler.batchDepth--
 		if scheduler.batchDepth == 0 {
-			flushWatchers()
+			flushSubscribers()
 		}
 	}()
 	fn()
@@ -285,20 +285,13 @@ func (w *watcher) addDependency(dep *dependency) {
 	dep.addSubscriber(w)
 }
 
-func (w *watcher) invalidate() {
-	if w == nil || w.stopped {
-		return
-	}
-	queueWatcher(w)
-}
-
 func (w *watcher) stop() {
 	if w == nil || w.stopped {
 		return
 	}
 	w.stopped = true
 	w.dispose()
-	removeQueuedWatcher(w)
+	removeQueuedSubscriber(w)
 }
 
 func (w *watcher) dispose() {
@@ -309,6 +302,28 @@ func (w *watcher) dispose() {
 		dep.removeSubscriber(w)
 		delete(w.deps, dep)
 	}
+}
+
+func (w *watcher) invalidate() {
+	if w == nil || w.stopped {
+		return
+	}
+	queueSubscriber(w)
+}
+
+func (w *watcher) isQueued() bool {
+	return w != nil && w.queued
+}
+
+func (w *watcher) setQueued(queued bool) {
+	if w == nil {
+		return
+	}
+	w.queued = queued
+}
+
+func (w *watcher) isStopped() bool {
+	return w == nil || w.stopped
 }
 
 var subscriberStack []reactiveSubscriber
@@ -334,36 +349,44 @@ func currentSubscriber() reactiveSubscriber {
 type schedulerState struct {
 	batchDepth int
 	flushing   bool
-	pending    []*watcher
+	pending    []scheduledSubscriber
 }
 
 var scheduler schedulerState
 
-func queueWatcher(w *watcher) {
-	if w == nil || w.stopped || w.queued {
+type scheduledSubscriber interface {
+	reactiveSubscriber
+	run()
+	isQueued() bool
+	setQueued(bool)
+	isStopped() bool
+}
+
+func queueSubscriber(subscriber scheduledSubscriber) {
+	if subscriber == nil || subscriber.isStopped() || subscriber.isQueued() {
 		return
 	}
-	w.queued = true
-	scheduler.pending = append(scheduler.pending, w)
+	subscriber.setQueued(true)
+	scheduler.pending = append(scheduler.pending, subscriber)
 	if scheduler.batchDepth == 0 {
-		flushWatchers()
+		flushSubscribers()
 	}
 }
 
-func removeQueuedWatcher(w *watcher) {
-	if w == nil || !w.queued {
+func removeQueuedSubscriber(subscriber scheduledSubscriber) {
+	if subscriber == nil || !subscriber.isQueued() {
 		return
 	}
 	for i, pending := range scheduler.pending {
-		if pending == w {
+		if pending == subscriber {
 			scheduler.pending = append(scheduler.pending[:i], scheduler.pending[i+1:]...)
 			break
 		}
 	}
-	w.queued = false
+	subscriber.setQueued(false)
 }
 
-func flushWatchers() {
+func flushSubscribers() {
 	if scheduler.flushing {
 		return
 	}
@@ -375,9 +398,9 @@ func flushWatchers() {
 	for len(scheduler.pending) > 0 {
 		pending := scheduler.pending
 		scheduler.pending = nil
-		for _, watcher := range pending {
-			watcher.queued = false
-			watcher.run()
+		for _, subscriber := range pending {
+			subscriber.setQueued(false)
+			subscriber.run()
 		}
 	}
 }
