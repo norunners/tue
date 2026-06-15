@@ -189,6 +189,7 @@ type fileGenerator struct {
 	components  map[string]componentBinding
 	fields      map[string]script.Field
 	methods     map[string]script.Method
+	locals      map[string]string
 	nodes       []ManifestNode
 	diagnostics []Diagnostic
 }
@@ -222,12 +223,79 @@ func (g *fileGenerator) renderNode(node *gotemplate.Node) (jen.Code, bool) {
 	if node == nil {
 		return nil, false
 	}
+	attr := nodeDirectiveAttr(node, gotemplate.DirectiveFor)
+	if attr != nil {
+		return g.renderFor(node, *attr)
+	}
+
+	return g.renderNodeAfterFor(node)
+}
+
+func (g *fileGenerator) renderNodeAfterFor(node *gotemplate.Node) (jen.Code, bool) {
 	attr := nodeDirectiveAttr(node, gotemplate.DirectiveIf)
 	if attr != nil {
 		return g.renderIf(node, *attr)
 	}
 
 	return g.renderNodeBody(node)
+}
+
+func (g *fileGenerator) renderFor(node *gotemplate.Node, attr gotemplate.Attr) (jen.Code, bool) {
+	clause, ok := gotemplate.ParseForClause(attr.Expression)
+	if !ok {
+		g.add("v-for must use '<item> in <items>'", attr.ExpressionSpan)
+		return nil, false
+	}
+
+	keyAttr := nodeBindAttr(node, "key")
+	if keyAttr == nil {
+		g.add("v-for requires a :key attribute", attr.DirectiveSpan)
+		return nil, false
+	}
+
+	sourceSpan := spanWithin(attr.ExpressionSpan, attr.Expression, clause.SourceStart, clause.SourceEnd)
+	source, sourceOK := g.renderExpressionFor("v-for source", clause.Source, sourceSpan)
+	if !sourceOK {
+		return nil, false
+	}
+
+	names := g.freshForNames(clause)
+
+	popLocals := g.pushLocals(map[string]string{
+		clause.Item: names.item,
+	})
+	if clause.Index != "" {
+		g.locals[clause.Index] = names.index
+	}
+	rendered, renderedOK := g.renderNodeWithKey(node, *keyAttr)
+	popLocals()
+	if !renderedOK {
+		return nil, false
+	}
+
+	return jen.Func().Params().Qual(tueImportPath, "VNode").Block(
+		jen.Id(names.source).Op(":=").Add(source),
+		jen.Id(names.nodes).Op(":=").Make(jen.Index().Qual(tueImportPath, "VNode"), jen.Lit(0), jen.Len(jen.Id(names.source))),
+		jen.For(jen.List(jen.Id(names.index), jen.Id(names.item)).Op(":=").Range().Id(names.source)).Block(
+			jen.Id(names.nodes).Op("=").Append(jen.Id(names.nodes), rendered),
+		),
+		jen.Return(jen.Qual(tueImportPath, "Fragment").Call(jen.Id(names.nodes))),
+	).Call(), true
+}
+
+func (g *fileGenerator) renderNodeWithKey(node *gotemplate.Node, attr gotemplate.Attr) (jen.Code, bool) {
+	rendered, nodeOK := g.renderNodeAfterFor(node)
+	key, keyOK := g.renderExpressionFor("v-for key", attr.Expression, attr.ExpressionSpan)
+	if !nodeOK || !keyOK {
+		return nil, false
+	}
+
+	name := freshIdentifier(g.usedGeneratedNames(), "__tueVNode")
+	return jen.Func().Params().Qual(tueImportPath, "VNode").Block(
+		jen.Id(name).Op(":=").Add(rendered),
+		jen.Id(name).Dot("Key").Op("=").Qual("fmt", "Sprint").Call(key),
+		jen.Return(jen.Id(name)),
+	).Call(), true
 }
 
 func (g *fileGenerator) renderNodeBody(node *gotemplate.Node) (jen.Code, bool) {
@@ -345,6 +413,9 @@ func (g *fileGenerator) renderComponentFields(node *gotemplate.Node, child compo
 			}
 			props[prop.Name] = value
 		case gotemplate.AttrBind:
+			if attr.Argument == "key" {
+				continue
+			}
 			prop, found := child.props[attr.Argument]
 			if !found {
 				g.add(fmt.Sprintf("component %q has no prop %q", node.Tag, attr.Argument), attr.ArgumentSpan)
@@ -365,7 +436,7 @@ func (g *fileGenerator) renderComponentFields(node *gotemplate.Node, child compo
 			}
 			events[field.Name] = field.Value
 		case gotemplate.AttrDirective:
-			if attr.Directive == gotemplate.DirectiveIf {
+			if attr.Directive == gotemplate.DirectiveIf || attr.Directive == gotemplate.DirectiveFor {
 				continue
 			}
 			g.add(fmt.Sprintf("directive %q generation is not supported on components in the component render slice", attr.RawName), attr.Span)
@@ -494,6 +565,9 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 				attrs = append(attrs, jen.Qual(tueImportPath, "BoolAttr").Call(jen.Lit(attr.Name)))
 			}
 		case gotemplate.AttrBind:
+			if attr.Argument == "key" {
+				continue
+			}
 			g.add(fmt.Sprintf("bound attribute %q generation is not supported in the static render slice", attr.RawName), attr.Span)
 			ok = false
 		case gotemplate.AttrEvent:
@@ -504,7 +578,7 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 			}
 			events = append(events, event)
 		case gotemplate.AttrDirective:
-			if attr.Directive == gotemplate.DirectiveIf {
+			if attr.Directive == gotemplate.DirectiveIf || attr.Directive == gotemplate.DirectiveFor {
 				continue
 			}
 			g.add(fmt.Sprintf("directive %q generation is not supported in the static render slice", attr.RawName), attr.Span)
@@ -588,6 +662,7 @@ func (g *fileGenerator) renderExpressionFor(subject string, expression string, s
 
 	generated := expressionGenerator{
 		fields: g.fields,
+		locals: g.locals,
 	}
 	code, ok := generated.render(expr)
 	if !ok {
@@ -658,6 +733,123 @@ func nodeDirectiveAttr(node *gotemplate.Node, kind gotemplate.DirectiveKind) *go
 		}
 	}
 	return nil
+}
+
+func nodeBindAttr(node *gotemplate.Node, argument string) *gotemplate.Attr {
+	if node == nil || node.Kind != gotemplate.NodeElement {
+		return nil
+	}
+	for i := range node.Attrs {
+		attr := &node.Attrs[i]
+		if attr.Kind == gotemplate.AttrBind && attr.Argument == argument {
+			return attr
+		}
+	}
+	return nil
+}
+
+func (g *fileGenerator) pushLocals(locals map[string]string) func() {
+	previous := g.locals
+	next := make(map[string]string, len(previous)+len(locals))
+	for name, value := range previous {
+		next[name] = value
+	}
+	for name, value := range locals {
+		next[name] = value
+	}
+	g.locals = next
+	return func() {
+		g.locals = previous
+	}
+}
+
+type forNames struct {
+	source string
+	nodes  string
+	item   string
+	index  string
+}
+
+func (g *fileGenerator) freshForNames(clause gotemplate.ForClause) forNames {
+	used := g.usedGeneratedNames()
+	source := freshIdentifier(used, "__tueItems")
+	used[source] = true
+	nodes := freshIdentifier(used, "__tueNodes")
+	used[nodes] = true
+	item := freshIdentifier(used, "__tueItem")
+	used[item] = true
+	index := "_"
+	if clause.Index != "" {
+		index = freshIdentifier(used, "__tueIndex")
+	}
+	return forNames{source: source, nodes: nodes, item: item, index: index}
+}
+
+func freshIdentifier(used map[string]bool, base string) string {
+	if !used[base] {
+		return base
+	}
+	for i := 2; ; i++ {
+		name := fmt.Sprintf("%s%d", base, i)
+		if !used[name] {
+			return name
+		}
+	}
+}
+
+func (g *fileGenerator) usedGeneratedNames() map[string]bool {
+	names := map[string]bool{
+		"component": true,
+		"child":     true,
+	}
+	for _, name := range g.locals {
+		names[name] = true
+	}
+	return names
+}
+
+func spanWithin(base sfc.Span, source string, start int, end int) sfc.Span {
+	if start < 0 {
+		start = 0
+	}
+	if end < start {
+		end = start
+	}
+	if start > len(source) {
+		start = len(source)
+	}
+	if end > len(source) {
+		end = len(source)
+	}
+
+	return sfc.Span{
+		Start: positionWithin(base.Start, source, start),
+		End:   positionWithin(base.Start, source, end),
+	}
+}
+
+func positionWithin(base sfc.Position, source string, offset int) sfc.Position {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(source) {
+		offset = len(source)
+	}
+
+	position := sfc.Position{
+		Offset: base.Offset + offset,
+		Line:   base.Line,
+		Column: base.Column,
+	}
+	for index := 0; index < offset; index++ {
+		if source[index] == '\n' {
+			position.Line++
+			position.Column = 1
+			continue
+		}
+		position.Column++
+	}
+	return position
 }
 
 func renderJenniferFile(file *jen.File) ([]byte, error) {

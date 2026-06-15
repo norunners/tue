@@ -11,6 +11,7 @@ import (
 
 type expressionGenerator struct {
 	fields map[string]script.Field
+	locals map[string]string
 }
 
 func (g expressionGenerator) render(expr ast.Expr) (jen.Code, bool) {
@@ -70,6 +71,10 @@ func (g expressionGenerator) ident(ident *ast.Ident) jen.Code {
 		return jen.False()
 	case "nil":
 		return jen.Nil()
+	}
+
+	if local, ok := g.locals[ident.Name]; ok {
+		return jen.Id(local)
 	}
 
 	field, ok := g.fields[ident.Name]

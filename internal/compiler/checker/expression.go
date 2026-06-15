@@ -196,8 +196,8 @@ func (c *exprChecker) call(call *ast.CallExpr) value {
 func (c *exprChecker) index(index *ast.IndexExpr) value {
 	base := c.eval(index.X)
 	c.eval(index.Index)
-	if element, ok := iterableElementType(base.Type); ok {
-		return value{Type: element}
+	if types, ok := iterableTypesFor(base.Type); ok {
+		return value{Type: types.Item}
 	}
 	return value{Type: unknownType}
 }

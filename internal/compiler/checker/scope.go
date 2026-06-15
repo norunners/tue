@@ -25,6 +25,11 @@ type symbol struct {
 	Results    int
 }
 
+type iterableTypes struct {
+	Item string
+	Key  string
+}
+
 func componentScope(component *script.Component) *scope {
 	scope := newScope(nil)
 	for _, prop := range component.Props {
@@ -83,30 +88,52 @@ func fieldType(field script.Field) string {
 	return unknownType
 }
 
-func iterableElementType(typ string) (string, bool) {
+func iterableTypesFor(typ string) (iterableTypes, bool) {
 	typ = normalizeType(typ)
 	if typ == unknownType || typ == "" {
-		return unknownType, true
+		return iterableTypes{Item: unknownType, Key: unknownType}, true
 	}
 	if strings.HasPrefix(typ, "[]") {
-		return strings.TrimSpace(strings.TrimPrefix(typ, "[]")), true
+		return iterableTypes{Item: strings.TrimSpace(strings.TrimPrefix(typ, "[]")), Key: "int"}, true
 	}
 	if strings.HasPrefix(typ, "[") {
-		close := strings.IndexByte(typ, ']')
+		close := closingTypeBracket(typ, 0)
 		if close != -1 && close+1 < len(typ) {
-			return strings.TrimSpace(typ[close+1:]), true
+			return iterableTypes{Item: strings.TrimSpace(typ[close+1:]), Key: "int"}, true
 		}
 	}
 	if strings.HasPrefix(typ, "map[") {
-		close := strings.IndexByte(typ, ']')
+		close := closingTypeBracket(typ, len("map"))
 		if close != -1 && close+1 < len(typ) {
-			return strings.TrimSpace(typ[close+1:]), true
+			return iterableTypes{
+				Item: strings.TrimSpace(typ[close+1:]),
+				Key:  strings.TrimSpace(typ[len("map["):close]),
+			}, true
 		}
 	}
 	if typ == "string" {
-		return "rune", true
+		return iterableTypes{Item: "rune", Key: "int"}, true
 	}
-	return "", false
+	return iterableTypes{}, false
+}
+
+func closingTypeBracket(typ string, open int) int {
+	if open < 0 || open >= len(typ) || typ[open] != '[' {
+		return -1
+	}
+	depth := 0
+	for i := open; i < len(typ); i++ {
+		switch typ[i] {
+		case '[':
+			depth++
+		case ']':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 func assignable(expected string, actual string) bool {

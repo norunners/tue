@@ -3,8 +3,6 @@ package checker
 import (
 	"fmt"
 	"go/ast"
-	"strings"
-	"unicode"
 
 	"github.com/norunners/tue/internal/compiler/sfc"
 	gotemplate "github.com/norunners/tue/internal/compiler/template"
@@ -74,18 +72,19 @@ func (c *fileChecker) checkCallEvent(call *ast.CallExpr, exprChecker *exprChecke
 }
 
 func (c *fileChecker) checkFor(node *gotemplate.Node, attr gotemplate.Attr, scope *scope) *scope {
-	clause, ok := parseForClause(attr.Expression)
+	clause, ok := gotemplate.ParseForClause(attr.Expression)
 	if !ok {
 		c.add("v-for must use '<item> in <items>'", attr.ExpressionSpan)
 		return scope
 	}
 
-	sourceSpan := spanWithin(attr.ExpressionSpan, attr.Expression, clause.sourceStart, clause.sourceEnd)
-	source := c.checkExpression(clause.source, sourceSpan, scope)
-	elementType, iterable := iterableElementType(source.Type)
+	sourceSpan := spanWithin(attr.ExpressionSpan, attr.Expression, clause.SourceStart, clause.SourceEnd)
+	source := c.checkExpression(clause.Source, sourceSpan, scope)
+	iterableTypes, iterable := iterableTypesFor(source.Type)
 	if !iterable {
 		c.add(fmt.Sprintf("v-for source must be iterable, got %s", displayType(source.Type)), sourceSpan)
-		elementType = unknownType
+		iterableTypes.Item = unknownType
+		iterableTypes.Key = unknownType
 	}
 
 	if !hasBoundKey(node) {
@@ -93,9 +92,9 @@ func (c *fileChecker) checkFor(node *gotemplate.Node, attr gotemplate.Attr, scop
 	}
 
 	next := newScope(scope)
-	next.add(symbol{Name: clause.item, Type: elementType, Writable: false})
-	if clause.index != "" {
-		next.add(symbol{Name: clause.index, Type: "int", Writable: false})
+	next.add(symbol{Name: clause.Item, Type: iterableTypes.Item, Writable: false})
+	if clause.Index != "" {
+		next.add(symbol{Name: clause.Index, Type: iterableTypes.Key, Writable: false})
 	}
 	return next
 }
@@ -130,55 +129,6 @@ func (c *fileChecker) expectEventMethod(name string, span sfc.Span, scope *scope
 	return method, true
 }
 
-type forClause struct {
-	item        string
-	index       string
-	source      string
-	sourceStart int
-	sourceEnd   int
-}
-
-func parseForClause(expression string) (forClause, bool) {
-	in := strings.Index(expression, " in ")
-	if in == -1 {
-		return forClause{}, false
-	}
-
-	target := strings.TrimSpace(expression[:in])
-	if strings.HasPrefix(target, "(") && strings.HasSuffix(target, ")") {
-		target = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(target, "("), ")"))
-	}
-
-	sourceStart := in + len(" in ")
-	sourceEnd := len(expression)
-	for sourceStart < sourceEnd && isSpace(rune(expression[sourceStart])) {
-		sourceStart++
-	}
-	for sourceEnd > sourceStart && isSpace(rune(expression[sourceEnd-1])) {
-		sourceEnd--
-	}
-
-	source := expression[sourceStart:sourceEnd]
-	parts := strings.Split(target, ",")
-	if len(parts) == 0 || len(parts) > 2 || source == "" {
-		return forClause{}, false
-	}
-
-	clause := forClause{
-		item:        strings.TrimSpace(parts[0]),
-		source:      source,
-		sourceStart: sourceStart,
-		sourceEnd:   sourceEnd,
-	}
-	if len(parts) == 2 {
-		clause.index = strings.TrimSpace(parts[1])
-	}
-	if !isIdentifier(clause.item) || (clause.index != "" && !isIdentifier(clause.index)) {
-		return forClause{}, false
-	}
-	return clause, true
-}
-
 func modelTarget(expr ast.Expr, scope *scope) *symbol {
 	switch typed := expr.(type) {
 	case *ast.Ident:
@@ -208,31 +158,4 @@ func hasBoundKey(node *gotemplate.Node) bool {
 		}
 	}
 	return false
-}
-
-func isIdentifier(name string) bool {
-	if name == "" {
-		return false
-	}
-	for index, r := range name {
-		if index == 0 {
-			if r != '_' && !unicode.IsLetter(r) {
-				return false
-			}
-			continue
-		}
-		if r != '_' && !unicode.IsLetter(r) && !unicode.IsDigit(r) {
-			return false
-		}
-	}
-	return true
-}
-
-func isSpace(r rune) bool {
-	switch r {
-	case ' ', '\n', '\r', '\t', '\f':
-		return true
-	default:
-		return false
-	}
 }

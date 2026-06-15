@@ -14,7 +14,7 @@ import (
 	gotemplate "github.com/norunners/tue/internal/compiler/template"
 )
 
-//go:embed testdata/valid/*.tue testdata/invalid/*.tue testdata/invalid_event_handler/*.tue testdata/invalid_component_event/*.tue testdata/missing_required_prop/*.tue
+//go:embed testdata/valid/*.tue testdata/invalid/*.tue testdata/invalid_event_handler/*.tue testdata/invalid_component_event/*.tue testdata/invalid_map_loop/*.tue testdata/missing_required_prop/*.tue
 var testFixtures embed.FS
 
 func TestCheckProjectAcceptsValidProject(t *testing.T) {
@@ -92,6 +92,20 @@ func TestCheckProjectReportsUnsupportedComponentEventShapes(t *testing.T) {
 		{Path: "testdata/invalid_component_event/Parent.tue", Message: `component "UserBadge" event "payload" must have signature func()`, Line: 6, Column: 5},
 		{Path: "testdata/invalid_component_event/Parent.tue", Message: `event handler "selectUser" does not accept arguments`, Line: 7, Column: 20},
 		{Path: "testdata/invalid_component_event/Parent.tue", Message: `event handler "needsValue" must have signature func()`, Line: 8, Column: 16},
+	}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestCheckProjectReportsMapKeyTypeDiagnostics(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_map_loop")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	diagnostics := CheckProject(project)
+	if diff := cmp.Diff([]diagnosticSummary{
+		{Path: "testdata/invalid_map_loop/Parent.tue", Message: `operator + requires both operands to be strings or numbers`, Line: 2, Column: 51},
 	}, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}

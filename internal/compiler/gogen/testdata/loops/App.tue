@@ -1,0 +1,32 @@
+<template>
+<main>
+	<ul>
+		<li v-for="(todo, index) in todos" v-if="todo.Done" :key="todo.ID">
+			{{ index }}: {{ todo.Text }}
+		</li>
+		<li v-for="component in todos" :key="component.ID" @click="selectUser">
+			{{ component.Text }}
+		</li>
+		<li v-for="(todo, id) in todosByID" :key="id">
+			{{ id }}: {{ todo.Text }}
+		</li>
+	</ul>
+	<UserBadge v-for="child in todos" :key="child.ID" :name="child.Text" active @select="selectUser" />
+</main>
+</template>
+<script lang="go">
+package app
+
+type Todo struct {
+	ID   int
+	Text string
+	Done bool
+}
+
+type App struct {
+	todos     []Todo
+	todosByID map[string]Todo
+}
+
+func (a *App) selectUser() {}
+</script>
