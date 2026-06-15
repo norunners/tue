@@ -14,7 +14,7 @@ type domBoundary interface {
 	setText(node domNode, text string) error
 	setAttr(node domNode, attr Attribute) error
 	removeAttr(node domNode, name string) error
-	addEventListener(node domNode, name string, handler func()) (func(), error)
+	addEventListener(node domNode, name string, handler func(Event)) (func(), error)
 }
 
 type mountedVNode struct {
@@ -26,15 +26,15 @@ type mountedVNode struct {
 }
 
 type mountedEvent struct {
-	handler func()
+	handler func(Event)
 	cleanup func()
 }
 
-func (e *mountedEvent) handle() {
+func (e *mountedEvent) handle(event Event) {
 	if e == nil || e.handler == nil {
 		return
 	}
-	e.handler()
+	e.handler(event)
 }
 
 func mountVNode(dom domBoundary, parent domNode, before domNode, vnode VNode) (*mountedVNode, error) {
@@ -57,10 +57,8 @@ func mountElement(dom domBoundary, parent domNode, before domNode, vnode VNode) 
 	if err != nil {
 		return nil, fmt.Errorf("create element %q: %w", vnode.Tag, err)
 	}
-	for _, attr := range vnode.Attrs {
-		if err := dom.setAttr(node, attr); err != nil {
-			return nil, fmt.Errorf("set attribute %q: %w", attr.Name, err)
-		}
+	if err := setMountAttrs(dom, node, vnode.Tag, vnode.Attrs, false); err != nil {
+		return nil, err
 	}
 	events, err := mountEvents(dom, node, vnode.Events)
 	if err != nil {
@@ -74,6 +72,9 @@ func mountElement(dom domBoundary, parent domNode, before domNode, vnode VNode) 
 			return nil, err
 		}
 		children = append(children, mountedChild)
+	}
+	if err := setMountAttrs(dom, node, vnode.Tag, vnode.Attrs, true); err != nil {
+		return nil, err
 	}
 
 	if err := insertNode(dom, parent, node, before); err != nil {
@@ -161,7 +162,7 @@ func patchVNodeAt(dom domBoundary, parent domNode, before domNode, old *mountedV
 
 func patchElement(dom domBoundary, old *mountedVNode, next VNode) (*mountedVNode, error) {
 	node := firstDOMNode(old)
-	if err := patchAttrs(dom, node, old.vnode.Attrs, next.Attrs); err != nil {
+	if err := patchAttrs(dom, node, next.Tag, old.vnode.Attrs, next.Attrs, false); err != nil {
 		return nil, err
 	}
 	events, err := patchEvents(dom, node, old.events, next.Events)
@@ -170,6 +171,9 @@ func patchElement(dom domBoundary, old *mountedVNode, next VNode) (*mountedVNode
 	}
 	children, err := patchChildren(dom, node, nil, old.children, next.Children)
 	if err != nil {
+		return nil, err
+	}
+	if err := patchAttrs(dom, node, next.Tag, old.vnode.Attrs, next.Attrs, true); err != nil {
 		return nil, err
 	}
 	old.vnode = next
@@ -415,9 +419,21 @@ func updateComponentInsertBefore(mounted *mountedVNode, before domNode) {
 	mounted.component.insertBefore = before
 }
 
-func patchAttrs(dom domBoundary, node domNode, old []Attribute, next []Attribute) error {
-	oldAttrs := attrsByName(old)
-	nextAttrs := attrsByName(next)
+func setMountAttrs(dom domBoundary, node domNode, tag string, attrs []Attribute, postChildren bool) error {
+	for _, attr := range attrs {
+		if postChildrenAttr(tag, attr) != postChildren {
+			continue
+		}
+		if err := dom.setAttr(node, attr); err != nil {
+			return fmt.Errorf("set attribute %q: %w", attr.Name, err)
+		}
+	}
+	return nil
+}
+
+func patchAttrs(dom domBoundary, node domNode, tag string, old []Attribute, next []Attribute, postChildren bool) error {
+	oldAttrs := attrsByName(tag, old, postChildren)
+	nextAttrs := attrsByName(tag, next, postChildren)
 
 	for name, nextAttr := range nextAttrs {
 		if oldAttr, ok := oldAttrs[name]; !ok || oldAttr != nextAttr {
@@ -436,12 +452,19 @@ func patchAttrs(dom domBoundary, node domNode, old []Attribute, next []Attribute
 	return nil
 }
 
-func attrsByName(attrs []Attribute) map[string]Attribute {
+func attrsByName(tag string, attrs []Attribute, postChildren bool) map[string]Attribute {
 	byName := make(map[string]Attribute, len(attrs))
 	for _, attr := range attrs {
+		if postChildrenAttr(tag, attr) != postChildren {
+			continue
+		}
 		byName[attr.Name] = attr
 	}
 	return byName
+}
+
+func postChildrenAttr(tag string, attr Attribute) bool {
+	return tag == "select" && attr.Name == "value"
 }
 
 func mountEvents(dom domBoundary, node domNode, events []EventBinding) (map[string]*mountedEvent, error) {
@@ -501,9 +524,23 @@ func eventsByName(events []EventBinding) map[string]EventBinding {
 		if event.Name == "" {
 			continue
 		}
+		if previous, ok := byName[event.Name]; ok {
+			event.Handler = combinedEventHandler(previous.Handler, event.Handler)
+		}
 		byName[event.Name] = event
 	}
 	return byName
+}
+
+func combinedEventHandler(first func(Event), second func(Event)) func(Event) {
+	return func(event Event) {
+		if first != nil {
+			first(event)
+		}
+		if second != nil {
+			second(event)
+		}
+	}
 }
 
 func sameVNode(old VNode, next VNode) bool {

@@ -37,9 +37,11 @@ type VNode struct {
 
 // Attribute is a static DOM attribute.
 type Attribute struct {
-	Name     string
-	Value    string
-	HasValue bool
+	Name         string
+	Value        string
+	HasValue     bool
+	BoolValue    bool
+	HasBoolValue bool
 }
 
 // Attr returns a static name/value attribute.
@@ -50,6 +52,11 @@ func Attr(name string, value string) Attribute {
 // BoolAttr returns a static boolean attribute.
 func BoolAttr(name string) Attribute {
 	return Attribute{Name: name}
+}
+
+// BoolStateAttr returns a boolean DOM state attribute.
+func BoolStateAttr(name string, value bool) Attribute {
+	return Attribute{Name: name, BoolValue: value, HasBoolValue: true}
 }
 
 // ClassAttr returns a normalized class attribute from static and bound classes.
@@ -211,13 +218,7 @@ func renderHTML(builder *strings.Builder, node VNode) {
 		builder.WriteByte('<')
 		builder.WriteString(node.Tag)
 		for _, attr := range node.Attrs {
-			builder.WriteByte(' ')
-			builder.WriteString(attr.Name)
-			if attr.HasValue {
-				builder.WriteString(`="`)
-				builder.WriteString(html.EscapeString(attr.Value))
-				builder.WriteByte('"')
-			}
+			renderHTMLAttr(builder, attr)
 		}
 		builder.WriteByte('>')
 		for _, child := range node.Children {
@@ -244,4 +245,19 @@ func renderHTML(builder *strings.Builder, node VNode) {
 	default:
 		builder.WriteString(html.EscapeString(fmt.Sprint(node.Text)))
 	}
+}
+
+func renderHTMLAttr(builder *strings.Builder, attr Attribute) {
+	if attr.HasBoolValue && !attr.BoolValue {
+		return
+	}
+
+	builder.WriteByte(' ')
+	builder.WriteString(attr.Name)
+	if attr.HasBoolValue || !attr.HasValue {
+		return
+	}
+	builder.WriteString(`="`)
+	builder.WriteString(html.EscapeString(attr.Value))
+	builder.WriteByte('"')
 }

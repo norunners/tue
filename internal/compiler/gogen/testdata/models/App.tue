@@ -1,0 +1,24 @@
+<template>
+	<main>
+		<input value="stale" v-model="query" @input="touch" />
+		<input type="checkbox" checked v-model="enabled" />
+		<select value="stale" v-model="choice">
+			<option value="small">Small</option>
+			<option value="large">Large</option>
+		</select>
+		<p>{{ query }} {{ enabled }} {{ choice }}</p>
+	</main>
+</template>
+<script lang="go">
+package app
+
+import tue "github.com/norunners/tue"
+
+type App struct {
+	query   string
+	enabled tue.Ref[bool]
+	choice  string
+}
+
+func (a *App) touch() {}
+</script>
