@@ -182,6 +182,379 @@ func TestMountedUpdatePatchesUnkeyedChildrenPositionally(t *testing.T) {
 	}
 }
 
+func TestMountedUpdateReordersKeyedElementChildren(t *testing.T) {
+	items := []patchListItem{
+		{Key: "a", Text: "A"},
+		{Key: "b", Text: "B"},
+		{Key: "c", Text: "C"},
+	}
+	target := newStubDOMTarget()
+	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		children := make([]VNode, 0, len(items))
+		for _, item := range items {
+			children = append(children, VNode{
+				Type:     VNodeTypeElement,
+				Key:      item.Key,
+				Tag:      "li",
+				Children: []VNode{Text(item.Text)},
+			})
+		}
+		return Element("ul", nil, children)
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	list, err := onlyVisibleChild(target.rootNode)
+	if err != nil {
+		t.Fatalf("find mounted list: %v", err)
+	}
+	first := list.children[0]
+	second := list.children[1]
+	third := list.children[2]
+
+	items = []patchListItem{
+		{Key: "c", Text: "C!"},
+		{Key: "a", Text: "A!"},
+		{Key: "d", Text: "D"},
+	}
+	if err := mounted.Update(); err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+
+	if diff := cmp.Diff("<ul><li>C!</li><li>A!</li><li>D</li></ul>", target.html()); diff != "" {
+		t.Errorf("mismatch keyed element children HTML (-expected, +actual):\n%s", diff)
+	}
+	actual := list.children
+	if actual[0] != third {
+		t.Errorf("mismatch first keyed element child: expected old third node %d, actual %d", third.id, actual[0].id)
+	}
+	if actual[1] != first {
+		t.Errorf("mismatch second keyed element child: expected old first node %d, actual %d", first.id, actual[1].id)
+	}
+	if actual[2] == first || actual[2] == second || actual[2] == third {
+		t.Errorf("mismatch new keyed element child: expected a new node, actual existing node %d", actual[2].id)
+	}
+	if second.parent != nil {
+		t.Errorf("mismatch removed keyed element parent: expected nil, got %#v", second.parent)
+	}
+}
+
+func TestMountedUpdateKeepsMixedUnkeyedChildrenPositional(t *testing.T) {
+	items := []VNode{
+		Text("A"),
+		VNode{Type: VNodeTypeElement, Key: "x", Tag: "span", Children: []VNode{Text("X")}},
+		Text("B"),
+	}
+	target := newStubDOMTarget()
+	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		return Element("p", nil, items)
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	paragraph, err := onlyVisibleChild(target.rootNode)
+	if err != nil {
+		t.Fatalf("find mounted paragraph: %v", err)
+	}
+	firstText := paragraph.children[0]
+	keyedSpan := paragraph.children[1]
+	secondText := paragraph.children[2]
+
+	items = []VNode{
+		VNode{Type: VNodeTypeElement, Key: "x", Tag: "span", Children: []VNode{Text("X!")}},
+		Text("B!"),
+	}
+	if err := mounted.Update(); err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+
+	if diff := cmp.Diff("<p><span>X!</span>B!</p>", target.html()); diff != "" {
+		t.Errorf("mismatch mixed keyed children HTML (-expected, +actual):\n%s", diff)
+	}
+	actual := paragraph.children
+	if actual[0] != keyedSpan {
+		t.Errorf("mismatch mixed keyed first child: expected keyed span %d, actual %d", keyedSpan.id, actual[0].id)
+	}
+	if actual[1] == firstText || actual[1] == secondText {
+		t.Errorf("mismatch mixed unkeyed child identity: expected a new node, actual existing node %d", actual[1].id)
+	}
+	if firstText.parent != nil {
+		t.Errorf("mismatch removed first unkeyed parent: expected nil, got %#v", firstText.parent)
+	}
+	if secondText.parent != nil {
+		t.Errorf("mismatch removed second unkeyed parent: expected nil, got %#v", secondText.parent)
+	}
+}
+
+func TestMountedUpdateDoesNotMoveStableKeyedChildren(t *testing.T) {
+	items := []patchListItem{
+		{Key: "a", Text: "A"},
+		{Key: "b", Text: "B"},
+	}
+	target := newStubDOMTarget()
+	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		children := make([]VNode, 0, len(items))
+		for _, item := range items {
+			children = append(children, VNode{
+				Type:     VNodeTypeElement,
+				Key:      item.Key,
+				Tag:      "li",
+				Children: []VNode{Text(item.Text)},
+			})
+		}
+		return Element("ul", nil, children)
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	list, err := onlyVisibleChild(target.rootNode)
+	if err != nil {
+		t.Fatalf("find mounted list: %v", err)
+	}
+	first := list.children[0]
+	second := list.children[1]
+	target.moves = 0
+
+	items = []patchListItem{
+		{Key: "a", Text: "A!"},
+		{Key: "b", Text: "B!"},
+	}
+	if err := mounted.Update(); err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+
+	if diff := cmp.Diff("<ul><li>A!</li><li>B!</li></ul>", target.html()); diff != "" {
+		t.Errorf("mismatch stable keyed children HTML (-expected, +actual):\n%s", diff)
+	}
+	if list.children[0] != first {
+		t.Errorf("mismatch stable keyed first child: expected old first node %d, actual %d", first.id, list.children[0].id)
+	}
+	if list.children[1] != second {
+		t.Errorf("mismatch stable keyed second child: expected old second node %d, actual %d", second.id, list.children[1].id)
+	}
+	if diff := cmp.Diff(0, target.moves); diff != "" {
+		t.Errorf("mismatch stable keyed move count (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestMountedUpdateReplacesSameKeyDifferentType(t *testing.T) {
+	renderText := false
+	events := []string{}
+	target := newStubDOMTarget()
+	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		var child VNode
+		if renderText {
+			child = VNode{Type: VNodeTypeText, Key: "a", Text: "Saved"}
+		} else {
+			child = ElementWithEvents("button", nil, []EventBinding{On("click", func() {
+				events = append(events, "click")
+			})}, []VNode{Text("Save")})
+			child.Key = "a"
+		}
+		return Element("div", nil, []VNode{child})
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	container, err := onlyVisibleChild(target.rootNode)
+	if err != nil {
+		t.Fatalf("find mounted container: %v", err)
+	}
+	button := container.children[0]
+	button.dispatch("click")
+
+	renderText = true
+	if err := mounted.Update(); err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+	button.dispatch("click")
+
+	if diff := cmp.Diff("<div>Saved</div>", target.html()); diff != "" {
+		t.Errorf("mismatch same-key replacement HTML (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"click"}, events); diff != "" {
+		t.Errorf("mismatch same-key replacement event calls (-expected, +actual):\n%s", diff)
+	}
+	if button.parent != nil {
+		t.Errorf("mismatch replaced same-key parent: expected nil, got %#v", button.parent)
+	}
+	if diff := cmp.Diff(0, button.listenerCount("click")); diff != "" {
+		t.Errorf("mismatch replaced same-key listener count (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestMountedUpdateDuplicateKeysReuseFirstOldChildOnly(t *testing.T) {
+	items := []patchListItem{
+		{Key: "a", Text: "First"},
+		{Key: "a", Text: "Second"},
+	}
+	target := newStubDOMTarget()
+	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		children := make([]VNode, 0, len(items))
+		for _, item := range items {
+			children = append(children, VNode{
+				Type:     VNodeTypeElement,
+				Key:      item.Key,
+				Tag:      "li",
+				Children: []VNode{Text(item.Text)},
+			})
+		}
+		return Element("ul", nil, children)
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	list, err := onlyVisibleChild(target.rootNode)
+	if err != nil {
+		t.Fatalf("find mounted list: %v", err)
+	}
+	first := list.children[0]
+	second := list.children[1]
+
+	items = []patchListItem{
+		{Key: "a", Text: "First!"},
+		{Key: "a", Text: "Second!"},
+	}
+	if err := mounted.Update(); err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+
+	if diff := cmp.Diff("<ul><li>First!</li><li>Second!</li></ul>", target.html()); diff != "" {
+		t.Errorf("mismatch duplicate keyed children HTML (-expected, +actual):\n%s", diff)
+	}
+	if list.children[0] != first {
+		t.Errorf("mismatch first duplicate keyed child: expected old first node %d, actual %d", first.id, list.children[0].id)
+	}
+	if list.children[1] == first || list.children[1] == second {
+		t.Errorf("mismatch second duplicate keyed child: expected a new node, actual existing node %d", list.children[1].id)
+	}
+	if second.parent != nil {
+		t.Errorf("mismatch removed duplicate keyed parent: expected nil, got %#v", second.parent)
+	}
+}
+
+func TestMountedUpdateReordersKeyedFragmentChildren(t *testing.T) {
+	items := []patchListItem{
+		{Key: "a", Text: "A"},
+		{Key: "b", Text: "B"},
+		{Key: "c", Text: "C"},
+	}
+	target := newStubDOMTarget()
+	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		children := make([]VNode, 0, len(items))
+		for _, item := range items {
+			children = append(children, VNode{Type: VNodeTypeText, Key: item.Key, Text: item.Text})
+		}
+		return Fragment(children)
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	children := visibleChildren(target.rootNode)
+	first := children[0]
+	second := children[1]
+	third := children[2]
+
+	items = []patchListItem{
+		{Key: "c", Text: "C!"},
+		{Key: "a", Text: "A!"},
+		{Key: "d", Text: "D"},
+	}
+	if err := mounted.Update(); err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+
+	if diff := cmp.Diff("C!A!D", target.html()); diff != "" {
+		t.Errorf("mismatch keyed fragment HTML (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"comment", "text", "text", "text", "comment"}, childKinds(target.rootNode)); diff != "" {
+		t.Errorf("mismatch keyed fragment child kinds (-expected, +actual):\n%s", diff)
+	}
+	actual := visibleChildren(target.rootNode)
+	if actual[0] != third {
+		t.Errorf("mismatch first keyed fragment child: expected old third node %d, actual %d", third.id, actual[0].id)
+	}
+	if actual[1] != first {
+		t.Errorf("mismatch second keyed fragment child: expected old first node %d, actual %d", first.id, actual[1].id)
+	}
+	if actual[2] == first || actual[2] == second || actual[2] == third {
+		t.Errorf("mismatch new keyed fragment child: expected a new node, actual existing node %d", actual[2].id)
+	}
+	if second.parent != nil {
+		t.Errorf("mismatch removed keyed fragment parent: expected nil, got %#v", second.parent)
+	}
+}
+
+func TestMountedUpdateReordersKeyedComponentChildren(t *testing.T) {
+	renderAsElement := false
+	items := []patchListItem{
+		{Key: "a", Text: "A"},
+		{Key: "b", Text: "B"},
+		{Key: "c", Text: "C"},
+	}
+	target := newStubDOMTarget()
+	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		children := make([]VNode, 0, len(items))
+		for _, item := range items {
+			vnode := Component("PatchChild", func() *Comp {
+				return CompOf(&patchChildFixture{label: item.Text, renderAsElement: &renderAsElement}, renderPatchChildFixture)
+			})
+			vnode.Key = item.Key
+			children = append(children, vnode)
+		}
+		return Fragment(children)
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	children := visibleChildren(target.rootNode)
+	first := children[0]
+	second := children[1]
+	third := children[2]
+
+	items = []patchListItem{
+		{Key: "c", Text: "C"},
+		{Key: "a", Text: "A"},
+		{Key: "d", Text: "D"},
+	}
+	if err := mounted.Update(); err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+
+	if diff := cmp.Diff("CAD", target.html()); diff != "" {
+		t.Errorf("mismatch keyed component children HTML (-expected, +actual):\n%s", diff)
+	}
+	actual := visibleChildren(target.rootNode)
+	if actual[0] != third {
+		t.Errorf("mismatch first keyed component child: expected old third node %d, actual %d", third.id, actual[0].id)
+	}
+	if actual[1] != first {
+		t.Errorf("mismatch second keyed component child: expected old first node %d, actual %d", first.id, actual[1].id)
+	}
+	if actual[2] == first || actual[2] == second || actual[2] == third {
+		t.Errorf("mismatch new keyed component child: expected a new node, actual existing node %d", actual[2].id)
+	}
+	if second.parent != nil {
+		t.Errorf("mismatch removed keyed component parent: expected nil, got %#v", second.parent)
+	}
+
+	renderAsElement = true
+	if err := mounted.Update(); err != nil {
+		t.Fatalf("second Update returned error: %v", err)
+	}
+
+	if diff := cmp.Diff("<span>C</span><span>A</span><span>D</span>", target.html()); diff != "" {
+		t.Errorf("mismatch keyed component replacement order (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestMountedUpdatePatchesFragmentChildrenBeforeEndMarker(t *testing.T) {
 	values := []string{"one"}
 	target := newStubDOMTarget()
@@ -334,10 +707,28 @@ func TestMountedEventListenersCleanUpOnUnmount(t *testing.T) {
 
 type patchFixture struct{}
 
+type patchListItem struct {
+	Key  string
+	Text string
+}
+
+type patchChildFixture struct {
+	label           string
+	renderAsElement *bool
+}
+
+func renderPatchChildFixture(component *patchChildFixture) VNode {
+	if component.renderAsElement != nil && *component.renderAsElement {
+		return Element("span", nil, []VNode{Text(component.label)})
+	}
+	return Text(component.label)
+}
+
 type stubDOMTarget struct {
 	rootNode *stubDOMNode
 	nextID   int
 	clears   int
+	moves    int
 }
 
 func newStubDOMTarget() *stubDOMTarget {
@@ -374,6 +765,9 @@ func (t *stubDOMTarget) appendChild(parent domNode, child domNode) error {
 	if err != nil {
 		return err
 	}
+	if childNode.parent != nil {
+		t.moves++
+	}
 	childNode.detach()
 	childNode.parent = parentNode
 	parentNode.children = append(parentNode.children, childNode)
@@ -389,11 +783,17 @@ func (t *stubDOMTarget) insertBefore(parent domNode, child domNode, before domNo
 	if !ok {
 		return fmt.Errorf("expected stub before node, got %T", before)
 	}
+	if childNode == beforeNode {
+		return nil
+	}
+	if childNode.parent != nil {
+		t.moves++
+	}
+	childNode.detach()
 	index := parentNode.childIndex(beforeNode)
 	if index == -1 {
 		return fmt.Errorf("before node %d is not a child of parent %d", beforeNode.id, parentNode.id)
 	}
-	childNode.detach()
 	childNode.parent = parentNode
 	parentNode.children = append(parentNode.children, nil)
 	copy(parentNode.children[index+1:], parentNode.children[index:])
