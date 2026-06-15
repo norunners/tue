@@ -29,6 +29,37 @@ func TestClassAttrNormalizesStaticAndBoundClasses(t *testing.T) {
 	}
 }
 
+func TestBoolStateAttrRendersOnlyWhenTrue(t *testing.T) {
+	node := Element("input", []Attribute{
+		BoolStateAttr("checked", false),
+		BoolStateAttr("disabled", true),
+	}, nil)
+
+	expected := "<input disabled></input>"
+	if diff := cmp.Diff(expected, RenderHTML(node)); diff != "" {
+		t.Errorf("mismatch rendered boolean state attributes (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestEventValueHelpersReadEventTargetState(t *testing.T) {
+	values := []string{}
+	checks := []bool{}
+
+	OnValue("input", func(value string) {
+		values = append(values, value)
+	}).Handler(stubEvent{value: "query"})
+	OnChecked("change", func(checked bool) {
+		checks = append(checks, checked)
+	}).Handler(stubEvent{checked: true})
+
+	if diff := cmp.Diff([]string{"query"}, values); diff != "" {
+		t.Errorf("mismatch value event values (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff([]bool{true}, checks); diff != "" {
+		t.Errorf("mismatch checked event values (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestCompOfCallsOptionalInit(t *testing.T) {
 	component := &initFixture{}
 

@@ -443,6 +443,11 @@ func (g *fileGenerator) renderComponentFields(node *gotemplate.Node, child compo
 			if attr.Directive == gotemplate.DirectiveIf || attr.Directive == gotemplate.DirectiveFor {
 				continue
 			}
+			if attr.Directive == gotemplate.DirectiveModel {
+				g.add(modelUnsupportedMessage(node), attr.DirectiveSpan)
+				ok = false
+				continue
+			}
 			g.add(fmt.Sprintf("directive %q generation is not supported on components in the component render slice", attr.RawName), attr.Span)
 			ok = false
 		default:
@@ -560,6 +565,16 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 	attrs := make([]jen.Code, 0, len(node.Attrs))
 	events := make([]jen.Code, 0, len(node.Attrs))
 	hasClassBinding := nodeBindAttr(node, "class") != nil
+	modelAttr := nodeDirectiveAttr(node, gotemplate.DirectiveModel)
+	modelControlledAttr := ""
+	if modelAttr != nil {
+		if binding, ok := nativeModelBinding(node); ok {
+			modelControlledAttr = "value"
+			if binding.Checked {
+				modelControlledAttr = "checked"
+			}
+		}
+	}
 	classInsert := -1
 	var classStatic []string
 	var classDynamic []jen.Code
@@ -567,6 +582,9 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 	for _, attr := range node.Attrs {
 		switch attr.Kind {
 		case gotemplate.AttrStatic:
+			if attr.Name == modelControlledAttr {
+				continue
+			}
 			if hasClassBinding && attr.Name == "class" {
 				if classInsert == -1 {
 					classInsert = len(attrs)
@@ -607,7 +625,7 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 			}
 			events = append(events, event)
 		case gotemplate.AttrDirective:
-			if attr.Directive == gotemplate.DirectiveIf || attr.Directive == gotemplate.DirectiveFor {
+			if attr.Directive == gotemplate.DirectiveIf || attr.Directive == gotemplate.DirectiveFor || attr.Directive == gotemplate.DirectiveModel {
 				continue
 			}
 			g.add(fmt.Sprintf("directive %q generation is not supported in the static render slice", attr.RawName), attr.Span)
@@ -619,6 +637,15 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 	}
 	if len(classDynamic) != 0 {
 		attrs = insertAttr(attrs, classInsert, renderClassAttr(classStatic, classDynamic))
+	}
+	if modelAttr != nil {
+		modelAttrs, modelEvent, modelOK := g.renderModelBinding(node, *modelAttr)
+		if !modelOK {
+			ok = false
+		} else {
+			attrs = append(attrs, modelAttrs...)
+			events = append([]jen.Code{modelEvent}, events...)
+		}
 	}
 	return attrs, events, ok
 }
@@ -642,6 +669,79 @@ func renderClassAttr(static []string, dynamic []jen.Code) jen.Code {
 	args = append(args, jen.Lit(strings.Join(static, " ")))
 	args = append(args, dynamic...)
 	return jen.Qual(tueImportPath, "ClassAttr").Call(args...)
+}
+
+func (g *fileGenerator) renderModelBinding(node *gotemplate.Node, attr gotemplate.Attr) ([]jen.Code, jen.Code, bool) {
+	binding, ok := nativeModelBinding(node)
+	if !ok {
+		g.add(modelUnsupportedMessage(node), attr.DirectiveSpan)
+		return nil, nil, false
+	}
+
+	expression, expressionOK := g.renderExpressionFor("v-model", attr.Expression, attr.ExpressionSpan)
+	if !expressionOK {
+		return nil, nil, false
+	}
+	actualType := g.expressionType(attr.Expression)
+	if !assignableType(binding.ValueType, actualType) {
+		g.add(fmt.Sprintf("v-model expects %s, got %s", displayType(binding.ValueType), displayType(actualType)), attr.ExpressionSpan)
+		return nil, nil, false
+	}
+
+	setter, setterOK := g.renderModelSetter(attr.Expression, attr.ExpressionSpan, binding.ValueName)
+	if !setterOK {
+		return nil, nil, false
+	}
+
+	if binding.Checked {
+		return []jen.Code{
+				jen.Qual(tueImportPath, "BoolStateAttr").Call(jen.Lit("checked"), expression),
+			},
+			jen.Qual(tueImportPath, "OnChecked").Call(
+				jen.Lit(binding.EventName),
+				jen.Func().Params(jen.Id(binding.ValueName).Bool()).Block(setter),
+			),
+			true
+	}
+	return []jen.Code{
+			jen.Qual(tueImportPath, "Attr").Call(jen.Lit("value"), expression),
+		},
+		jen.Qual(tueImportPath, "OnValue").Call(
+			jen.Lit(binding.EventName),
+			jen.Func().Params(jen.Id(binding.ValueName).String()).Block(setter),
+		),
+		true
+}
+
+func (g *fileGenerator) renderModelSetter(target string, span sfc.Span, valueName string) (jen.Code, bool) {
+	expr, err := goparser.ParseExpr(target)
+	if err != nil {
+		g.add(fmt.Sprintf("invalid v-model expression: %s", err), span)
+		return nil, false
+	}
+
+	ident, ok := expr.(*ast.Ident)
+	if !ok {
+		g.add(fmt.Sprintf("v-model target %q is not writable", target), span)
+		return nil, false
+	}
+
+	field, ok := g.fields[ident.Name]
+	if !ok {
+		g.add(fmt.Sprintf("v-model target %q is not writable", target), span)
+		return nil, false
+	}
+
+	access := jen.Id("component").Dot(field.Name)
+	switch field.Kind {
+	case script.FieldKindState:
+		return jen.Add(access).Op("=").Id(valueName), true
+	case script.FieldKindRef:
+		return jen.Add(access).Dot("Set").Call(jen.Id(valueName)), true
+	default:
+		g.add(fmt.Sprintf("v-model target %q is not writable", target), span)
+		return nil, false
+	}
 }
 
 func insertAttr(attrs []jen.Code, index int, attr jen.Code) []jen.Code {
@@ -809,6 +909,60 @@ func nodeBindAttr(node *gotemplate.Node, argument string) *gotemplate.Attr {
 		}
 	}
 	return nil
+}
+
+type nativeModel struct {
+	ValueType string
+	ValueName string
+	EventName string
+	Checked   bool
+}
+
+func nativeModelBinding(node *gotemplate.Node) (nativeModel, bool) {
+	if node == nil || node.IsComponent {
+		return nativeModel{}, false
+	}
+
+	switch node.Tag {
+	case "input":
+		inputType, _ := nodeStaticAttrValue(node, "type")
+		switch inputType {
+		case "", "text":
+			return nativeModel{ValueType: "string", ValueName: "value", EventName: "input"}, true
+		case "checkbox":
+			return nativeModel{ValueType: "bool", ValueName: "checked", EventName: "change", Checked: true}, true
+		default:
+			return nativeModel{}, false
+		}
+	case "select":
+		return nativeModel{ValueType: "string", ValueName: "value", EventName: "change"}, true
+	default:
+		return nativeModel{}, false
+	}
+}
+
+func modelUnsupportedMessage(node *gotemplate.Node) string {
+	if node != nil && node.IsComponent {
+		return "component v-model is not supported"
+	}
+	if node != nil && node.Tag == "input" {
+		if inputType, ok := nodeStaticAttrValue(node, "type"); ok {
+			return fmt.Sprintf("v-model is not supported for input type %q", inputType)
+		}
+	}
+	return "v-model is only supported on text inputs, checkboxes, and selects"
+}
+
+func nodeStaticAttrValue(node *gotemplate.Node, name string) (string, bool) {
+	if node == nil {
+		return "", false
+	}
+	for _, attr := range node.Attrs {
+		if attr.Kind == gotemplate.AttrStatic && attr.Name == name && attr.HasValue {
+			return attr.Value, true
+		}
+	}
+	return "", false
 }
 
 func (g *fileGenerator) pushLocals(locals map[string]string, localTypes map[string]string) func() {

@@ -89,6 +89,39 @@ func TestMountedUpdatePatchesElementAttributesInPlace(t *testing.T) {
 	}
 }
 
+func TestMountedSelectValueStateAppliesAfterOptionsMount(t *testing.T) {
+	target := newStubDOMTarget()
+	_, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		return Element("select", []Attribute{Attr("value", "large")}, []VNode{
+			Element("option", []Attribute{Attr("value", "small")}, []VNode{Text("Small")}),
+			Element("option", []Attribute{Attr("value", "large")}, []VNode{Text("Large")}),
+		})
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	selectNode, err := onlyVisibleChild(target.rootNode)
+	if err != nil {
+		t.Fatalf("find mounted select: %v", err)
+	}
+	var actual []stubAttrSet
+	for _, attrSet := range target.attrSets {
+		if attrSet.NodeID == selectNode.id && attrSet.Attribute.Name == "value" {
+			actual = append(actual, attrSet)
+		}
+	}
+
+	expected := []stubAttrSet{{
+		NodeID:     selectNode.id,
+		Attribute:  Attr("value", "large"),
+		ChildCount: 2,
+	}}
+	if diff := cmp.Diff(expected, actual); diff != "" {
+		t.Errorf("mismatch select value attr timing (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestMountedUpdateReplacesDifferentKey(t *testing.T) {
 	key := "first"
 	target := newStubDOMTarget()
@@ -632,6 +665,37 @@ func TestMountedEventHandlerRunsAndUpdatesInPlace(t *testing.T) {
 	}
 }
 
+func TestMountedDuplicateEventHandlersRunModelBeforeUserHandler(t *testing.T) {
+	query := "initial"
+	events := []string{}
+	target := newStubDOMTarget()
+	_, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		return ElementWithEvents("input", nil, []EventBinding{
+			OnValue("input", func(value string) {
+				query = value
+				events = append(events, "model:"+query)
+			}),
+			On("input", func() {
+				events = append(events, "user:"+query)
+			}),
+		}, nil)
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	input, err := onlyVisibleChild(target.rootNode)
+	if err != nil {
+		t.Fatalf("find mounted input: %v", err)
+	}
+	input.dispatchEvent("input", stubEvent{value: "query"})
+
+	expected := []string{"model:query", "user:query"}
+	if diff := cmp.Diff(expected, events); diff != "" {
+		t.Errorf("mismatch duplicate event handler calls (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestMountedEventListenersCleanUpWhenNodeIsReplaced(t *testing.T) {
 	replace := false
 	events := []string{}
@@ -729,6 +793,7 @@ type stubDOMTarget struct {
 	nextID   int
 	clears   int
 	moves    int
+	attrSets []stubAttrSet
 }
 
 func newStubDOMTarget() *stubDOMTarget {
@@ -832,6 +897,11 @@ func (t *stubDOMTarget) setAttr(node domNode, attr Attribute) error {
 	if stubNode.attrs == nil {
 		stubNode.attrs = map[string]Attribute{}
 	}
+	t.attrSets = append(t.attrSets, stubAttrSet{
+		NodeID:     stubNode.id,
+		Attribute:  attr,
+		ChildCount: len(stubNode.children),
+	})
 	stubNode.attrs[attr.Name] = attr
 	return nil
 }
@@ -845,7 +915,7 @@ func (t *stubDOMTarget) removeAttr(node domNode, name string) error {
 	return nil
 }
 
-func (t *stubDOMTarget) addEventListener(node domNode, name string, handler func()) (func(), error) {
+func (t *stubDOMTarget) addEventListener(node domNode, name string, handler func(Event)) (func(), error) {
 	stubNode, ok := node.(*stubDOMNode)
 	if !ok {
 		return nil, fmt.Errorf("expected stub element node, got %T", node)
@@ -907,8 +977,19 @@ type stubDOMNode struct {
 }
 
 type stubEventListener struct {
-	handler func()
+	handler func(Event)
 	removed bool
+}
+
+type stubAttrSet struct {
+	NodeID     int
+	Attribute  Attribute
+	ChildCount int
+}
+
+type stubEvent struct {
+	value   string
+	checked bool
 }
 
 func (n *stubDOMNode) childIndex(child *stubDOMNode) int {
@@ -932,12 +1013,24 @@ func (n *stubDOMNode) detach() {
 }
 
 func (n *stubDOMNode) dispatch(name string) {
+	n.dispatchEvent(name, stubEvent{})
+}
+
+func (n *stubDOMNode) dispatchEvent(name string, event Event) {
 	for _, listener := range append([]*stubEventListener(nil), n.listeners[name]...) {
 		if listener.removed || listener.handler == nil {
 			continue
 		}
-		listener.handler()
+		listener.handler(event)
 	}
+}
+
+func (e stubEvent) Value() string {
+	return e.value
+}
+
+func (e stubEvent) Checked() bool {
+	return e.checked
 }
 
 func (n *stubDOMNode) listenerCount(name string) int {
@@ -968,9 +1061,12 @@ func writeStubHTML(builder *strings.Builder, node *stubDOMNode) {
 		builder.WriteByte('<')
 		builder.WriteString(node.tag)
 		for _, attr := range sortedStubAttrs(node.attrs) {
+			if attr.HasBoolValue && !attr.BoolValue {
+				continue
+			}
 			builder.WriteByte(' ')
 			builder.WriteString(attr.Name)
-			if attr.HasValue {
+			if attr.HasValue && !attr.HasBoolValue {
 				builder.WriteString(`="`)
 				builder.WriteString(html.EscapeString(attr.Value))
 				builder.WriteByte('"')

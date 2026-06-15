@@ -267,6 +267,38 @@ func TestGenerateProjectEmitsClassBindingRenderFiles(t *testing.T) {
 	}
 }
 
+func TestGenerateProjectEmitsModelBindingRenderFiles(t *testing.T) {
+	project, err := parseProjectFixture("testdata/models/App.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	result, diagnostics := GenerateProject(*project)
+	if result == nil {
+		t.Fatal("GenerateProject result is nil")
+	}
+
+	expectedDiagnostics := []diagnosticSummary{}
+	if diff := cmp.Diff(expectedDiagnostics, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+	expectedPaths := []string{"App_tue.go", "App_render_tue.go"}
+	if diff := cmp.Diff(expectedPaths, generatedPaths(result.Files)); diff != "" {
+		t.Errorf("mismatch generated paths (-expected, +actual):\n%s", diff)
+	}
+	expectedRender, err := testFixtureString("testdata/golden/ModelBinding_render_tue.go")
+	if err != nil {
+		t.Fatalf("read expected model binding render fixture: %v", err)
+	}
+	actualRender, err := generatedSource(result, "App_render_tue.go")
+	if err != nil {
+		t.Fatalf("read actual generated model binding render: %v", err)
+	}
+	if diff := cmp.Diff(expectedRender, string(actualRender)); diff != "" {
+		t.Errorf("mismatch generated model binding render (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestGenerateProjectReportsUnsupportedClassBindingExpressions(t *testing.T) {
 	project, err := parseProjectFixture("testdata/invalid_classes/App.tue")
 	if err != nil {
@@ -293,6 +325,26 @@ func TestGenerateProjectReportsClassBindingTypeDiagnostics(t *testing.T) {
 
 	expected := []diagnosticSummary{
 		{Path: "BoolClass.tue", Message: `class binding expects string, got bool`, Line: 2, Column: 15},
+	}
+	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestGenerateProjectReportsModelBindingDiagnostics(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_models/App.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	_, diagnostics := GenerateProject(*project)
+
+	expected := []diagnosticSummary{
+		{Path: "App.tue", Message: `v-model expects bool, got string`, Line: 3, Column: 35},
+		{Path: "App.tue", Message: `v-model expects string, got bool`, Line: 4, Column: 20},
+		{Path: "App.tue", Message: `v-model is only supported on text inputs, checkboxes, and selects`, Line: 8, Column: 13},
+		{Path: "App.tue", Message: `v-model is not supported for input type "number"`, Line: 9, Column: 24},
+		{Path: "App.tue", Message: `v-model target "query.Text" is not writable`, Line: 11, Column: 19},
 	}
 	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
@@ -452,6 +504,17 @@ func TestGeneratedClassBindingFixtureCompilesForWASM(t *testing.T) {
 
 	if err := compileGeneratedProjectForWASM(t.TempDir(), *project); err != nil {
 		t.Fatalf("compile generated class binding fixture for WASM: %v", err)
+	}
+}
+
+func TestGeneratedModelBindingFixtureCompilesForWASM(t *testing.T) {
+	project, err := parseProjectFixture("testdata/models/App.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	if err := compileGeneratedProjectForWASM(t.TempDir(), *project); err != nil {
+		t.Fatalf("compile generated model binding fixture for WASM: %v", err)
 	}
 }
 

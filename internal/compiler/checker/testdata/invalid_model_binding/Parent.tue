@@ -1,0 +1,21 @@
+<template>
+	<main>
+		<input type="checkbox" v-model="query" />
+		<select v-model="enabled">
+			<option value="yes">Yes</option>
+		</select>
+
+		<textarea v-model="query"></textarea>
+		<input type="number" v-model="query" />
+
+		<input v-model="query.Text" />
+	</main>
+</template>
+<script lang="go">
+package fixtures
+
+type Parent struct {
+	query   string
+	enabled bool
+}
+</script>

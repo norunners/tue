@@ -24,7 +24,7 @@ func (c *fileChecker) checkCommonAttrs(node *gotemplate.Node, scope *scope, chec
 				value := c.checkExpression(attr.Expression, attr.ExpressionSpan, scope)
 				c.expectType("string", value.Type, "v-html", attr.ExpressionSpan)
 			case gotemplate.DirectiveModel:
-				c.checkModel(attr, scope)
+				c.checkModel(node, attr, scope)
 			case gotemplate.DirectiveFor, gotemplate.DirectiveElse:
 			}
 		}
@@ -99,7 +99,7 @@ func (c *fileChecker) checkFor(node *gotemplate.Node, attr gotemplate.Attr, scop
 	return next
 }
 
-func (c *fileChecker) checkModel(attr gotemplate.Attr, scope *scope) {
+func (c *fileChecker) checkModel(node *gotemplate.Node, attr gotemplate.Attr, scope *scope) {
 	expr, exprChecker, ok := c.parseExpression(attr.Expression, attr.ExpressionSpan, scope)
 	if !ok {
 		return
@@ -114,6 +114,13 @@ func (c *fileChecker) checkModel(attr gotemplate.Attr, scope *scope) {
 	if target == nil || !target.Writable {
 		c.add(fmt.Sprintf("v-model target %q is not writable", attr.Expression), attr.ExpressionSpan)
 	}
+
+	binding, ok := nativeModelBinding(node)
+	if !ok {
+		c.add(modelUnsupportedMessage(node), attr.DirectiveSpan)
+		return
+	}
+	c.expectType(binding.ValueType, value.Type, "v-model", attr.ExpressionSpan)
 }
 
 func (c *fileChecker) expectEventMethod(name string, span sfc.Span, scope *scope, requireFuncSignature bool) (symbol, bool) {
@@ -142,6 +149,45 @@ func modelTarget(expr ast.Expr, scope *scope) *symbol {
 	}
 }
 
+type nativeModel struct {
+	ValueType string
+}
+
+func nativeModelBinding(node *gotemplate.Node) (nativeModel, bool) {
+	if node == nil || node.IsComponent {
+		return nativeModel{}, false
+	}
+
+	switch node.Tag {
+	case "input":
+		inputType, _ := staticAttrValue(node, "type")
+		switch inputType {
+		case "", "text":
+			return nativeModel{ValueType: "string"}, true
+		case "checkbox":
+			return nativeModel{ValueType: "bool"}, true
+		default:
+			return nativeModel{}, false
+		}
+	case "select":
+		return nativeModel{ValueType: "string"}, true
+	default:
+		return nativeModel{}, false
+	}
+}
+
+func modelUnsupportedMessage(node *gotemplate.Node) string {
+	if node != nil && node.IsComponent {
+		return "component v-model is not supported"
+	}
+	if node != nil && node.Tag == "input" {
+		if inputType, ok := staticAttrValue(node, "type"); ok {
+			return fmt.Sprintf("v-model is not supported for input type %q", inputType)
+		}
+	}
+	return "v-model is only supported on text inputs, checkboxes, and selects"
+}
+
 func directiveAttr(node *gotemplate.Node, kind gotemplate.DirectiveKind) (gotemplate.Attr, bool) {
 	for _, attr := range node.Attrs {
 		if attr.Kind == gotemplate.AttrDirective && attr.Directive == kind {
@@ -158,4 +204,13 @@ func hasBoundKey(node *gotemplate.Node) bool {
 		}
 	}
 	return false
+}
+
+func staticAttrValue(node *gotemplate.Node, name string) (string, bool) {
+	for _, attr := range node.Attrs {
+		if attr.Kind == gotemplate.AttrStatic && attr.Name == name && attr.HasValue {
+			return attr.Value, true
+		}
+	}
+	return "", false
 }
