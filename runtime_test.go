@@ -20,6 +20,15 @@ func TestRenderHTMLEscapesTextAndAttributes(t *testing.T) {
 	}
 }
 
+func TestClassAttrNormalizesStaticAndBoundClasses(t *testing.T) {
+	actual := ClassAttr(" page  active ", "", " selected ", "wide")
+
+	expected := Attribute{Name: "class", Value: "page active selected wide", HasValue: true}
+	if diff := cmp.Diff(expected, actual); diff != "" {
+		t.Errorf("mismatch class attribute (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestCompOfCallsOptionalInit(t *testing.T) {
 	component := &initFixture{}
 

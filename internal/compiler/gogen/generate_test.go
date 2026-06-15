@@ -19,7 +19,7 @@ import (
 	gotemplate "github.com/norunners/tue/internal/compiler/template"
 )
 
-//go:embed testdata/static/*.tue testdata/dynamic/*.tue testdata/conditionals/*.tue testdata/loops/*.tue testdata/events/*.tue testdata/components/*.tue testdata/invalid_conditionals/*.tue testdata/invalid_loops/*.tue testdata/invalid_events/*.tue testdata/invalid_component_events/*.tue testdata/golden/*.go
+//go:embed testdata
 var testFixtures embed.FS
 
 func TestGenerateProjectEmitsStaticRenderFiles(t *testing.T) {
@@ -36,7 +36,8 @@ func TestGenerateProjectEmitsStaticRenderFiles(t *testing.T) {
 	if diff := cmp.Diff([]diagnosticSummary{}, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}
-	if diff := cmp.Diff([]string{"App_tue.go", "App_render_tue.go"}, generatedPaths(result.Files)); diff != "" {
+	expectedPaths := []string{"App_tue.go", "App_render_tue.go"}
+	if diff := cmp.Diff(expectedPaths, generatedPaths(result.Files)); diff != "" {
 		t.Errorf("mismatch generated paths (-expected, +actual):\n%s", diff)
 	}
 	expectedScript, err := testFixtureString("testdata/golden/App_tue.go")
@@ -98,7 +99,6 @@ func TestGenerateProjectReportsUnsupportedStaticSliceConstructs(t *testing.T) {
 	_, diagnostics := GenerateProject(*project)
 
 	if diff := cmp.Diff([]diagnosticSummary{
-		{Path: "App.tue", Message: `bound attribute ":class" generation is not supported in the static render slice`, Line: 2, Column: 38},
 		{Path: "App.tue", Message: `component "UserBadge" is not registered`, Line: 3, Column: 2},
 	}, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
@@ -116,10 +116,12 @@ func TestGenerateProjectEmitsConditionalRenderFiles(t *testing.T) {
 		t.Fatal("GenerateProject result is nil")
 	}
 
-	if diff := cmp.Diff([]diagnosticSummary{}, summarizeDiagnostics(diagnostics)); diff != "" {
+	expectedDiagnostics := []diagnosticSummary{}
+	if diff := cmp.Diff(expectedDiagnostics, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}
-	if diff := cmp.Diff([]string{"App_tue.go", "App_render_tue.go"}, generatedPaths(result.Files)); diff != "" {
+	expectedPaths := []string{"App_tue.go", "App_render_tue.go"}
+	if diff := cmp.Diff(expectedPaths, generatedPaths(result.Files)); diff != "" {
 		t.Errorf("mismatch generated paths (-expected, +actual):\n%s", diff)
 	}
 	expectedRender, err := testFixtureString("testdata/golden/Conditional_render_tue.go")
@@ -229,6 +231,70 @@ func TestGenerateProjectReportsUnsupportedLoopConstructs(t *testing.T) {
 		{Path: "App.tue", Message: `v-for source expression is not supported in the static render slice`, Line: 5, Column: 21},
 		{Path: "App.tue", Message: `v-for key expression is not supported in the static render slice`, Line: 6, Column: 34},
 	}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestGenerateProjectEmitsClassBindingRenderFiles(t *testing.T) {
+	project, err := parseProjectFixture("testdata/classes/App.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	result, diagnostics := GenerateProject(*project)
+	if result == nil {
+		t.Fatal("GenerateProject result is nil")
+	}
+
+	expectedDiagnostics := []diagnosticSummary{}
+	if diff := cmp.Diff(expectedDiagnostics, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+	expectedPaths := []string{"App_tue.go", "App_render_tue.go"}
+	if diff := cmp.Diff(expectedPaths, generatedPaths(result.Files)); diff != "" {
+		t.Errorf("mismatch generated paths (-expected, +actual):\n%s", diff)
+	}
+	expectedRender, err := testFixtureString("testdata/golden/ClassBinding_render_tue.go")
+	if err != nil {
+		t.Fatalf("read expected class binding render fixture: %v", err)
+	}
+	actualRender, err := generatedSource(result, "App_render_tue.go")
+	if err != nil {
+		t.Fatalf("read actual generated class binding render: %v", err)
+	}
+	if diff := cmp.Diff(expectedRender, string(actualRender)); diff != "" {
+		t.Errorf("mismatch generated class binding render (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestGenerateProjectReportsUnsupportedClassBindingExpressions(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_classes/App.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	_, diagnostics := GenerateProject(*project)
+
+	expected := []diagnosticSummary{
+		{Path: "App.tue", Message: `class binding expression is not supported in the static render slice`, Line: 2, Column: 15},
+	}
+	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestGenerateProjectReportsClassBindingTypeDiagnostics(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_classes/BoolClass.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	_, diagnostics := GenerateProject(*project)
+
+	expected := []diagnosticSummary{
+		{Path: "BoolClass.tue", Message: `class binding expects string, got bool`, Line: 2, Column: 15},
+	}
+	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}
 }
@@ -375,6 +441,17 @@ func TestGeneratedLoopFixtureCompilesForWASM(t *testing.T) {
 
 	if err := compileGeneratedProjectForWASM(t.TempDir(), *project); err != nil {
 		t.Fatalf("compile generated loop fixture for WASM: %v", err)
+	}
+}
+
+func TestGeneratedClassBindingFixtureCompilesForWASM(t *testing.T) {
+	project, err := parseProjectFixture("testdata/classes/App.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	if err := compileGeneratedProjectForWASM(t.TempDir(), *project); err != nil {
+		t.Fatalf("compile generated class binding fixture for WASM: %v", err)
 	}
 }
 

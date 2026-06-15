@@ -1,0 +1,27 @@
+<template>
+<main class="page" :class="themeClass" data-page="dashboard">
+	<button :class='kind + "-button"'>Save</button>
+	<ul>
+		<li v-for="todo in todos" :key="todo.id" :class="todo.className">
+			{{ todo.text }}
+		</li>
+	</ul>
+	<section v-if="visible" class="panel" :class="themeClass">Ready</section>
+</main>
+</template>
+<script lang="go">
+package app
+
+type todo struct {
+	id        int
+	text      string
+	className string
+}
+
+type App struct {
+	themeClass string
+	kind       string
+	todos      []todo
+	visible    bool
+}
+</script>

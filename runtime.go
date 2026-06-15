@@ -52,6 +52,16 @@ func BoolAttr(name string) Attribute {
 	return Attribute{Name: name}
 }
 
+// ClassAttr returns a normalized class attribute from static and bound classes.
+func ClassAttr(static string, values ...string) Attribute {
+	classes := make([]string, 0, len(values)+1)
+	classes = append(classes, strings.Fields(static)...)
+	for _, value := range values {
+		classes = append(classes, strings.Fields(value)...)
+	}
+	return Attr("class", strings.Join(classes, " "))
+}
+
 // Element returns an element VNode.
 func Element(tag string, attrs []Attribute, children []VNode) VNode {
 	return VNode{Type: VNodeTypeElement, Tag: tag, Attrs: attrs, Children: children}

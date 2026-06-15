@@ -190,6 +190,7 @@ type fileGenerator struct {
 	fields      map[string]script.Field
 	methods     map[string]script.Method
 	locals      map[string]string
+	localTypes  map[string]string
 	nodes       []ManifestNode
 	diagnostics []Diagnostic
 }
@@ -260,13 +261,16 @@ func (g *fileGenerator) renderFor(node *gotemplate.Node, attr gotemplate.Attr) (
 	}
 
 	names := g.freshForNames(clause)
+	sourceType := g.expressionType(clause.Source)
+	types, _ := iterableTypesFor(sourceType)
 
-	popLocals := g.pushLocals(map[string]string{
-		clause.Item: names.item,
-	})
+	locals := map[string]string{clause.Item: names.item}
+	localTypes := map[string]string{clause.Item: types.Item}
 	if clause.Index != "" {
-		g.locals[clause.Index] = names.index
+		locals[clause.Index] = names.index
+		localTypes[clause.Index] = types.Key
 	}
+	popLocals := g.pushLocals(locals, localTypes)
 	rendered, renderedOK := g.renderNodeWithKey(node, *keyAttr)
 	popLocals()
 	if !renderedOK {
@@ -555,10 +559,23 @@ func (g *fileGenerator) renderBoundComponentProp(prop script.Prop, attr gotempla
 func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code, []jen.Code, bool) {
 	attrs := make([]jen.Code, 0, len(node.Attrs))
 	events := make([]jen.Code, 0, len(node.Attrs))
+	hasClassBinding := nodeBindAttr(node, "class") != nil
+	classInsert := -1
+	var classStatic []string
+	var classDynamic []jen.Code
 	ok := true
 	for _, attr := range node.Attrs {
 		switch attr.Kind {
 		case gotemplate.AttrStatic:
+			if hasClassBinding && attr.Name == "class" {
+				if classInsert == -1 {
+					classInsert = len(attrs)
+				}
+				if attr.HasValue {
+					classStatic = append(classStatic, attr.Value)
+				}
+				continue
+			}
 			if attr.HasValue {
 				attrs = append(attrs, jen.Qual(tueImportPath, "Attr").Call(jen.Lit(attr.Name), jen.Lit(attr.Value)))
 			} else {
@@ -566,6 +583,18 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 			}
 		case gotemplate.AttrBind:
 			if attr.Argument == "key" {
+				continue
+			}
+			if attr.Argument == "class" {
+				if classInsert == -1 {
+					classInsert = len(attrs)
+				}
+				classValue, classOK := g.renderClassBinding(attr)
+				if !classOK {
+					ok = false
+					continue
+				}
+				classDynamic = append(classDynamic, classValue)
 				continue
 			}
 			g.add(fmt.Sprintf("bound attribute %q generation is not supported in the static render slice", attr.RawName), attr.Span)
@@ -588,7 +617,41 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 			ok = false
 		}
 	}
+	if len(classDynamic) != 0 {
+		attrs = insertAttr(attrs, classInsert, renderClassAttr(classStatic, classDynamic))
+	}
 	return attrs, events, ok
+}
+
+func (g *fileGenerator) renderClassBinding(attr gotemplate.Attr) (jen.Code, bool) {
+	expression, ok := g.renderExpressionFor("class binding", attr.Expression, attr.ExpressionSpan)
+	if !ok {
+		return nil, false
+	}
+
+	valueType := g.expressionType(attr.Expression)
+	if !assignableType("string", valueType) {
+		g.add(fmt.Sprintf("class binding expects string, got %s", displayType(valueType)), attr.ExpressionSpan)
+		return nil, false
+	}
+	return expression, true
+}
+
+func renderClassAttr(static []string, dynamic []jen.Code) jen.Code {
+	args := make([]jen.Code, 0, len(dynamic)+1)
+	args = append(args, jen.Lit(strings.Join(static, " ")))
+	args = append(args, dynamic...)
+	return jen.Qual(tueImportPath, "ClassAttr").Call(args...)
+}
+
+func insertAttr(attrs []jen.Code, index int, attr jen.Code) []jen.Code {
+	if index < 0 || index >= len(attrs) {
+		return append(attrs, attr)
+	}
+	attrs = append(attrs, nil)
+	copy(attrs[index+1:], attrs[index:])
+	attrs[index] = attr
+	return attrs
 }
 
 func (g *fileGenerator) renderEvent(attr gotemplate.Attr) (jen.Code, bool) {
@@ -748,8 +811,9 @@ func nodeBindAttr(node *gotemplate.Node, argument string) *gotemplate.Attr {
 	return nil
 }
 
-func (g *fileGenerator) pushLocals(locals map[string]string) func() {
+func (g *fileGenerator) pushLocals(locals map[string]string, localTypes map[string]string) func() {
 	previous := g.locals
+	previousTypes := g.localTypes
 	next := make(map[string]string, len(previous)+len(locals))
 	for name, value := range previous {
 		next[name] = value
@@ -758,8 +822,18 @@ func (g *fileGenerator) pushLocals(locals map[string]string) func() {
 		next[name] = value
 	}
 	g.locals = next
+
+	nextTypes := make(map[string]string, len(previousTypes)+len(localTypes))
+	for name, value := range previousTypes {
+		nextTypes[name] = value
+	}
+	for name, value := range localTypes {
+		nextTypes[name] = value
+	}
+	g.localTypes = nextTypes
 	return func() {
 		g.locals = previous
+		g.localTypes = previousTypes
 	}
 }
 
