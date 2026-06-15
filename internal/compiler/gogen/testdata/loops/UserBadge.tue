@@ -1,0 +1,14 @@
+<template>
+<span>{{ name }}</span>
+</template>
+<script lang="go">
+package app
+
+import tue "github.com/norunners/tue"
+
+type UserBadge struct {
+	name     tue.Prop[string] `prop:"name,required"`
+	active   tue.Prop[bool]
+	onSelect func()
+}
+</script>

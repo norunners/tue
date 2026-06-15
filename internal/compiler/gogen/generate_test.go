@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -18,7 +19,7 @@ import (
 	gotemplate "github.com/norunners/tue/internal/compiler/template"
 )
 
-//go:embed testdata/static/*.tue testdata/dynamic/*.tue testdata/conditionals/*.tue testdata/events/*.tue testdata/components/*.tue testdata/invalid_conditionals/*.tue testdata/invalid_events/*.tue testdata/invalid_component_events/*.tue testdata/golden/*.go
+//go:embed testdata/static/*.tue testdata/dynamic/*.tue testdata/conditionals/*.tue testdata/loops/*.tue testdata/events/*.tue testdata/components/*.tue testdata/invalid_conditionals/*.tue testdata/invalid_loops/*.tue testdata/invalid_events/*.tue testdata/invalid_component_events/*.tue testdata/golden/*.go
 var testFixtures embed.FS
 
 func TestGenerateProjectEmitsStaticRenderFiles(t *testing.T) {
@@ -144,6 +145,89 @@ func TestGenerateProjectReportsUnsupportedConditionalExpressions(t *testing.T) {
 
 	if diff := cmp.Diff([]diagnosticSummary{
 		{Path: "App.tue", Message: `v-if expression is not supported in the static render slice`, Line: 2, Column: 10},
+	}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestGenerateProjectEmitsLoopRenderFiles(t *testing.T) {
+	project, err := parseProjectFixture("testdata/loops")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	result, diagnostics := GenerateProject(*project)
+	if result == nil {
+		t.Fatal("GenerateProject result is nil")
+	}
+
+	if diff := cmp.Diff([]diagnosticSummary{}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{
+		"App_tue.go",
+		"App_render_tue.go",
+		"UserBadge_tue.go",
+		"UserBadge_render_tue.go",
+	}, generatedPaths(result.Files)); diff != "" {
+		t.Errorf("mismatch generated paths (-expected, +actual):\n%s", diff)
+	}
+	expectedRender, err := testFixtureString("testdata/golden/Loop_render_tue.go")
+	if err != nil {
+		t.Fatalf("read expected loop render fixture: %v", err)
+	}
+	actualRender, err := generatedSource(result, "App_render_tue.go")
+	if err != nil {
+		t.Fatalf("read actual generated loop render: %v", err)
+	}
+	if diff := cmp.Diff(expectedRender, string(actualRender)); diff != "" {
+		t.Errorf("mismatch generated loop render (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestGenerateProjectEmitsKeyedEmptyFragmentForFalseLoopCondition(t *testing.T) {
+	project, err := parseProjectFixture("testdata/loops")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	result, diagnostics := GenerateProject(*project)
+	if result == nil {
+		t.Fatal("GenerateProject result is nil")
+	}
+	if diff := cmp.Diff([]diagnosticSummary{}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+	actualRender, err := generatedSource(result, "App_render_tue.go")
+	if err != nil {
+		t.Fatalf("read actual generated loop render: %v", err)
+	}
+
+	source := string(actualRender)
+	for _, expected := range []string{
+		"if __tueItem.Done {",
+		"return tue.Fragment(nil)",
+		"__tueVNode.Key = fmt.Sprint(__tueItem.ID)",
+	} {
+		if !strings.Contains(source, expected) {
+			t.Errorf("mismatch generated loop conditional: expected generated source to contain %q", expected)
+		}
+	}
+}
+
+func TestGenerateProjectReportsUnsupportedLoopConstructs(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_loops/App.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	_, diagnostics := GenerateProject(*project)
+
+	if diff := cmp.Diff([]diagnosticSummary{
+		{Path: "App.tue", Message: `v-for must use '<item> in <items>'`, Line: 3, Column: 13},
+		{Path: "App.tue", Message: `v-for requires a :key attribute`, Line: 4, Column: 6},
+		{Path: "App.tue", Message: `v-for source expression is not supported in the static render slice`, Line: 5, Column: 21},
+		{Path: "App.tue", Message: `v-for key expression is not supported in the static render slice`, Line: 6, Column: 34},
 	}, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}
@@ -280,6 +364,17 @@ func TestGeneratedConditionalFixtureCompilesForWASM(t *testing.T) {
 
 	if err := compileGeneratedProjectForWASM(t.TempDir(), *project); err != nil {
 		t.Fatalf("compile generated conditional fixture for WASM: %v", err)
+	}
+}
+
+func TestGeneratedLoopFixtureCompilesForWASM(t *testing.T) {
+	project, err := parseProjectFixture("testdata/loops")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	if err := compileGeneratedProjectForWASM(t.TempDir(), *project); err != nil {
+		t.Fatalf("compile generated loop fixture for WASM: %v", err)
 	}
 }
 

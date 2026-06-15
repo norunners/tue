@@ -1,0 +1,20 @@
+<template>
+<ul>
+	<li v-for="todo of todos" :key="todo.ID">Bad clause</li>
+	<li v-for="todo in todos">Missing key</li>
+	<li v-for="todo in makeTodos()" :key="todo.ID">Bad source</li>
+	<li v-for="todo in todos" :key="key(todo)">Bad key</li>
+</ul>
+</template>
+<script lang="go">
+package app
+
+type Todo struct {
+	ID   int
+	Text string
+}
+
+type App struct {
+	todos []Todo
+}
+</script>
