@@ -1,6 +1,6 @@
 <template>
 <main>
-	<UserBadge :name="name" active @select="selectUser" />
+	<UserBadge v-if="showBadge" :name="name" active @select="selectUser" />
 </main>
 </template>
 <script lang="go">
@@ -9,7 +9,8 @@ package fixtures
 import tue "github.com/norunners/tue"
 
 type Parent struct {
-	name tue.Ref[string]
+	name      tue.Ref[string]
+	showBadge bool
 }
 
 func (p *Parent) Init(tue.Context) {

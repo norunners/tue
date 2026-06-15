@@ -1,0 +1,17 @@
+<template>
+<main>
+	<p v-if="visible">Visible: {{ name }}</p>
+	<section v-if="count > 0">
+		<span>{{ count }}</span>
+	</section>
+</main>
+</template>
+<script lang="go">
+package app
+
+type App struct {
+	visible bool
+	name    string
+	count   int
+}
+</script>
