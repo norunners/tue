@@ -1,0 +1,10 @@
+<template>
+<main :class="visible">Hello</main>
+</template>
+<script lang="go">
+package app
+
+type BoolClass struct {
+	visible bool
+}
+</script>

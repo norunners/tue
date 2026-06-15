@@ -14,7 +14,7 @@ import (
 	gotemplate "github.com/norunners/tue/internal/compiler/template"
 )
 
-//go:embed testdata/valid/*.tue testdata/invalid/*.tue testdata/invalid_event_handler/*.tue testdata/invalid_component_event/*.tue testdata/invalid_map_loop/*.tue testdata/missing_required_prop/*.tue
+//go:embed testdata
 var testFixtures embed.FS
 
 func TestCheckProjectAcceptsValidProject(t *testing.T) {
@@ -107,6 +107,21 @@ func TestCheckProjectReportsMapKeyTypeDiagnostics(t *testing.T) {
 	if diff := cmp.Diff([]diagnosticSummary{
 		{Path: "testdata/invalid_map_loop/Parent.tue", Message: `operator + requires both operands to be strings or numbers`, Line: 2, Column: 51},
 	}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestCheckProjectReportsClassBindingTypeDiagnostics(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_class_binding")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	diagnostics := CheckProject(project)
+	expected := []diagnosticSummary{
+		{Path: "testdata/invalid_class_binding/Parent.tue", Message: `class binding expects string, got bool`, Line: 2, Column: 16},
+	}
+	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}
 }

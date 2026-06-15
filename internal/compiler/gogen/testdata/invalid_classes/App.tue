@@ -1,0 +1,10 @@
+<template>
+<main :class="className()">Hello</main>
+</template>
+<script lang="go">
+package app
+
+type App struct{}
+
+func (a *App) className() string { return "" }
+</script>
