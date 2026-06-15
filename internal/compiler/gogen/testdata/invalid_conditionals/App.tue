@@ -1,0 +1,12 @@
+<template>
+<p v-if="visible()">Visible</p>
+</template>
+<script lang="go">
+package app
+
+type App struct{}
+
+func (a *App) visible() bool {
+	return true
+}
+</script>

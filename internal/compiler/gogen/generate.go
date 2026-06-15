@@ -222,7 +222,15 @@ func (g *fileGenerator) renderNode(node *gotemplate.Node) (jen.Code, bool) {
 	if node == nil {
 		return nil, false
 	}
+	attr := nodeDirectiveAttr(node, gotemplate.DirectiveIf)
+	if attr != nil {
+		return g.renderIf(node, *attr)
+	}
 
+	return g.renderNodeBody(node)
+}
+
+func (g *fileGenerator) renderNodeBody(node *gotemplate.Node) (jen.Code, bool) {
 	switch node.Kind {
 	case gotemplate.NodeElement:
 		return g.renderElement(node)
@@ -240,6 +248,21 @@ func (g *fileGenerator) renderNode(node *gotemplate.Node) (jen.Code, bool) {
 		g.add(fmt.Sprintf("unsupported template node kind %q", node.Kind), node.Span)
 		return nil, false
 	}
+}
+
+func (g *fileGenerator) renderIf(node *gotemplate.Node, attr gotemplate.Attr) (jen.Code, bool) {
+	condition, conditionOK := g.renderExpressionFor("v-if", attr.Expression, attr.ExpressionSpan)
+	rendered, nodeOK := g.renderNodeBody(node)
+	if !conditionOK || !nodeOK {
+		return nil, false
+	}
+
+	return jen.Func().Params().Qual(tueImportPath, "VNode").Block(
+		jen.If(condition).Block(
+			jen.Return(rendered),
+		),
+		jen.Return(g.emptyFragment()),
+	).Call(), true
 }
 
 func (g *fileGenerator) renderElement(node *gotemplate.Node) (jen.Code, bool) {
@@ -342,6 +365,9 @@ func (g *fileGenerator) renderComponentFields(node *gotemplate.Node, child compo
 			}
 			events[field.Name] = field.Value
 		case gotemplate.AttrDirective:
+			if attr.Directive == gotemplate.DirectiveIf {
+				continue
+			}
 			g.add(fmt.Sprintf("directive %q generation is not supported on components in the component render slice", attr.RawName), attr.Span)
 			ok = false
 		default:
@@ -478,6 +504,9 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 			}
 			events = append(events, event)
 		case gotemplate.AttrDirective:
+			if attr.Directive == gotemplate.DirectiveIf {
+				continue
+			}
 			g.add(fmt.Sprintf("directive %q generation is not supported in the static render slice", attr.RawName), attr.Span)
 			ok = false
 		default:
@@ -547,9 +576,13 @@ func (g *fileGenerator) renderInterpolation(node *gotemplate.Node) (jen.Code, bo
 }
 
 func (g *fileGenerator) renderExpression(expression string, span sfc.Span) (jen.Code, bool) {
+	return g.renderExpressionFor("interpolation", expression, span)
+}
+
+func (g *fileGenerator) renderExpressionFor(subject string, expression string, span sfc.Span) (jen.Code, bool) {
 	expr, err := goparser.ParseExprFrom(token.NewFileSet(), "", expression, 0)
 	if err != nil {
-		g.add(fmt.Sprintf("invalid interpolation expression: %s", err), span)
+		g.add(fmt.Sprintf("invalid %s expression: %s", subject, err), span)
 		return nil, false
 	}
 
@@ -558,7 +591,7 @@ func (g *fileGenerator) renderExpression(expression string, span sfc.Span) (jen.
 	}
 	code, ok := generated.render(expr)
 	if !ok {
-		g.add("interpolation expression is not supported in the static render slice", span)
+		g.add(fmt.Sprintf("%s expression is not supported in the static render slice", subject), span)
 		return nil, false
 	}
 	return code, true
@@ -585,6 +618,10 @@ func (g *fileGenerator) vnodeSlice(nodes []jen.Code) jen.Code {
 	return jen.Index().Qual(tueImportPath, "VNode").Values(nodes...)
 }
 
+func (g *fileGenerator) emptyFragment() jen.Code {
+	return jen.Qual(tueImportPath, "Fragment").Call(jen.Nil())
+}
+
 func (g *fileGenerator) recordNode(node *gotemplate.Node) {
 	manifestNode := ManifestNode{
 		Kind:       string(node.Kind),
@@ -608,6 +645,19 @@ func (g *projectGenerator) add(path string, message string, span sfc.Span) {
 		Message: message,
 		Span:    span,
 	})
+}
+
+func nodeDirectiveAttr(node *gotemplate.Node, kind gotemplate.DirectiveKind) *gotemplate.Attr {
+	if node == nil || node.Kind != gotemplate.NodeElement {
+		return nil
+	}
+	for i := range node.Attrs {
+		attr := &node.Attrs[i]
+		if attr.Kind == gotemplate.AttrDirective && attr.Directive == kind {
+			return attr
+		}
+	}
+	return nil
 }
 
 func renderJenniferFile(file *jen.File) ([]byte, error) {

@@ -18,7 +18,7 @@ import (
 	gotemplate "github.com/norunners/tue/internal/compiler/template"
 )
 
-//go:embed testdata/static/*.tue testdata/dynamic/*.tue testdata/events/*.tue testdata/components/*.tue testdata/invalid_events/*.tue testdata/invalid_component_events/*.tue testdata/golden/*.go
+//go:embed testdata/static/*.tue testdata/dynamic/*.tue testdata/conditionals/*.tue testdata/events/*.tue testdata/components/*.tue testdata/invalid_conditionals/*.tue testdata/invalid_events/*.tue testdata/invalid_component_events/*.tue testdata/golden/*.go
 var testFixtures embed.FS
 
 func TestGenerateProjectEmitsStaticRenderFiles(t *testing.T) {
@@ -97,9 +97,53 @@ func TestGenerateProjectReportsUnsupportedStaticSliceConstructs(t *testing.T) {
 	_, diagnostics := GenerateProject(*project)
 
 	if diff := cmp.Diff([]diagnosticSummary{
-		{Path: "App.tue", Message: `directive "v-if" generation is not supported in the static render slice`, Line: 2, Column: 9},
 		{Path: "App.tue", Message: `bound attribute ":class" generation is not supported in the static render slice`, Line: 2, Column: 38},
 		{Path: "App.tue", Message: `component "UserBadge" is not registered`, Line: 3, Column: 2},
+	}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestGenerateProjectEmitsConditionalRenderFiles(t *testing.T) {
+	project, err := parseProjectFixture("testdata/conditionals/App.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	result, diagnostics := GenerateProject(*project)
+	if result == nil {
+		t.Fatal("GenerateProject result is nil")
+	}
+
+	if diff := cmp.Diff([]diagnosticSummary{}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"App_tue.go", "App_render_tue.go"}, generatedPaths(result.Files)); diff != "" {
+		t.Errorf("mismatch generated paths (-expected, +actual):\n%s", diff)
+	}
+	expectedRender, err := testFixtureString("testdata/golden/Conditional_render_tue.go")
+	if err != nil {
+		t.Fatalf("read expected conditional render fixture: %v", err)
+	}
+	actualRender, err := generatedSource(result, "App_render_tue.go")
+	if err != nil {
+		t.Fatalf("read actual generated conditional render: %v", err)
+	}
+	if diff := cmp.Diff(expectedRender, string(actualRender)); diff != "" {
+		t.Errorf("mismatch generated conditional render (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestGenerateProjectReportsUnsupportedConditionalExpressions(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_conditionals/App.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	_, diagnostics := GenerateProject(*project)
+
+	if diff := cmp.Diff([]diagnosticSummary{
+		{Path: "App.tue", Message: `v-if expression is not supported in the static render slice`, Line: 2, Column: 10},
 	}, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}
@@ -225,6 +269,17 @@ func TestGeneratedComponentFixtureCompilesForWASM(t *testing.T) {
 
 	if err := compileGeneratedProjectForWASM(t.TempDir(), *project); err != nil {
 		t.Fatalf("compile generated component fixture for WASM: %v", err)
+	}
+}
+
+func TestGeneratedConditionalFixtureCompilesForWASM(t *testing.T) {
+	project, err := parseProjectFixture("testdata/conditionals/App.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	if err := compileGeneratedProjectForWASM(t.TempDir(), *project); err != nil {
+		t.Fatalf("compile generated conditional fixture for WASM: %v", err)
 	}
 }
 
