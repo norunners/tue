@@ -244,6 +244,13 @@ func patchComponentVNode(old *mountedVNode, next VNode) (*mountedVNode, error) {
 }
 
 func patchChildren(dom domBoundary, parent domNode, before domNode, old []*mountedVNode, next []VNode) ([]*mountedVNode, error) {
+	if hasKeyedChildren(old, next) {
+		return patchKeyedChildren(dom, parent, before, old, next)
+	}
+	return patchUnkeyedChildren(dom, parent, before, old, next)
+}
+
+func patchUnkeyedChildren(dom domBoundary, parent domNode, before domNode, old []*mountedVNode, next []VNode) ([]*mountedVNode, error) {
 	shared := len(old)
 	if len(next) < shared {
 		shared = len(next)
@@ -270,6 +277,142 @@ func patchChildren(dom domBoundary, parent domNode, before domNode, old []*mount
 		}
 	}
 	return children, nil
+}
+
+func patchKeyedChildren(dom domBoundary, parent domNode, before domNode, old []*mountedVNode, next []VNode) ([]*mountedVNode, error) {
+	oldByKey := groupOldChildrenByKey(old)
+	used := make(map[*mountedVNode]struct{}, len(old))
+
+	children := make([]*mountedVNode, 0, len(next))
+	for index, nextVNode := range next {
+		oldChild := nextOldChild(index, nextVNode, old, oldByKey, used)
+		child, err := patchOrMountChild(dom, parent, before, oldChild, nextVNode)
+		if err != nil {
+			return nil, err
+		}
+		if oldChild != nil {
+			used[oldChild] = struct{}{}
+		}
+		children = append(children, child)
+	}
+
+	for _, child := range old {
+		if _, ok := used[child]; ok {
+			continue
+		}
+		if err := removeMountedVNode(dom, parent, child); err != nil {
+			return nil, err
+		}
+	}
+	if sameMountedChildren(old, children) {
+		return children, nil
+	}
+	if err := reorderMountedChildren(dom, parent, before, children); err != nil {
+		return nil, err
+	}
+	return children, nil
+}
+
+func hasKeyedChildren(old []*mountedVNode, next []VNode) bool {
+	for _, child := range old {
+		if child != nil && child.vnode.Key != "" {
+			return true
+		}
+	}
+	for _, child := range next {
+		if child.Key != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func groupOldChildrenByKey(old []*mountedVNode) map[string]*mountedVNode {
+	byKey := make(map[string]*mountedVNode)
+	for _, child := range old {
+		if child != nil && child.vnode.Key != "" {
+			if _, ok := byKey[child.vnode.Key]; !ok {
+				byKey[child.vnode.Key] = child
+			}
+		}
+	}
+	return byKey
+}
+
+func nextOldChild(index int, next VNode, old []*mountedVNode, oldByKey map[string]*mountedVNode, used map[*mountedVNode]struct{}) *mountedVNode {
+	if next.Key != "" {
+		child := oldByKey[next.Key]
+		if child == nil {
+			return nil
+		}
+		if _, ok := used[child]; ok {
+			return nil
+		}
+		return child
+	}
+
+	if index >= len(old) {
+		return nil
+	}
+	child := old[index]
+	if child == nil || child.vnode.Key != "" {
+		return nil
+	}
+	if _, ok := used[child]; ok {
+		return nil
+	}
+	return child
+}
+
+func patchOrMountChild(dom domBoundary, parent domNode, before domNode, old *mountedVNode, next VNode) (*mountedVNode, error) {
+	if old != nil {
+		return patchVNode(dom, parent, old, next)
+	}
+	return mountVNode(dom, parent, before, next)
+}
+
+func sameMountedChildren(old []*mountedVNode, next []*mountedVNode) bool {
+	if len(old) != len(next) {
+		return false
+	}
+	for i := range old {
+		if old[i] != next[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func reorderMountedChildren(dom domBoundary, parent domNode, before domNode, children []*mountedVNode) error {
+	anchor := before
+	for i := len(children) - 1; i >= 0; i-- {
+		child := children[i]
+		updateComponentInsertBefore(child, anchor)
+		if err := moveMountedVNodeBefore(dom, parent, child, anchor); err != nil {
+			return err
+		}
+		anchor = firstDOMNode(child)
+	}
+	return nil
+}
+
+func moveMountedVNodeBefore(dom domBoundary, parent domNode, mounted *mountedVNode, before domNode) error {
+	if mounted == nil {
+		return nil
+	}
+	for _, node := range mounted.nodes {
+		if err := insertNode(dom, parent, node, before); err != nil {
+			return fmt.Errorf("move node: %w", err)
+		}
+	}
+	return nil
+}
+
+func updateComponentInsertBefore(mounted *mountedVNode, before domNode) {
+	if mounted == nil || mounted.component == nil {
+		return
+	}
+	mounted.component.insertBefore = before
 }
 
 func patchAttrs(dom domBoundary, node domNode, old []Attribute, next []Attribute) error {
