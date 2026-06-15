@@ -45,6 +45,9 @@ func (c *fileChecker) checkElement(node *gotemplate.Node, scope *scope) {
 		c.checkComponent(node, elementScope)
 	} else {
 		c.checkCommonAttrs(node, elementScope, true)
+		if node.Tag == "slot" {
+			c.checkSlot(node)
+		}
 		c.checkNativeAttrs(node, elementScope)
 	}
 	c.checkNodes(node.Children, elementScope)
@@ -60,6 +63,19 @@ func (c *fileChecker) checkNativeAttrs(node *gotemplate.Node, scope *scope) {
 			case "style":
 				c.expectType("string", value.Type, "style binding", attr.ExpressionSpan)
 			}
+		}
+	}
+}
+
+func (c *fileChecker) checkSlot(node *gotemplate.Node) {
+	for _, attr := range node.Attrs {
+		if attr.Kind == gotemplate.AttrDirective && (attr.Directive == gotemplate.DirectiveIf || attr.Directive == gotemplate.DirectiveFor) {
+			continue
+		}
+		if isNamedSlotAttr(attr) {
+			c.add("named slots are not supported in the default slot slice", attr.Span)
+		} else {
+			c.add(fmt.Sprintf("slot attribute %q is not supported in the default slot slice", attr.RawName), attr.Span)
 		}
 	}
 }

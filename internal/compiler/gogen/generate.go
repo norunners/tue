@@ -60,6 +60,11 @@ type componentBinding struct {
 	events    map[string]script.Field
 }
 
+type componentField struct {
+	Name  string
+	Value jen.Code
+}
+
 func (g *projectGenerator) indexComponents(files []File) {
 	g.components = make(map[string]componentBinding, len(files))
 	for _, file := range files {
@@ -339,6 +344,9 @@ func (g *fileGenerator) renderIf(node *gotemplate.Node, attr gotemplate.Attr) (j
 }
 
 func (g *fileGenerator) renderElement(node *gotemplate.Node) (jen.Code, bool) {
+	if node.Tag == "slot" {
+		return g.renderSlot(node)
+	}
 	if node.IsComponent {
 		return g.renderComponent(node)
 	}
@@ -378,27 +386,80 @@ func (g *fileGenerator) renderComponent(node *gotemplate.Node) (jen.Code, bool) 
 		g.add(fmt.Sprintf("component %q is not registered", node.Tag), node.TagSpan)
 		return nil, false
 	}
-	if hasRenderableComponentChildren(node.Children) {
-		g.add(fmt.Sprintf("component %q children generation is not supported in the component render slice", node.Tag), node.ContentSpan)
-		return nil, false
-	}
 
 	fields, ok := g.renderComponentFields(node, child)
 	if !ok {
 		return nil, false
 	}
+	defaultSlot := g.renderComponentDefaultSlot(node)
 
 	g.recordNode(node)
-	return jen.Qual(tueImportPath, "Component").Call(
+	statements := []jen.Code{
+		jen.Id("child").Op(":=").Op("&").Id(child.component.Name).Values(componentFieldValues(fields)...),
+		jen.Id("childComp").Op(":=").Qual(tueImportPath, "CompOf").Call(jen.Id("child"), jen.Id("render"+child.component.Name)),
+	}
+	if defaultSlot != nil {
+		statements = append(statements, jen.Id("childComp").Dot("DefaultSlot").Op("=").Add(defaultSlot))
+	}
+	statements = append(statements, jen.Return(jen.Id("childComp")))
+
+	return jen.Qual(tueImportPath, "ComponentWithUpdate").Call(
 		jen.Lit(node.Tag),
-		jen.Func().Params().Op("*").Qual(tueImportPath, "Comp").Block(
-			jen.Id("child").Op(":=").Op("&").Id(child.component.Name).Values(fields...),
-			jen.Return(jen.Qual(tueImportPath, "CompOf").Call(jen.Id("child"), jen.Id("render"+child.component.Name))),
-		),
+		jen.Func().Params().Op("*").Qual(tueImportPath, "Comp").Block(statements...),
+		g.renderComponentUpdater(child, fields, defaultSlot),
 	), true
 }
 
-func (g *fileGenerator) renderComponentFields(node *gotemplate.Node, child componentBinding) ([]jen.Code, bool) {
+func (g *fileGenerator) renderComponentDefaultSlot(node *gotemplate.Node) jen.Code {
+	if !hasRenderableComponentChildren(node.Children) {
+		return nil
+	}
+	return jen.Func().Params().Qual(tueImportPath, "VNode").Block(
+		jen.Return(g.renderNodes(node.Children)),
+	)
+}
+
+func (g *fileGenerator) renderComponentUpdater(child componentBinding, fields []componentField, defaultSlot jen.Code) jen.Code {
+	statements := make([]jen.Code, 0, len(fields)+2)
+	if len(fields) != 0 {
+		statements = append(
+			statements,
+			jen.Id("child").Op(":=").Id("childComp").Dot("Component").Assert(jen.Op("*").Id(child.component.Name)),
+		)
+		for _, field := range fields {
+			statements = append(statements, jen.Id("child").Dot(field.Name).Op("=").Add(field.Value))
+		}
+	}
+	if defaultSlot == nil {
+		statements = append(statements, jen.Id("childComp").Dot("DefaultSlot").Op("=").Nil())
+	} else {
+		statements = append(statements, jen.Id("childComp").Dot("DefaultSlot").Op("=").Add(defaultSlot))
+	}
+	return jen.Func().Params(jen.Id("childComp").Op("*").Qual(tueImportPath, "Comp")).Block(statements...)
+}
+
+func (g *fileGenerator) renderSlot(node *gotemplate.Node) (jen.Code, bool) {
+	ok := true
+	for _, attr := range node.Attrs {
+		if attr.Kind == gotemplate.AttrDirective && (attr.Directive == gotemplate.DirectiveIf || attr.Directive == gotemplate.DirectiveFor) {
+			continue
+		}
+		if isNamedSlotAttr(attr) {
+			g.add("named slots are not supported in the default slot slice", attr.Span)
+		} else {
+			g.add(fmt.Sprintf("slot attribute %q generation is not supported in the default slot slice", attr.RawName), attr.Span)
+		}
+		ok = false
+	}
+	if !ok {
+		return nil, false
+	}
+
+	g.recordNode(node)
+	return jen.Qual(tueImportPath, "Slot").Call(g.renderNodes(node.Children)), true
+}
+
+func (g *fileGenerator) renderComponentFields(node *gotemplate.Node, child componentBinding) ([]componentField, bool) {
 	props := make(map[string]jen.Code, len(node.Attrs))
 	events := make(map[string]jen.Code, len(node.Attrs))
 	ok := true
@@ -457,7 +518,7 @@ func (g *fileGenerator) renderComponentFields(node *gotemplate.Node, child compo
 		}
 	}
 
-	fields := make([]jen.Code, 0, len(child.component.Props))
+	fields := make([]componentField, 0, len(child.component.Props)+len(child.component.Events))
 	for _, prop := range child.component.Props {
 		value, found := props[prop.Name]
 		if !found {
@@ -474,13 +535,14 @@ func (g *fileGenerator) renderComponentFields(node *gotemplate.Node, child compo
 			}
 			value = zero
 		}
-		fields = append(fields, jen.Id(prop.Field.Name).Op(":").Add(value))
+		fields = append(fields, componentField{Name: prop.Field.Name, Value: value})
 	}
 	for _, event := range child.component.Events {
 		value, found := events[event.Name]
-		if found {
-			fields = append(fields, jen.Id(event.Name).Op(":").Add(value))
+		if !found {
+			value = jen.Nil()
 		}
+		fields = append(fields, componentField{Name: event.Name, Value: value})
 	}
 	return fields, ok
 }
@@ -735,6 +797,14 @@ func renderStyleAttr(static []string, dynamic []jen.Code) jen.Code {
 	args = append(args, jen.Lit(strings.Join(static, "; ")))
 	args = append(args, dynamic...)
 	return jen.Qual(tueImportPath, "StyleAttr").Call(args...)
+}
+
+func componentFieldValues(fields []componentField) []jen.Code {
+	values := make([]jen.Code, len(fields))
+	for i, field := range fields {
+		values[i] = jen.Id(field.Name).Op(":").Add(field.Value)
+	}
+	return values
 }
 
 func (g *fileGenerator) renderModelBinding(node *gotemplate.Node, attr gotemplate.Attr) ([]jen.Code, jen.Code, bool) {
@@ -994,6 +1064,11 @@ func nodeBindAttr(node *gotemplate.Node, argument string) *gotemplate.Attr {
 		}
 	}
 	return nil
+}
+
+func isNamedSlotAttr(attr gotemplate.Attr) bool {
+	return (attr.Kind == gotemplate.AttrStatic && attr.Name == "name") ||
+		(attr.Kind == gotemplate.AttrBind && attr.Argument == "name")
 }
 
 type nativeModel struct {

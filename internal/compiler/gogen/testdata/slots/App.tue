@@ -1,0 +1,18 @@
+<template>
+	<main>
+		<Card title="Status">
+			<p class="body">{{ message }}</p>
+			<span v-if="ready">Ready</span>
+		</Card>
+		<Card title="Empty" />
+	</main>
+</template>
+
+<script lang="go">
+package app
+
+type App struct {
+	message string
+	ready   bool
+}
+</script>

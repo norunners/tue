@@ -12,11 +12,21 @@ func NewParent() *tue.Comp {
 func renderParent(component *Parent) tue.VNode {
 	return tue.Element("main", nil, []tue.VNode{func() tue.VNode {
 		if component.showBadge {
-			return tue.Component("UserBadge", func() *tue.Comp {
+			return tue.ComponentWithUpdate("UserBadge", func() *tue.Comp {
 				child := &UserBadge{name: tue.PropOfFunc(func() string {
 					return component.name.Get()
 				}), active: tue.PropOf(true), label: tue.PropOf(""), onSelect: component.selectUser}
-				return tue.CompOf(child, renderUserBadge)
+				childComp := tue.CompOf(child, renderUserBadge)
+				return childComp
+			}, func(childComp *tue.Comp) {
+				child := childComp.Component.(*UserBadge)
+				child.name = tue.PropOfFunc(func() string {
+					return component.name.Get()
+				})
+				child.active = tue.PropOf(true)
+				child.label = tue.PropOf("")
+				child.onSelect = component.selectUser
+				childComp.DefaultSlot = nil
 			})
 		}
 		return tue.Fragment(nil)

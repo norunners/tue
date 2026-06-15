@@ -214,3 +214,8 @@ func staticAttrValue(node *gotemplate.Node, name string) (string, bool) {
 	}
 	return "", false
 }
+
+func isNamedSlotAttr(attr gotemplate.Attr) bool {
+	return (attr.Kind == gotemplate.AttrStatic && attr.Name == "name") ||
+		(attr.Kind == gotemplate.AttrBind && attr.Argument == "name")
+}

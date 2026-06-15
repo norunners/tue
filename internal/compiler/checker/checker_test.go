@@ -141,6 +141,22 @@ func TestCheckProjectReportsStyleBindingTypeDiagnostics(t *testing.T) {
 	}
 }
 
+func TestCheckProjectReportsNamedSlotDiagnostics(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_slot_binding")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	diagnostics := CheckProject(project)
+	expected := []diagnosticSummary{
+		{Path: "testdata/invalid_slot_binding/Parent.tue", Message: `named slots are not supported in the default slot slice`, Line: 3, Column: 9},
+		{Path: "testdata/invalid_slot_binding/Parent.tue", Message: `named slots are not supported in the default slot slice`, Line: 4, Column: 9},
+	}
+	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestCheckProjectReportsModelBindingDiagnostics(t *testing.T) {
 	project, err := parseProjectFixture("testdata/invalid_model_binding")
 	if err != nil {
