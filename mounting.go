@@ -7,6 +7,8 @@ type Mounted struct {
 	component    *Comp
 	target       mountTarget
 	tree         *mountedVNode
+	owner        *mountedVNode
+	insertBefore domNode
 	renderEffect *componentRenderEffect
 
 	mounted   bool
@@ -72,6 +74,10 @@ func (m *Mounted) Update() error {
 
 // Unmount calls cleanup functions, clears the target, and calls optional OnUnmounted.
 func (m *Mounted) Unmount() error {
+	return m.unmount(true)
+}
+
+func (m *Mounted) unmount(clearTarget bool) error {
 	if m == nil {
 		return fmt.Errorf("mounted component is required")
 	}
@@ -86,7 +92,10 @@ func (m *Mounted) Unmount() error {
 	m.component.runCleanups()
 	cleanupMountedVNode(m.tree)
 	m.tree = nil
-	err := m.target.clear()
+	var err error
+	if clearTarget {
+		err = m.target.clear()
+	}
 	m.component.unmounted()
 	if err != nil {
 		return fmt.Errorf("clear mount target: %w", err)
@@ -193,10 +202,13 @@ func (m *Mounted) patchRenderedVNode(vnode VNode) error {
 	if m.tree == nil {
 		operation = "render"
 	}
-	tree, err := patchVNode(m.target, m.target.root(), m.tree, vnode)
+	tree, err := patchVNodeAt(m.target, m.target.root(), m.insertBefore, m.tree, vnode)
 	if err != nil {
 		return fmt.Errorf("%s mount target: %w", operation, err)
 	}
 	m.tree = tree
+	if m.owner != nil {
+		m.owner.nodes = mountedNodes(tree)
+	}
 	return nil
 }

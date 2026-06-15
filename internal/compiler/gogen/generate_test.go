@@ -6,6 +6,7 @@ import (
 	"fmt"
 	goparser "go/parser"
 	"go/token"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,7 +18,7 @@ import (
 	gotemplate "github.com/norunners/tue/internal/compiler/template"
 )
 
-//go:embed testdata/static/*.tue testdata/dynamic/*.tue testdata/events/*.tue testdata/invalid_events/*.tue testdata/golden/*.go
+//go:embed testdata/static/*.tue testdata/dynamic/*.tue testdata/events/*.tue testdata/components/*.tue testdata/invalid_events/*.tue testdata/golden/*.go
 var testFixtures embed.FS
 
 func TestGenerateProjectEmitsStaticRenderFiles(t *testing.T) {
@@ -26,7 +27,7 @@ func TestGenerateProjectEmitsStaticRenderFiles(t *testing.T) {
 		t.Fatalf("parse project fixture: %v", err)
 	}
 
-	result, diagnostics := GenerateProject(project)
+	result, diagnostics := GenerateProject(*project)
 	if result == nil {
 		t.Fatal("GenerateProject result is nil")
 	}
@@ -93,12 +94,12 @@ func TestGenerateProjectReportsUnsupportedStaticSliceConstructs(t *testing.T) {
 		t.Fatalf("parse project fixture: %v", err)
 	}
 
-	_, diagnostics := GenerateProject(project)
+	_, diagnostics := GenerateProject(*project)
 
 	if diff := cmp.Diff([]diagnosticSummary{
 		{Path: "App.tue", Message: `directive "v-if" generation is not supported in the static render slice`, Line: 2, Column: 9},
 		{Path: "App.tue", Message: `bound attribute ":class" generation is not supported in the static render slice`, Line: 2, Column: 38},
-		{Path: "App.tue", Message: `component "UserBadge" generation is not supported in the static render slice`, Line: 3, Column: 2},
+		{Path: "App.tue", Message: `component "UserBadge" is not registered`, Line: 3, Column: 2},
 	}, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}
@@ -110,7 +111,7 @@ func TestGenerateProjectEmitsNativeEventHandlers(t *testing.T) {
 		t.Fatalf("parse project fixture: %v", err)
 	}
 
-	result, diagnostics := GenerateProject(project)
+	result, diagnostics := GenerateProject(*project)
 	if result == nil {
 		t.Fatal("GenerateProject result is nil")
 	}
@@ -134,13 +135,49 @@ func TestGenerateProjectEmitsNativeEventHandlers(t *testing.T) {
 	}
 }
 
+func TestGenerateProjectEmitsChildComponents(t *testing.T) {
+	project, err := parseProjectFixture("testdata/components")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	result, diagnostics := GenerateProject(*project)
+	if result == nil {
+		t.Fatal("GenerateProject result is nil")
+	}
+
+	if diff := cmp.Diff([]diagnosticSummary{}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{
+		"Parent_tue.go",
+		"Parent_render_tue.go",
+		"UserBadge_tue.go",
+		"UserBadge_render_tue.go",
+	}, generatedPaths(result.Files)); diff != "" {
+		t.Errorf("mismatch generated paths (-expected, +actual):\n%s", diff)
+	}
+
+	expectedRender, err := testFixtureString("testdata/golden/Parent_render_tue.go")
+	if err != nil {
+		t.Fatalf("read expected parent render fixture: %v", err)
+	}
+	actualRender, err := generatedSource(result, "Parent_render_tue.go")
+	if err != nil {
+		t.Fatalf("read actual generated parent render: %v", err)
+	}
+	if diff := cmp.Diff(expectedRender, string(actualRender)); diff != "" {
+		t.Errorf("mismatch generated parent render (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestGenerateProjectReportsUnsupportedEventHandlers(t *testing.T) {
 	project, err := parseProjectFixture("testdata/invalid_events/App.tue")
 	if err != nil {
 		t.Fatalf("parse project fixture: %v", err)
 	}
 
-	_, diagnostics := GenerateProject(project)
+	_, diagnostics := GenerateProject(*project)
 
 	if diff := cmp.Diff([]diagnosticSummary{
 		{Path: "App.tue", Message: `event handler "save" does not accept arguments`, Line: 2, Column: 32},
@@ -157,8 +194,19 @@ func TestGeneratedCounterFixtureCompilesForWASM(t *testing.T) {
 		t.Fatalf("parse project fixture: %v", err)
 	}
 
-	if err := compileGeneratedProjectForWASM(t.TempDir(), project); err != nil {
+	if err := compileGeneratedProjectForWASM(t.TempDir(), *project); err != nil {
 		t.Fatalf("compile generated counter fixture for WASM: %v", err)
+	}
+}
+
+func TestGeneratedComponentFixtureCompilesForWASM(t *testing.T) {
+	project, err := parseProjectFixture("testdata/components")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	if err := compileGeneratedProjectForWASM(t.TempDir(), *project); err != nil {
+		t.Fatalf("compile generated component fixture for WASM: %v", err)
 	}
 }
 
@@ -169,7 +217,7 @@ func TestWriteProjectWritesCacheFilesAndManifest(t *testing.T) {
 		t.Fatalf("parse project fixture: %v", err)
 	}
 
-	manifest, diagnostics, err := WriteProject(root, project)
+	manifest, diagnostics, err := WriteProject(root, *project)
 	if err != nil {
 		t.Fatalf("WriteProject returned error: %v", err)
 	}
@@ -202,32 +250,71 @@ func TestWriteProjectWritesCacheFilesAndManifest(t *testing.T) {
 	}
 }
 
-func parseProjectFixture(path string) (Project, error) {
+func parseProjectFixture(path string) (*Project, error) {
+	info, err := fs.Stat(testFixtures, path)
+	if err != nil {
+		return nil, fmt.Errorf("stat embedded fixture %s: %w", path, err)
+	}
+	if info.IsDir() {
+		return parseProjectFixtureDir(path)
+	}
+	return parseProjectFixtureFiles([]string{path})
+}
+
+func parseProjectFixtureDir(dir string) (*Project, error) {
+	entries, err := fs.ReadDir(testFixtures, dir)
+	if err != nil {
+		return nil, fmt.Errorf("read embedded fixture dir %s: %w", dir, err)
+	}
+
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".tue" {
+			continue
+		}
+		paths = append(paths, filepath.ToSlash(filepath.Join(dir, entry.Name())))
+	}
+	return parseProjectFixtureFiles(paths)
+}
+
+func parseProjectFixtureFiles(paths []string) (*Project, error) {
+	project := Project{Files: make([]File, 0, len(paths))}
+	for _, path := range paths {
+		file, err := parseProjectFixtureFile(path)
+		if err != nil {
+			return nil, err
+		}
+		project.Files = append(project.Files, *file)
+	}
+	return &project, nil
+}
+
+func parseProjectFixtureFile(path string) (*File, error) {
 	source, err := testFixture(path)
 	if err != nil {
-		return Project{}, err
+		return nil, err
 	}
 	sfcFile, sfcDiagnostics := sfc.Parse(filepath.Base(path), source)
 	if len(sfcDiagnostics) != 0 {
-		return Project{}, fmt.Errorf("sfc.Parse diagnostics = %#v, expected none", sfcDiagnosticMessages(sfcDiagnostics))
+		return nil, fmt.Errorf("sfc.Parse diagnostics = %#v, expected none", sfcDiagnosticMessages(sfcDiagnostics))
 	}
 
 	templateTree, templateDiagnostics := gotemplate.ParseBlock(sfcFile.Template)
 	if len(templateDiagnostics) != 0 {
-		return Project{}, fmt.Errorf("template.ParseBlock diagnostics = %#v, expected none", templateDiagnosticMessages(templateDiagnostics))
+		return nil, fmt.Errorf("template.ParseBlock diagnostics = %#v, expected none", templateDiagnosticMessages(templateDiagnostics))
 	}
 
 	scriptFile, scriptDiagnostics := script.ParseSFC(sfcFile)
 	if len(scriptDiagnostics) != 0 {
-		return Project{}, fmt.Errorf("script.ParseSFC diagnostics = %#v, expected none", scriptDiagnosticMessages(scriptDiagnostics))
+		return nil, fmt.Errorf("script.ParseSFC diagnostics = %#v, expected none", scriptDiagnosticMessages(scriptDiagnostics))
 	}
 
-	return Project{Files: []File{{
+	return &File{
 		Path:         sfcFile.Path,
 		Template:     templateTree,
 		Script:       scriptFile,
 		ScriptSource: sfcFile.Script.Content,
-	}}}, nil
+	}, nil
 }
 
 func compileGeneratedProjectForWASM(root string, project Project) error {

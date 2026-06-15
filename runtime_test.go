@@ -239,6 +239,119 @@ func TestMountedReactiveRerenderDoesNotTrackUpdatedHookReads(t *testing.T) {
 	}
 }
 
+func TestMountedComponentVNodeRunsChildLifecycleAndUpdates(t *testing.T) {
+	value := "first"
+	events := []string{}
+	target := newStubDOMTarget()
+	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		return Element("main", nil, []VNode{
+			Component("Child", func() *Comp {
+				child := &componentVNodeFixture{
+					events: &events,
+					value:  PropOfFunc(func() string { return value }),
+				}
+				return CompOf(child, func(child *componentVNodeFixture) VNode {
+					*child.events = append(*child.events, "render:"+child.value.Get())
+					return Text(child.value.Get())
+				})
+			}),
+		})
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	if diff := cmp.Diff("<main>first</main>", target.html()); diff != "" {
+		t.Errorf("mismatch mounted component HTML (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"init:first", "render:first", "mounted"}, events); diff != "" {
+		t.Errorf("mismatch child lifecycle after mount (-expected, +actual):\n%s", diff)
+	}
+
+	value = "second"
+	if err := mounted.Update(); err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+
+	if diff := cmp.Diff("<main>second</main>", target.html()); diff != "" {
+		t.Errorf("mismatch updated component HTML (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"init:first", "render:first", "mounted", "render:second", "updated"}, events); diff != "" {
+		t.Errorf("mismatch child lifecycle after update (-expected, +actual):\n%s", diff)
+	}
+
+	if err := mounted.Unmount(); err != nil {
+		t.Fatalf("Unmount returned error: %v", err)
+	}
+
+	if diff := cmp.Diff("", target.html()); diff != "" {
+		t.Errorf("mismatch unmounted component HTML (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"init:first", "render:first", "mounted", "render:second", "updated", "cleanup", "unmounted"}, events); diff != "" {
+		t.Errorf("mismatch child lifecycle after unmount (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestMountedComponentVNodeTracksChildReactiveReads(t *testing.T) {
+	count := RefOf(0)
+	target := newStubDOMTarget()
+	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		return Component("Child", func() *Comp {
+			return CompOf(&patchFixture{}, func(*patchFixture) VNode {
+				return Text(fmt.Sprint(count.Get()))
+			})
+		})
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	count.Set(1)
+
+	if diff := cmp.Diff("1", target.html()); diff != "" {
+		t.Errorf("mismatch child reactive render HTML (-expected, +actual):\n%s", diff)
+	}
+
+	if err := mounted.Unmount(); err != nil {
+		t.Fatalf("Unmount returned error: %v", err)
+	}
+}
+
+func TestMountedComponentVNodeUnmountsWhenReplaced(t *testing.T) {
+	showChild := true
+	events := []string{}
+	target := newStubDOMTarget()
+	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		if !showChild {
+			return Text("gone")
+		}
+		return Component("Child", func() *Comp {
+			child := &componentVNodeFixture{
+				events: &events,
+				value:  PropOf("shown"),
+			}
+			return CompOf(child, func(child *componentVNodeFixture) VNode {
+				return Text(child.value.Get())
+			})
+		})
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	showChild = false
+	if err := mounted.Update(); err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+
+	if diff := cmp.Diff("gone", target.html()); diff != "" {
+		t.Errorf("mismatch replaced component HTML (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"init:shown", "mounted", "cleanup", "unmounted"}, events); diff != "" {
+		t.Errorf("mismatch replaced child lifecycle (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestMountedUpdateRejectsUnmountedComponent(t *testing.T) {
 	mounted, err := mountComponent(CompOf(&initFixture{}, func(*initFixture) VNode {
 		return Text("value")
@@ -336,6 +449,30 @@ type reactiveUpdatedHookFixture struct {
 
 func (f *reactiveUpdatedHookFixture) OnUpdated() {
 	*f.events = append(*f.events, "updated:"+f.hookValue.Get())
+}
+
+type componentVNodeFixture struct {
+	events *[]string
+	value  Prop[string]
+}
+
+func (f *componentVNodeFixture) Init(ctx Context) {
+	*f.events = append(*f.events, "init:"+f.value.Get())
+	ctx.OnCleanup(func() {
+		*f.events = append(*f.events, "cleanup")
+	})
+}
+
+func (f *componentVNodeFixture) OnMounted() {
+	*f.events = append(*f.events, "mounted")
+}
+
+func (f *componentVNodeFixture) OnUpdated() {
+	*f.events = append(*f.events, "updated")
+}
+
+func (f *componentVNodeFixture) OnUnmounted() {
+	*f.events = append(*f.events, "unmounted")
 }
 
 func errorString(err error) string {

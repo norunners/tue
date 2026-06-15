@@ -25,13 +25,14 @@ func (c *contextValue) OnCleanup(cleanup func()) {
 
 // VNode is the generated render tree consumed by the runtime.
 type VNode struct {
-	Type     VNodeType
-	Key      string
-	Tag      string
-	Attrs    []Attribute
-	Events   []EventBinding
-	Children []VNode
-	Text     string
+	Type             VNodeType
+	Key              string
+	Tag              string
+	Attrs            []Attribute
+	Events           []EventBinding
+	Children         []VNode
+	Text             string
+	ComponentFactory func() *Comp
 }
 
 // Attribute is a static DOM attribute.
@@ -69,6 +70,11 @@ func Text(value string) VNode {
 // Fragment returns a fragment VNode.
 func Fragment(children []VNode) VNode {
 	return VNode{Type: VNodeTypeFragment, Children: children}
+}
+
+// Component returns a component VNode backed by a lazy generated factory.
+func Component(name string, factory func() *Comp) VNode {
+	return VNode{Type: VNodeTypeComponent, Tag: name, ComponentFactory: factory}
 }
 
 // Comp is a generated component instance.
@@ -216,6 +222,15 @@ func renderHTML(builder *strings.Builder, node VNode) {
 		for _, child := range node.Children {
 			renderHTML(builder, child)
 		}
+	case VNodeTypeComponent:
+		if node.ComponentFactory == nil {
+			return
+		}
+		component := node.ComponentFactory()
+		if component == nil {
+			return
+		}
+		renderHTML(builder, component.renderVNode())
 	default:
 		builder.WriteString(html.EscapeString(fmt.Sprint(node.Text)))
 	}

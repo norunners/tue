@@ -1,0 +1,14 @@
+<template>
+<span class="badge">{{ name }} {{ active }} {{ label }}</span>
+</template>
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type UserBadge struct {
+	name   tue.Prop[string] `prop:"name,required"`
+	active tue.Prop[bool]   `prop:"active"`
+	label  tue.Prop[string] `prop:"label"`
+}
+</script>

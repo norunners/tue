@@ -1,0 +1,18 @@
+<template>
+<main>
+	<UserBadge :name="name" active />
+</main>
+</template>
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type Parent struct {
+	name tue.Ref[string]
+}
+
+func (p *Parent) Init(tue.Context) {
+	p.name = tue.RefOf("Ada")
+}
+</script>
