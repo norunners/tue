@@ -1,5 +1,5 @@
 <template>
-	<main :class="visible">Hello</main>
+	<main :style="visible">Hello</main>
 </template>
 
 <script lang="go">

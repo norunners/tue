@@ -1,0 +1,11 @@
+<template>
+	<main :style="styleName()">Hello</main>
+</template>
+
+<script lang="go">
+package app
+
+type App struct{}
+
+func (a *App) styleName() string { return "" }
+</script>

@@ -29,6 +29,15 @@ func TestClassAttrNormalizesStaticAndBoundClasses(t *testing.T) {
 	}
 }
 
+func TestStyleAttrNormalizesStaticAndBoundStyles(t *testing.T) {
+	actual := StyleAttr(" color: red; ", "", " display: block; ", "font-weight: bold")
+
+	expected := Attribute{Name: "style", Value: "color: red; display: block; font-weight: bold", HasValue: true}
+	if diff := cmp.Diff(expected, actual); diff != "" {
+		t.Errorf("mismatch style attribute (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestBoolStateAttrRendersOnlyWhenTrue(t *testing.T) {
 	node := Element("input", []Attribute{
 		BoolStateAttr("checked", false),

@@ -1,0 +1,29 @@
+<template>
+	<main style="color: red;" :style="pageStyle" data-page="dashboard">
+		<button :style='kind + ": bold"'>Save</button>
+		<ul>
+			<li v-for="todo in todos" :key="todo.id" style="padding: 4px" :style="todo.style">
+				{{ todo.text }}
+			</li>
+		</ul>
+		<section v-if="visible" style="display: block;" :style="panelStyle">Ready</section>
+	</main>
+</template>
+
+<script lang="go">
+package app
+
+type todo struct {
+	id    int
+	text  string
+	style string
+}
+
+type App struct {
+	pageStyle  string
+	panelStyle string
+	kind       string
+	todos      []todo
+	visible    bool
+}
+</script>

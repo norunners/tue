@@ -6,6 +6,7 @@
 	</section>
 </main>
 </template>
+
 <script lang="go">
 package app
 

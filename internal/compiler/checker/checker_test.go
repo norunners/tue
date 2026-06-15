@@ -126,6 +126,21 @@ func TestCheckProjectReportsClassBindingTypeDiagnostics(t *testing.T) {
 	}
 }
 
+func TestCheckProjectReportsStyleBindingTypeDiagnostics(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_style_binding")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	diagnostics := CheckProject(project)
+	expected := []diagnosticSummary{
+		{Path: "testdata/invalid_style_binding/Parent.tue", Message: `style binding expects string, got bool`, Line: 2, Column: 16},
+	}
+	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestCheckProjectReportsModelBindingDiagnostics(t *testing.T) {
 	project, err := parseProjectFixture("testdata/invalid_model_binding")
 	if err != nil {

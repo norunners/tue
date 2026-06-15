@@ -9,6 +9,7 @@
 		<p>{{ query }} {{ enabled }} {{ choice }}</p>
 	</main>
 </template>
+
 <script lang="go">
 package app
 

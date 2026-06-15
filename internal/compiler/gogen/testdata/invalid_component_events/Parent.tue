@@ -9,6 +9,7 @@
 	/>
 </main>
 </template>
+
 <script lang="go">
 package fixtures
 

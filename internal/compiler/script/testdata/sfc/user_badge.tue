@@ -1,4 +1,5 @@
 <template></template>
+
 <script lang="go">
 package fixtures
 

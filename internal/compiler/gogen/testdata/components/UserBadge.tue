@@ -1,6 +1,7 @@
 <template>
 <button type="button" @click="choose">{{ name }} {{ active }} {{ label }}</button>
 </template>
+
 <script lang="go">
 package fixtures
 

@@ -69,6 +69,26 @@ func ClassAttr(static string, values ...string) Attribute {
 	return Attr("class", strings.Join(classes, " "))
 }
 
+// StyleAttr returns a normalized style attribute from static and bound styles.
+// It concatenates raw CSS strings and leaves conflicting declarations to the
+// browser cascade.
+func StyleAttr(static string, values ...string) Attribute {
+	styles := make([]string, 0, len(values)+1)
+	appendStyle := func(value string) {
+		value = strings.TrimSpace(value)
+		value = strings.TrimSuffix(value, ";")
+		if value != "" {
+			styles = append(styles, value)
+		}
+	}
+
+	appendStyle(static)
+	for _, value := range values {
+		appendStyle(value)
+	}
+	return Attr("style", strings.Join(styles, "; "))
+}
+
 // Element returns an element VNode.
 func Element(tag string, attrs []Attribute, children []VNode) VNode {
 	return VNode{Type: VNodeTypeElement, Tag: tag, Attrs: attrs, Children: children}

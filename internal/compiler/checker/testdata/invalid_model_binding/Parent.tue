@@ -11,6 +11,7 @@
 		<input v-model="query.Text" />
 	</main>
 </template>
+
 <script lang="go">
 package fixtures
 
