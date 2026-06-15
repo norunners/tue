@@ -133,6 +133,10 @@ func displayType(typ string) string {
 	return typ
 }
 
+func isNoArgFunc(typ string) bool {
+	return strings.TrimSpace(typ) == "func()"
+}
+
 func isNumeric(typ string) bool {
 	switch normalizeType(typ) {
 	case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "float32", "float64", "rune", "byte":

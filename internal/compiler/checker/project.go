@@ -29,6 +29,7 @@ type componentBinding struct {
 	path      string
 	component *script.Component
 	props     map[string]script.Prop
+	events    map[string]script.Field
 }
 
 func (c *projectChecker) indexComponents(files []File) {
@@ -48,10 +49,18 @@ func (c *projectChecker) indexComponents(files []File) {
 		for _, prop := range component.Props {
 			props[prop.Name] = prop
 		}
+		events := make(map[string]script.Field, len(component.Events))
+		for _, event := range component.Events {
+			name, ok := script.EventName(event)
+			if ok {
+				events[name] = event
+			}
+		}
 		c.components[component.Name] = componentBinding{
 			path:      path,
 			component: component,
 			props:     props,
+			events:    events,
 		}
 	}
 }

@@ -40,10 +40,11 @@ func (c *fileChecker) checkElement(node *gotemplate.Node, scope *scope) {
 		elementScope = c.checkFor(node, attr, scope)
 	}
 
-	c.checkCommonAttrs(node, elementScope)
 	if node.IsComponent {
+		c.checkCommonAttrs(node, elementScope, false)
 		c.checkComponent(node, elementScope)
 	} else {
+		c.checkCommonAttrs(node, elementScope, true)
 		c.checkNativeAttrs(node, elementScope)
 	}
 	c.checkNodes(node.Children, elementScope)
@@ -71,6 +72,8 @@ func (c *fileChecker) checkComponent(node *gotemplate.Node, scope *scope) {
 			c.checkStaticComponentProp(node, child, attr, seen)
 		case gotemplate.AttrBind:
 			c.checkBoundComponentProp(node, child, attr, scope, seen)
+		case gotemplate.AttrEvent:
+			c.checkComponentEvent(node, child, attr, scope)
 		}
 	}
 
@@ -106,6 +109,20 @@ func (c *fileChecker) checkBoundComponentProp(node *gotemplate.Node, child compo
 	seen[prop.Name] = true
 	value := c.checkExpression(attr.Expression, attr.ExpressionSpan, scope)
 	c.expectComponentPropType(node.Tag, prop, value.Type, attr.ExpressionSpan)
+}
+
+func (c *fileChecker) checkComponentEvent(node *gotemplate.Node, child componentBinding, attr gotemplate.Attr, scope *scope) {
+	event, ok := child.events[attr.Argument]
+	if !ok {
+		c.add(fmt.Sprintf("component %q has no event %q", node.Tag, attr.Argument), attr.ArgumentSpan)
+		return
+	}
+
+	if !isNoArgFunc(event.Type) {
+		c.add(fmt.Sprintf("component %q event %q must have signature func()", node.Tag, attr.Argument), attr.ArgumentSpan)
+		return
+	}
+	c.checkEvent(attr, scope)
 }
 
 func (c *fileChecker) expectType(expected string, actual string, subject string, span sfc.Span) {

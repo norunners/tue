@@ -56,6 +56,7 @@ type componentBinding struct {
 	path      string
 	component *script.Component
 	props     map[string]script.Prop
+	events    map[string]script.Field
 }
 
 func (g *projectGenerator) indexComponents(files []File) {
@@ -76,10 +77,18 @@ func (g *projectGenerator) indexComponents(files []File) {
 		for _, prop := range component.Props {
 			props[prop.Name] = prop
 		}
+		events := make(map[string]script.Field, len(component.Events))
+		for _, event := range component.Events {
+			name, ok := script.EventName(event)
+			if ok {
+				events[name] = event
+			}
+		}
 		g.components[component.Name] = componentBinding{
 			path:      path,
 			component: component,
 			props:     props,
+			events:    events,
 		}
 	}
 }
@@ -278,7 +287,7 @@ func (g *fileGenerator) renderComponent(node *gotemplate.Node) (jen.Code, bool) 
 		return nil, false
 	}
 
-	fields, ok := g.renderComponentPropFields(node, child)
+	fields, ok := g.renderComponentFields(node, child)
 	if !ok {
 		return nil, false
 	}
@@ -293,8 +302,9 @@ func (g *fileGenerator) renderComponent(node *gotemplate.Node) (jen.Code, bool) 
 	), true
 }
 
-func (g *fileGenerator) renderComponentPropFields(node *gotemplate.Node, child componentBinding) ([]jen.Code, bool) {
-	values := make(map[string]jen.Code, len(node.Attrs))
+func (g *fileGenerator) renderComponentFields(node *gotemplate.Node, child componentBinding) ([]jen.Code, bool) {
+	props := make(map[string]jen.Code, len(node.Attrs))
+	events := make(map[string]jen.Code, len(node.Attrs))
 	ok := true
 	for _, attr := range node.Attrs {
 		switch attr.Kind {
@@ -310,7 +320,7 @@ func (g *fileGenerator) renderComponentPropFields(node *gotemplate.Node, child c
 				ok = false
 				continue
 			}
-			values[prop.Name] = value
+			props[prop.Name] = value
 		case gotemplate.AttrBind:
 			prop, found := child.props[attr.Argument]
 			if !found {
@@ -323,10 +333,14 @@ func (g *fileGenerator) renderComponentPropFields(node *gotemplate.Node, child c
 				ok = false
 				continue
 			}
-			values[prop.Name] = value
+			props[prop.Name] = value
 		case gotemplate.AttrEvent:
-			g.add(fmt.Sprintf("component event attribute %q generation is not supported in the component render slice", attr.RawName), attr.Span)
-			ok = false
+			field, eventOK := g.renderComponentEventField(node, child, attr)
+			if !eventOK {
+				ok = false
+				continue
+			}
+			events[field.Name] = field.Value
 		case gotemplate.AttrDirective:
 			g.add(fmt.Sprintf("directive %q generation is not supported on components in the component render slice", attr.RawName), attr.Span)
 			ok = false
@@ -338,7 +352,7 @@ func (g *fileGenerator) renderComponentPropFields(node *gotemplate.Node, child c
 
 	fields := make([]jen.Code, 0, len(child.component.Props))
 	for _, prop := range child.component.Props {
-		value, found := values[prop.Name]
+		value, found := props[prop.Name]
 		if !found {
 			if prop.Required {
 				g.add(fmt.Sprintf("component %q requires prop %q", node.Tag, prop.Name), node.TagSpan)
@@ -355,7 +369,54 @@ func (g *fileGenerator) renderComponentPropFields(node *gotemplate.Node, child c
 		}
 		fields = append(fields, jen.Id(prop.Field.Name).Op(":").Add(value))
 	}
+	for _, event := range child.component.Events {
+		value, found := events[event.Name]
+		if found {
+			fields = append(fields, jen.Id(event.Name).Op(":").Add(value))
+		}
+	}
 	return fields, ok
+}
+
+type componentEventField struct {
+	Name  string
+	Value jen.Code
+}
+
+func (g *fileGenerator) renderComponentEventField(node *gotemplate.Node, child componentBinding, attr gotemplate.Attr) (componentEventField, bool) {
+	event, found := child.events[attr.Argument]
+	if !found {
+		g.add(fmt.Sprintf("component %q has no event %q", node.Tag, attr.Argument), attr.ArgumentSpan)
+		return componentEventField{}, false
+	}
+	if !isNoArgFunc(event.Type) {
+		g.add(fmt.Sprintf("component %q event %q must have signature func()", node.Tag, attr.Argument), attr.ArgumentSpan)
+		return componentEventField{}, false
+	}
+
+	methodName, callWithArgs, ok := g.eventHandlerMethod(attr)
+	if !ok {
+		return componentEventField{}, false
+	}
+	if callWithArgs {
+		g.add(fmt.Sprintf("event handler %q does not accept arguments", methodName), attr.ExpressionSpan)
+		return componentEventField{}, false
+	}
+
+	method, ok := g.methods[methodName]
+	if !ok {
+		g.add(fmt.Sprintf("event handler %q is not a method on %s", methodName, g.component.Name), attr.ExpressionSpan)
+		return componentEventField{}, false
+	}
+	if len(method.Parameters) != 0 || len(method.Results) != 0 {
+		g.add(fmt.Sprintf("event handler %q must have signature func()", methodName), attr.ExpressionSpan)
+		return componentEventField{}, false
+	}
+
+	return componentEventField{
+		Name:  event.Name,
+		Value: jen.Id("component").Dot(methodName),
+	}, true
 }
 
 func (g *fileGenerator) renderStaticComponentProp(componentName string, prop script.Prop, attr gotemplate.Attr) (jen.Code, bool) {
@@ -684,6 +745,10 @@ func displayType(typ string) string {
 		return "unknown"
 	}
 	return typ
+}
+
+func isNoArgFunc(typ string) bool {
+	return strings.TrimSpace(typ) == "func()"
 }
 
 func hasRenderableComponentChildren(children []*gotemplate.Node) bool {

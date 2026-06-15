@@ -1,6 +1,6 @@
 <template>
 <main>
-	<UserBadge :name="name" active />
+	<UserBadge :name="name" active @select="selectUser" />
 </main>
 </template>
 <script lang="go">
@@ -15,4 +15,6 @@ type Parent struct {
 func (p *Parent) Init(tue.Context) {
 	p.name = tue.RefOf("Ada")
 }
+
+func (p *Parent) selectUser() {}
 </script>

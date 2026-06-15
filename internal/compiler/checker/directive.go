@@ -10,11 +10,13 @@ import (
 	gotemplate "github.com/norunners/tue/internal/compiler/template"
 )
 
-func (c *fileChecker) checkCommonAttrs(node *gotemplate.Node, scope *scope) {
+func (c *fileChecker) checkCommonAttrs(node *gotemplate.Node, scope *scope, checkEvents bool) {
 	for _, attr := range node.Attrs {
 		switch attr.Kind {
 		case gotemplate.AttrEvent:
-			c.checkEvent(attr, scope)
+			if checkEvents {
+				c.checkEvent(attr, scope)
+			}
 		case gotemplate.AttrDirective:
 			switch attr.Directive {
 			case gotemplate.DirectiveIf:

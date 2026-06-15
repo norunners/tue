@@ -1,0 +1,20 @@
+<template>
+<main>
+	<UserBadge
+		name="Ada"
+		@missing="selectUser"
+		@payload="selectUser"
+		@selectWithArg="selectUser(1)"
+		@selectBad="needsValue"
+	/>
+</main>
+</template>
+<script lang="go">
+package fixtures
+
+func (p *Parent) selectUser() {}
+
+func (p *Parent) needsValue(value string) {}
+
+type Parent struct{}
+</script>

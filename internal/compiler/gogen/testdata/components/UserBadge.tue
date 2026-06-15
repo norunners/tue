@@ -1,5 +1,5 @@
 <template>
-<span class="badge">{{ name }} {{ active }} {{ label }}</span>
+<button type="button" @click="choose">{{ name }} {{ active }} {{ label }}</button>
 </template>
 <script lang="go">
 package fixtures
@@ -10,5 +10,12 @@ type UserBadge struct {
 	name   tue.Prop[string] `prop:"name,required"`
 	active tue.Prop[bool]   `prop:"active"`
 	label  tue.Prop[string] `prop:"label"`
+	onSelect func()
+}
+
+func (u *UserBadge) choose() {
+	if u.onSelect != nil {
+		u.onSelect()
+	}
 }
 </script>

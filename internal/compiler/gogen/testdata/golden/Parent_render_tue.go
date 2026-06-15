@@ -13,7 +13,7 @@ func renderParent(component *Parent) tue.VNode {
 	return tue.Element("main", nil, []tue.VNode{tue.Component("UserBadge", func() *tue.Comp {
 		child := &UserBadge{name: tue.PropOfFunc(func() string {
 			return component.name.Get()
-		}), active: tue.PropOf(true), label: tue.PropOf("")}
+		}), active: tue.PropOf(true), label: tue.PropOf(""), onSelect: component.selectUser}
 		return tue.CompOf(child, renderUserBadge)
 	})})
 }
