@@ -1,6 +1,7 @@
 <template>
 <p v-for="(todo, key) in todosByID" :key="key">{{ key + 1 }}: {{ todo.Text }}</p>
 </template>
+
 <script lang="go">
 package fixtures
 

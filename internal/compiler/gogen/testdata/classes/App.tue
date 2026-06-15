@@ -9,6 +9,7 @@
 	<section v-if="visible" class="panel" :class="themeClass">Ready</section>
 </main>
 </template>
+
 <script lang="go">
 package app
 

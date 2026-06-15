@@ -2,6 +2,7 @@
 <button v-if="visible" @click="save" :class="kind">Save</button>
 <UserBadge />
 </template>
+
 <script lang="go">
 package app
 

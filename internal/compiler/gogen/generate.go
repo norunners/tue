@@ -8,6 +8,7 @@ import (
 	goparser "go/parser"
 	"go/token"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -565,6 +566,7 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 	attrs := make([]jen.Code, 0, len(node.Attrs))
 	events := make([]jen.Code, 0, len(node.Attrs))
 	hasClassBinding := nodeBindAttr(node, "class") != nil
+	hasStyleBinding := nodeBindAttr(node, "style") != nil
 	modelAttr := nodeDirectiveAttr(node, gotemplate.DirectiveModel)
 	modelControlledAttr := ""
 	if modelAttr != nil {
@@ -576,10 +578,15 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 		}
 	}
 	classInsert := -1
+	classOrder := -1
 	var classStatic []string
 	var classDynamic []jen.Code
+	styleInsert := -1
+	styleOrder := -1
+	var styleStatic []string
+	var styleDynamic []jen.Code
 	ok := true
-	for _, attr := range node.Attrs {
+	for attrOrder, attr := range node.Attrs {
 		switch attr.Kind {
 		case gotemplate.AttrStatic:
 			if attr.Name == modelControlledAttr {
@@ -588,9 +595,20 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 			if hasClassBinding && attr.Name == "class" {
 				if classInsert == -1 {
 					classInsert = len(attrs)
+					classOrder = attrOrder
 				}
 				if attr.HasValue {
 					classStatic = append(classStatic, attr.Value)
+				}
+				continue
+			}
+			if hasStyleBinding && attr.Name == "style" {
+				if styleInsert == -1 {
+					styleInsert = len(attrs)
+					styleOrder = attrOrder
+				}
+				if attr.HasValue {
+					styleStatic = append(styleStatic, attr.Value)
 				}
 				continue
 			}
@@ -606,6 +624,7 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 			if attr.Argument == "class" {
 				if classInsert == -1 {
 					classInsert = len(attrs)
+					classOrder = attrOrder
 				}
 				classValue, classOK := g.renderClassBinding(attr)
 				if !classOK {
@@ -613,6 +632,19 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 					continue
 				}
 				classDynamic = append(classDynamic, classValue)
+				continue
+			}
+			if attr.Argument == "style" {
+				if styleInsert == -1 {
+					styleInsert = len(attrs)
+					styleOrder = attrOrder
+				}
+				styleValue, styleOK := g.renderStyleBinding(attr)
+				if !styleOK {
+					ok = false
+					continue
+				}
+				styleDynamic = append(styleDynamic, styleValue)
 				continue
 			}
 			g.add(fmt.Sprintf("bound attribute %q generation is not supported in the static render slice", attr.RawName), attr.Span)
@@ -635,9 +667,22 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 			ok = false
 		}
 	}
+	var mergedAttrs []mergedAttr
 	if len(classDynamic) != 0 {
-		attrs = insertAttr(attrs, classInsert, renderClassAttr(classStatic, classDynamic))
+		mergedAttrs = append(mergedAttrs, mergedAttr{
+			Index: classInsert,
+			Order: classOrder,
+			Attr:  renderClassAttr(classStatic, classDynamic),
+		})
 	}
+	if len(styleDynamic) != 0 {
+		mergedAttrs = append(mergedAttrs, mergedAttr{
+			Index: styleInsert,
+			Order: styleOrder,
+			Attr:  renderStyleAttr(styleStatic, styleDynamic),
+		})
+	}
+	attrs = insertMergedAttrs(attrs, mergedAttrs)
 	if modelAttr != nil {
 		modelAttrs, modelEvent, modelOK := g.renderModelBinding(node, *modelAttr)
 		if !modelOK {
@@ -664,11 +709,32 @@ func (g *fileGenerator) renderClassBinding(attr gotemplate.Attr) (jen.Code, bool
 	return expression, true
 }
 
+func (g *fileGenerator) renderStyleBinding(attr gotemplate.Attr) (jen.Code, bool) {
+	expression, ok := g.renderExpressionFor("style binding", attr.Expression, attr.ExpressionSpan)
+	if !ok {
+		return nil, false
+	}
+
+	valueType := g.expressionType(attr.Expression)
+	if !assignableType("string", valueType) {
+		g.add(fmt.Sprintf("style binding expects string, got %s", displayType(valueType)), attr.ExpressionSpan)
+		return nil, false
+	}
+	return expression, true
+}
+
 func renderClassAttr(static []string, dynamic []jen.Code) jen.Code {
 	args := make([]jen.Code, 0, len(dynamic)+1)
 	args = append(args, jen.Lit(strings.Join(static, " ")))
 	args = append(args, dynamic...)
 	return jen.Qual(tueImportPath, "ClassAttr").Call(args...)
+}
+
+func renderStyleAttr(static []string, dynamic []jen.Code) jen.Code {
+	args := make([]jen.Code, 0, len(dynamic)+1)
+	args = append(args, jen.Lit(strings.Join(static, "; ")))
+	args = append(args, dynamic...)
+	return jen.Qual(tueImportPath, "StyleAttr").Call(args...)
 }
 
 func (g *fileGenerator) renderModelBinding(node *gotemplate.Node, attr gotemplate.Attr) ([]jen.Code, jen.Code, bool) {
@@ -742,6 +808,25 @@ func (g *fileGenerator) renderModelSetter(target string, span sfc.Span, valueNam
 		g.add(fmt.Sprintf("v-model target %q is not writable", target), span)
 		return nil, false
 	}
+}
+
+type mergedAttr struct {
+	Index int
+	Order int
+	Attr  jen.Code
+}
+
+func insertMergedAttrs(attrs []jen.Code, mergedAttrs []mergedAttr) []jen.Code {
+	sort.SliceStable(mergedAttrs, func(i int, j int) bool {
+		if mergedAttrs[i].Index != mergedAttrs[j].Index {
+			return mergedAttrs[i].Index > mergedAttrs[j].Index
+		}
+		return mergedAttrs[i].Order > mergedAttrs[j].Order
+	})
+	for _, merged := range mergedAttrs {
+		attrs = insertAttr(attrs, merged.Index, merged.Attr)
+	}
+	return attrs
 }
 
 func insertAttr(attrs []jen.Code, index int, attr jen.Code) []jen.Code {

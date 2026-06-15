@@ -143,14 +143,14 @@ func TestParseBlockUsesSFCSourceSpans(t *testing.T) {
 	if nameOffset == -1 {
 		t.Fatal(`embedded SFC fixture does not contain "name tue.Prop"`)
 	}
-	if diff := cmp.Diff(sfc.Position{Offset: nameOffset, Line: 8, Column: 2}, prop.Field.NameSpan.Start); diff != "" {
+	if diff := cmp.Diff(sfc.Position{Offset: nameOffset, Line: 9, Column: 2}, prop.Field.NameSpan.Start); diff != "" {
 		t.Errorf("mismatch prop name start: %q (-expected, +actual):\n%s", prop.Field.Name, diff)
 	}
 	packageOffset := bytes.Index(source, []byte("package fixtures"))
 	if packageOffset == -1 {
 		t.Fatal(`embedded SFC fixture does not contain "package fixtures"`)
 	}
-	if diff := cmp.Diff(sfc.Position{Offset: packageOffset, Line: 3, Column: 1}, file.PackageSpan.Start); diff != "" {
+	if diff := cmp.Diff(sfc.Position{Offset: packageOffset, Line: 4, Column: 1}, file.PackageSpan.Start); diff != "" {
 		t.Errorf("mismatch package start (-expected, +actual):\n%s", diff)
 	}
 }

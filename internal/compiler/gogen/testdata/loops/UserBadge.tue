@@ -1,6 +1,7 @@
 <template>
 <span>{{ name }}</span>
 </template>
+
 <script lang="go">
 package app
 

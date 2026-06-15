@@ -2,6 +2,7 @@
 <main class="page" data-title="A & B">Hello, {{ name }}!
 	<span>{{ count + 1 }}</span></main>
 </template>
+
 <script lang="go">
 package app
 

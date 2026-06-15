@@ -1,6 +1,7 @@
 <template>
 <p v-if="visible()">Visible</p>
 </template>
+
 <script lang="go">
 package app
 

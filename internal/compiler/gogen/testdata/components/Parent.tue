@@ -3,6 +3,7 @@
 	<UserBadge v-if="showBadge" :name="name" active @select="selectUser" />
 </main>
 </template>
+
 <script lang="go">
 package fixtures
 

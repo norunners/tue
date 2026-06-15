@@ -6,6 +6,7 @@
 	<li v-for="todo in todos" :key="key(todo)">Bad key</li>
 </ul>
 </template>
+
 <script lang="go">
 package app
 

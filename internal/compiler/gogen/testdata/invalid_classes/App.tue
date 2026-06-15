@@ -1,6 +1,7 @@
 <template>
 <main :class="className()">Hello</main>
 </template>
+
 <script lang="go">
 package app
 
