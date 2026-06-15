@@ -9,6 +9,7 @@ type Dashboard struct {
 	count tue.Ref[int]
 	total tue.Computed[int]
 	user  tue.Resource[User]
+	onSave func()
 	label string
 }
 

@@ -273,6 +273,8 @@ func (e *extractor) extractFields(component *Component, structType *ast.StructTy
 		for _, name := range astField.Names {
 			field := e.fieldFromAST(name, astField)
 			switch field.Kind {
+			case FieldKindEvent:
+				component.Events = append(component.Events, field)
 			case FieldKindProp:
 				component.Props = append(component.Props, e.propFromField(field))
 			case FieldKindRef:
@@ -306,6 +308,13 @@ func (e *extractor) fieldFromAST(name *ast.Ident, astField *ast.Field) Field {
 }
 
 func (e *extractor) classifyField(fieldName string, expr ast.Expr) (FieldKind, string) {
+	if _, ok := expr.(*ast.FuncType); ok {
+		if _, ok := eventNameFromFieldName(fieldName); ok {
+			return FieldKindEvent, ""
+		}
+		return FieldKindState, ""
+	}
+
 	typeName, args, ok := e.tueGenericType(expr)
 	if !ok {
 		return FieldKindState, ""
@@ -376,6 +385,25 @@ func fieldKindForTueType(name string) (FieldKind, bool) {
 	default:
 		return FieldKindState, false
 	}
+}
+
+func eventNameFromFieldName(fieldName string) (string, bool) {
+	const prefix = "on"
+	if !strings.HasPrefix(fieldName, prefix) {
+		return "", false
+	}
+
+	suffix := strings.TrimPrefix(fieldName, prefix)
+	if suffix == "" {
+		return "", false
+	}
+
+	runes := []rune(suffix)
+	if !unicode.IsUpper(runes[0]) {
+		return "", false
+	}
+	runes[0] = unicode.ToLower(runes[0])
+	return string(runes), true
 }
 
 func (e *extractor) fieldTag(field *ast.Field) (string, sfc.Span) {

@@ -14,7 +14,7 @@ import (
 	gotemplate "github.com/norunners/tue/internal/compiler/template"
 )
 
-//go:embed testdata/valid/*.tue testdata/invalid/*.tue testdata/invalid_event_handler/*.tue testdata/missing_required_prop/*.tue
+//go:embed testdata/valid/*.tue testdata/invalid/*.tue testdata/invalid_event_handler/*.tue testdata/invalid_component_event/*.tue testdata/missing_required_prop/*.tue
 var testFixtures embed.FS
 
 func TestCheckProjectAcceptsValidProject(t *testing.T) {
@@ -75,6 +75,23 @@ func TestCheckProjectReportsUnsupportedEventHandlerShapes(t *testing.T) {
 	if diff := cmp.Diff([]diagnosticSummary{
 		{Path: "testdata/invalid_event_handler/Parent.tue", Message: `event handler "increment" does not accept arguments`, Line: 2, Column: 32},
 		{Path: "testdata/invalid_event_handler/Parent.tue", Message: `event handler "save" must have signature func()`, Line: 3, Column: 32},
+	}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestCheckProjectReportsUnsupportedComponentEventShapes(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_component_event")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	diagnostics := CheckProject(project)
+	if diff := cmp.Diff([]diagnosticSummary{
+		{Path: "testdata/invalid_component_event/Parent.tue", Message: `component "UserBadge" has no event "missing"`, Line: 5, Column: 5},
+		{Path: "testdata/invalid_component_event/Parent.tue", Message: `component "UserBadge" event "payload" must have signature func()`, Line: 6, Column: 5},
+		{Path: "testdata/invalid_component_event/Parent.tue", Message: `event handler "selectUser" does not accept arguments`, Line: 7, Column: 20},
+		{Path: "testdata/invalid_component_event/Parent.tue", Message: `event handler "needsValue" must have signature func()`, Line: 8, Column: 16},
 	}, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}

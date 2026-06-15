@@ -18,7 +18,7 @@ import (
 	gotemplate "github.com/norunners/tue/internal/compiler/template"
 )
 
-//go:embed testdata/static/*.tue testdata/dynamic/*.tue testdata/events/*.tue testdata/components/*.tue testdata/invalid_events/*.tue testdata/golden/*.go
+//go:embed testdata/static/*.tue testdata/dynamic/*.tue testdata/events/*.tue testdata/components/*.tue testdata/invalid_events/*.tue testdata/invalid_component_events/*.tue testdata/golden/*.go
 var testFixtures embed.FS
 
 func TestGenerateProjectEmitsStaticRenderFiles(t *testing.T) {
@@ -183,6 +183,24 @@ func TestGenerateProjectReportsUnsupportedEventHandlers(t *testing.T) {
 		{Path: "App.tue", Message: `event handler "save" does not accept arguments`, Line: 2, Column: 32},
 		{Path: "App.tue", Message: `event handler "needsValue" must have signature func()`, Line: 3, Column: 32},
 		{Path: "App.tue", Message: `event handler "missing" is not a method on App`, Line: 4, Column: 32},
+	}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestGenerateProjectReportsUnsupportedComponentEvents(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_component_events")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	_, diagnostics := GenerateProject(*project)
+
+	if diff := cmp.Diff([]diagnosticSummary{
+		{Path: "Parent.tue", Message: `component "UserBadge" has no event "missing"`, Line: 5, Column: 4},
+		{Path: "Parent.tue", Message: `component "UserBadge" event "payload" must have signature func()`, Line: 6, Column: 4},
+		{Path: "Parent.tue", Message: `event handler "selectUser" does not accept arguments`, Line: 7, Column: 19},
+		{Path: "Parent.tue", Message: `event handler "needsValue" must have signature func()`, Line: 8, Column: 15},
 	}, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}

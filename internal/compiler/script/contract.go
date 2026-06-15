@@ -26,6 +26,7 @@ type Component struct {
 	Span       sfc.Span
 	NameSpan   sfc.Span
 	Props      []Prop
+	Events     []Field
 	State      []Field
 	Refs       []Field
 	Computed   []Field
@@ -88,4 +89,12 @@ type Parameter struct {
 type Diagnostic struct {
 	Message string
 	Span    sfc.Span
+}
+
+// EventName returns the template event name represented by an event callback field.
+func EventName(field Field) (string, bool) {
+	if field.Kind != FieldKindEvent {
+		return "", false
+	}
+	return eventNameFromFieldName(field.Name)
 }

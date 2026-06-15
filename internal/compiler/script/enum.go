@@ -5,6 +5,7 @@ type FieldKind string
 
 const (
 	FieldKindState    FieldKind = "state"
+	FieldKindEvent    FieldKind = "event"
 	FieldKindProp     FieldKind = "prop"
 	FieldKindRef      FieldKind = "ref"
 	FieldKindComputed FieldKind = "computed"

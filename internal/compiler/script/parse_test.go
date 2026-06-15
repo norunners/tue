@@ -56,6 +56,7 @@ func TestParseExtractsComponentContract(t *testing.T) {
 	assertField(t, component.Refs, "count", FieldKindRef, "tue.Ref[int]", "int")
 	assertField(t, component.Computed, "total", FieldKindComputed, "tue.Computed[int]", "int")
 	assertField(t, component.Resources, "user", FieldKindResource, "tue.Resource[User]", "User")
+	assertField(t, component.Events, "onSave", FieldKindEvent, "func()", "")
 	assertField(t, component.State, "label", FieldKindState, "string", "")
 
 	init := requireInit(t, component)
