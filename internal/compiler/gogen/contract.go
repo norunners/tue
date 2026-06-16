@@ -8,6 +8,8 @@ import (
 
 // Project is the parsed compiler input for Go generation.
 type Project struct {
+	// Root is the project root used to resolve and copy static assets.
+	Root  string
 	Files []File
 }
 
@@ -30,6 +32,7 @@ type Style struct {
 // Result is the generated output for a project.
 type Result struct {
 	Files    []GeneratedFile
+	Assets   []GeneratedAsset
 	Manifest Manifest
 }
 
@@ -37,6 +40,14 @@ type Result struct {
 type GeneratedFile struct {
 	Path   string
 	Source []byte
+}
+
+// GeneratedAsset is a copied static asset path and source, relative to .tue-cache.
+type GeneratedAsset struct {
+	SourcePath string
+	OutputPath string
+	Source     []byte
+	Public     bool
 }
 
 // Diagnostic is a source-mapped generation diagnostic.

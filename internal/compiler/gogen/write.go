@@ -11,6 +11,9 @@ const CacheDir = ".tue-cache"
 
 // WriteProject writes generated project output under root/.tue-cache.
 func WriteProject(root string, project Project) (*Manifest, []Diagnostic, error) {
+	if project.Root == "" {
+		project.Root = root
+	}
 	result, diagnostics := GenerateProject(project)
 	if len(diagnostics) != 0 {
 		return &Manifest{GeneratedBy: "tue"}, diagnostics, nil
@@ -34,6 +37,15 @@ func WriteProject(root string, project Project) (*Manifest, []Diagnostic, error)
 		}
 		if err := os.WriteFile(path, file.Source, 0o644); err != nil {
 			return nil, nil, fmt.Errorf("write generated file %s: %w", path, err)
+		}
+	}
+	for _, asset := range result.Assets {
+		path := filepath.Join(cacheDir, filepath.FromSlash(asset.OutputPath))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return nil, nil, fmt.Errorf("create asset dir %s: %w", filepath.Dir(path), err)
+		}
+		if err := os.WriteFile(path, asset.Source, 0o644); err != nil {
+			return nil, nil, fmt.Errorf("write asset %s: %w", path, err)
 		}
 	}
 

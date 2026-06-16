@@ -118,7 +118,10 @@ func runBuild(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
-	manifest, buildDiagnostics, err := gogen.WriteProject(root, gogen.Project{Files: gogenFiles})
+	manifest, buildDiagnostics, err := gogen.WriteProject(root, gogen.Project{
+		Root:  root,
+		Files: gogenFiles,
+	})
 	if err != nil {
 		fmt.Fprintf(stderr, "tue build: %v\n", err)
 		return exitError
@@ -135,6 +138,9 @@ func runBuild(args []string, stdout, stderr io.Writer) int {
 	}
 	if manifest.StyleFile != "" {
 		fmt.Fprintf(stdout, "%s\n", manifest.StyleFile)
+	}
+	for _, asset := range manifest.Assets {
+		fmt.Fprintf(stdout, "%s\n", asset.Output)
 	}
 
 	return exitOK
