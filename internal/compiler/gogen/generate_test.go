@@ -331,6 +331,56 @@ func TestGenerateProjectEmitsModelBindingRenderFiles(t *testing.T) {
 	}
 }
 
+func TestGenerateProjectEmitsDefaultSlotRenderFiles(t *testing.T) {
+	project, err := parseProjectFixture("testdata/slots")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	result, diagnostics := GenerateProject(*project)
+	if result == nil {
+		t.Fatal("GenerateProject result is nil")
+	}
+
+	expectedDiagnostics := []diagnosticSummary{}
+	if diff := cmp.Diff(expectedDiagnostics, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+	expectedPaths := []string{
+		"App_tue.go",
+		"App_render_tue.go",
+		"Card_tue.go",
+		"Card_render_tue.go",
+	}
+	if diff := cmp.Diff(expectedPaths, generatedPaths(result.Files)); diff != "" {
+		t.Errorf("mismatch generated paths (-expected, +actual):\n%s", diff)
+	}
+
+	expectedAppRender, err := testFixtureString("testdata/golden/SlotApp_render_tue.go")
+	if err != nil {
+		t.Fatalf("read expected slot app render fixture: %v", err)
+	}
+	actualAppRender, err := generatedSource(result, "App_render_tue.go")
+	if err != nil {
+		t.Fatalf("read actual generated slot app render: %v", err)
+	}
+	if diff := cmp.Diff(expectedAppRender, string(actualAppRender)); diff != "" {
+		t.Errorf("mismatch generated slot app render (-expected, +actual):\n%s", diff)
+	}
+
+	expectedCardRender, err := testFixtureString("testdata/golden/SlotCard_render_tue.go")
+	if err != nil {
+		t.Fatalf("read expected slot card render fixture: %v", err)
+	}
+	actualCardRender, err := generatedSource(result, "Card_render_tue.go")
+	if err != nil {
+		t.Fatalf("read actual generated slot card render: %v", err)
+	}
+	if diff := cmp.Diff(expectedCardRender, string(actualCardRender)); diff != "" {
+		t.Errorf("mismatch generated slot card render (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestGenerateProjectReportsUnsupportedClassBindingExpressions(t *testing.T) {
 	project, err := parseProjectFixture("testdata/invalid_classes/App.tue")
 	if err != nil {
@@ -409,6 +459,23 @@ func TestGenerateProjectReportsModelBindingDiagnostics(t *testing.T) {
 		{Path: "App.tue", Message: `v-model is only supported on text inputs, checkboxes, and selects`, Line: 8, Column: 13},
 		{Path: "App.tue", Message: `v-model is not supported for input type "number"`, Line: 9, Column: 24},
 		{Path: "App.tue", Message: `v-model target "query.Text" is not writable`, Line: 11, Column: 19},
+	}
+	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestGenerateProjectReportsNamedSlotDiagnostics(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_slots/App.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	_, diagnostics := GenerateProject(*project)
+
+	expected := []diagnosticSummary{
+		{Path: "App.tue", Message: `named slots are not supported in the default slot slice`, Line: 3, Column: 9},
+		{Path: "App.tue", Message: `named slots are not supported in the default slot slice`, Line: 4, Column: 9},
 	}
 	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
@@ -590,6 +657,17 @@ func TestGeneratedModelBindingFixtureCompilesForWASM(t *testing.T) {
 
 	if err := compileGeneratedProjectForWASM(t.TempDir(), *project); err != nil {
 		t.Fatalf("compile generated model binding fixture for WASM: %v", err)
+	}
+}
+
+func TestGeneratedDefaultSlotFixtureCompilesForWASM(t *testing.T) {
+	project, err := parseProjectFixture("testdata/slots")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	if err := compileGeneratedProjectForWASM(t.TempDir(), *project); err != nil {
+		t.Fatalf("compile generated default slot fixture for WASM: %v", err)
 	}
 }
 

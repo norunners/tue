@@ -33,6 +33,7 @@ type VNode struct {
 	Children         []VNode
 	Text             string
 	ComponentFactory func() *Comp
+	ComponentUpdater func(*Comp)
 }
 
 // Attribute is a static DOM attribute.
@@ -114,10 +115,22 @@ func Component(name string, factory func() *Comp) VNode {
 	return VNode{Type: VNodeTypeComponent, Tag: name, ComponentFactory: factory}
 }
 
+// ComponentWithUpdate returns a component VNode that can refresh generated
+// input bindings on an existing component instance during patching.
+func ComponentWithUpdate(name string, factory func() *Comp, update func(*Comp)) VNode {
+	return VNode{
+		Type:             VNodeTypeComponent,
+		Tag:              name,
+		ComponentFactory: factory,
+		ComponentUpdater: update,
+	}
+}
+
 // Comp is a generated component instance.
 type Comp struct {
-	Component any
-	Render    func() VNode
+	Component   any
+	Render      func() VNode
+	DefaultSlot func() VNode
 
 	effectCleanups []func()
 	cleanups       []func()
@@ -159,7 +172,20 @@ func (c *Comp) renderVNode() VNode {
 	if c == nil || c.Render == nil {
 		return Fragment(nil)
 	}
-	return c.Render()
+	var vnode VNode
+	withComponentScope(c, func() {
+		vnode = c.Render()
+	})
+	return vnode
+}
+
+// Slot renders the current component's default slot or the supplied fallback.
+func Slot(fallback VNode) VNode {
+	component := currentComponentScope()
+	if component == nil || component.DefaultSlot == nil {
+		return fallback
+	}
+	return component.DefaultSlot()
 }
 
 func (c *Comp) addCleanup(cleanup func()) {

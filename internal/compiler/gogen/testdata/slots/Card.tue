@@ -1,0 +1,18 @@
+<template>
+	<section class="card">
+		<h2>{{ title }}</h2>
+		<slot>
+			<p>Fallback</p>
+		</slot>
+	</section>
+</template>
+
+<script lang="go">
+package app
+
+import tue "github.com/norunners/tue"
+
+type Card struct {
+	title tue.Prop[string] `prop:"title,required"`
+}
+</script>

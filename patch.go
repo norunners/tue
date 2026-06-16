@@ -239,6 +239,9 @@ func patchComponentVNode(old *mountedVNode, next VNode) (*mountedVNode, error) {
 	if old.component == nil {
 		return nil, fmt.Errorf("mounted component %q is required", old.vnode.Tag)
 	}
+	if next.ComponentUpdater != nil {
+		next.ComponentUpdater(old.component.component)
+	}
 	old.vnode = next
 	if err := old.component.Update(); err != nil {
 		return nil, err

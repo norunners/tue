@@ -366,6 +366,139 @@ func TestMountedComponentVNodeTracksChildReactiveReads(t *testing.T) {
 	}
 }
 
+func TestMountedComponentVNodeRendersDefaultSlot(t *testing.T) {
+	value := RefOf("first")
+	target := newStubDOMTarget()
+	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		return Component("Child", func() *Comp {
+			child := CompOf(&patchFixture{}, func(*patchFixture) VNode {
+				return Element("section", nil, []VNode{Slot(Text("fallback"))})
+			})
+			child.DefaultSlot = func() VNode {
+				return Element("strong", nil, []VNode{Text(value.Get())})
+			}
+			return child
+		})
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	expected := "<section><strong>first</strong></section>"
+	if diff := cmp.Diff(expected, target.html()); diff != "" {
+		t.Errorf("mismatch mounted default slot HTML (-expected, +actual):\n%s", diff)
+	}
+
+	value.Set("second")
+
+	expected = "<section><strong>second</strong></section>"
+	if diff := cmp.Diff(expected, target.html()); diff != "" {
+		t.Errorf("mismatch updated default slot HTML (-expected, +actual):\n%s", diff)
+	}
+
+	if err := mounted.Unmount(); err != nil {
+		t.Fatalf("Unmount returned error: %v", err)
+	}
+}
+
+func TestMountedComponentVNodeRefreshesDefaultSlotOnPatch(t *testing.T) {
+	label := "expanded"
+	slotMode := "expanded"
+	initCount := 0
+	defaultSlot := func() func() VNode {
+		switch slotMode {
+		case "expanded":
+			return func() VNode {
+				return Element("strong", nil, []VNode{Text("Expanded")})
+			}
+		case "collapsed":
+			return func() VNode {
+				return Element("em", nil, []VNode{Text("Collapsed")})
+			}
+		default:
+			return nil
+		}
+	}
+	updateChild := func(childComp *Comp) {
+		child := childComp.Component.(*componentSlotPatchFixture)
+		child.label = PropOf(label)
+		childComp.DefaultSlot = defaultSlot()
+	}
+	target := newStubDOMTarget()
+	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		return ComponentWithUpdate("Child", func() *Comp {
+			child := &componentSlotPatchFixture{
+				label:     PropOf(label),
+				initCount: &initCount,
+			}
+			childComp := CompOf(child, func(fixture *componentSlotPatchFixture) VNode {
+				return Element("section", nil, []VNode{
+					Element("h2", nil, []VNode{Text(fixture.label.Get())}),
+					Slot(Text("fallback")),
+				})
+			})
+			childComp.DefaultSlot = defaultSlot()
+			return childComp
+		}, updateChild)
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	expected := "<section><h2>expanded</h2><strong>Expanded</strong></section>"
+	if diff := cmp.Diff(expected, target.html()); diff != "" {
+		t.Errorf("mismatch mounted refreshed slot HTML (-expected, +actual):\n%s", diff)
+	}
+
+	label = "collapsed"
+	slotMode = "collapsed"
+	if err := mounted.Update(); err != nil {
+		t.Fatalf("first Update returned error: %v", err)
+	}
+
+	expected = "<section><h2>collapsed</h2><em>Collapsed</em></section>"
+	if diff := cmp.Diff(expected, target.html()); diff != "" {
+		t.Errorf("mismatch patched refreshed slot HTML (-expected, +actual):\n%s", diff)
+	}
+
+	label = "empty"
+	slotMode = ""
+	if err := mounted.Update(); err != nil {
+		t.Fatalf("second Update returned error: %v", err)
+	}
+
+	expected = "<section><h2>empty</h2>fallback</section>"
+	if diff := cmp.Diff(expected, target.html()); diff != "" {
+		t.Errorf("mismatch patched cleared slot HTML (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff(1, initCount); diff != "" {
+		t.Errorf("mismatch child init count (-expected, +actual):\n%s", diff)
+	}
+
+	if err := mounted.Unmount(); err != nil {
+		t.Fatalf("Unmount returned error: %v", err)
+	}
+}
+
+func TestMountedComponentVNodeRendersSlotFallback(t *testing.T) {
+	target := newStubDOMTarget()
+	_, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		return Component("Child", func() *Comp {
+			return CompOf(&patchFixture{}, func(*patchFixture) VNode {
+				return Element("section", nil, []VNode{Slot(Text("fallback"))})
+			})
+		})
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	expected := "<section>fallback</section>"
+	if diff := cmp.Diff(expected, target.html()); diff != "" {
+		t.Errorf("mismatch default slot fallback HTML (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestMountedComponentVNodeUnmountsWhenReplaced(t *testing.T) {
 	showChild := true
 	events := []string{}
@@ -522,6 +655,17 @@ func (f *componentVNodeFixture) OnUpdated() {
 
 func (f *componentVNodeFixture) OnUnmounted() {
 	*f.events = append(*f.events, "unmounted")
+}
+
+type componentSlotPatchFixture struct {
+	label     Prop[string]
+	initCount *int
+}
+
+func (f *componentSlotPatchFixture) Init(Context) {
+	if f.initCount != nil {
+		*f.initCount = *f.initCount + 1
+	}
 }
 
 func errorString(err error) string {

@@ -56,11 +56,20 @@ func renderApp(component *App) tue.VNode {
 		__tueNodes := make([]tue.VNode, 0, len(__tueItems))
 		for _, __tueItem := range __tueItems {
 			__tueNodes = append(__tueNodes, func() tue.VNode {
-				__tueVNode := tue.Component("UserBadge", func() *tue.Comp {
+				__tueVNode := tue.ComponentWithUpdate("UserBadge", func() *tue.Comp {
 					child := &UserBadge{name: tue.PropOfFunc(func() string {
 						return __tueItem.Text
 					}), active: tue.PropOf(true), onSelect: component.selectUser}
-					return tue.CompOf(child, renderUserBadge)
+					childComp := tue.CompOf(child, renderUserBadge)
+					return childComp
+				}, func(childComp *tue.Comp) {
+					child := childComp.Component.(*UserBadge)
+					child.name = tue.PropOfFunc(func() string {
+						return __tueItem.Text
+					})
+					child.active = tue.PropOf(true)
+					child.onSelect = component.selectUser
+					childComp.DefaultSlot = nil
 				})
 				__tueVNode.Key = fmt.Sprint(__tueItem.ID)
 				return __tueVNode
