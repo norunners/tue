@@ -103,7 +103,7 @@ func TestRunStubCommandsReturnNotImplemented(t *testing.T) {
 	}
 }
 
-func TestRunBuildGeneratesCacheFiles(t *testing.T) {
+func TestRunBuildGeneratesDistFiles(t *testing.T) {
 	root := t.TempDir()
 	if err := writeFixture(filepath.Join(root, "App.tue"), "testdata/App.tue"); err != nil {
 		t.Fatalf("setup App.tue: %v", err)
@@ -123,9 +123,12 @@ func TestRunBuildGeneratesCacheFiles(t *testing.T) {
 	if !strings.Contains(stdout.String(), "tue build: generated 1 component(s)") {
 		t.Errorf("stdout actual = %q, expected generated summary", stdout.String())
 	}
-	for _, path := range []string{"App_tue.go", "App_render_tue.go", "manifest.json"} {
-		if _, err := os.Stat(filepath.Join(root, ".tue-cache", path)); err != nil {
-			t.Errorf("generated file %s should exist: %v", path, err)
+	if !strings.Contains(stdout.String(), "app.wasm") || !strings.Contains(stdout.String(), "byte(s)") {
+		t.Errorf("stdout actual = %q, expected WASM size report", stdout.String())
+	}
+	for _, path := range []string{"app.wasm", "index.html", "manifest.json", "style.css", "tue_loader.js"} {
+		if _, err := os.Stat(filepath.Join(root, "dist", path)); err != nil {
+			t.Errorf("dist file %s should exist: %v", path, err)
 		}
 	}
 }
@@ -151,7 +154,7 @@ func TestRunBuildGeneratesStylesheet(t *testing.T) {
 		t.Errorf("stdout actual = %q, expected stylesheet path", stdout.String())
 	}
 
-	source, err := os.ReadFile(filepath.Join(root, ".tue-cache", "style.css"))
+	source, err := os.ReadFile(filepath.Join(root, "dist", "style.css"))
 	if err != nil {
 		t.Fatalf("read generated stylesheet: %v", err)
 	}
@@ -190,29 +193,29 @@ func TestRunBuildGeneratesAssets(t *testing.T) {
 	if !strings.Contains(stdout.String(), "assets/logo.") {
 		t.Errorf("stdout actual = %q, expected hashed logo asset", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "public/favicon.svg") {
+	if !strings.Contains(stdout.String(), "favicon.svg") {
 		t.Errorf("stdout actual = %q, expected public favicon asset", stdout.String())
 	}
 
-	logos, err := filepath.Glob(filepath.Join(root, ".tue-cache", "assets", "logo.*.svg"))
+	logos, err := filepath.Glob(filepath.Join(root, "dist", "assets", "logo.*.svg"))
 	if err != nil {
 		t.Fatalf("glob generated logo asset: %v", err)
 	}
 	if len(logos) != 1 {
 		t.Errorf("generated logo assets actual = %#v, expected exactly one", logos)
 	}
-	heroes, err := filepath.Glob(filepath.Join(root, ".tue-cache", "assets", "hero.*.png"))
+	heroes, err := filepath.Glob(filepath.Join(root, "dist", "assets", "hero.*.png"))
 	if err != nil {
 		t.Fatalf("glob generated hero asset: %v", err)
 	}
 	if len(heroes) != 1 {
 		t.Errorf("generated hero assets actual = %#v, expected exactly one", heroes)
 	}
-	if _, err := os.ReadFile(filepath.Join(root, ".tue-cache", "public", "favicon.svg")); err != nil {
+	if _, err := os.ReadFile(filepath.Join(root, "dist", "favicon.svg")); err != nil {
 		t.Errorf("generated public favicon should exist: %v", err)
 	}
 
-	style, err := os.ReadFile(filepath.Join(root, ".tue-cache", "style.css"))
+	style, err := os.ReadFile(filepath.Join(root, "dist", "style.css"))
 	if err != nil {
 		t.Fatalf("read generated stylesheet: %v", err)
 	}
