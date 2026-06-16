@@ -1,0 +1,29 @@
+<template>
+	<main class="page">Hello</main>
+</template>
+
+<script lang="go">
+package app
+
+type App struct{}
+</script>
+
+<style scoped>
+/* component */
+.page,
+.card > h1:hover,
+button[aria-label=","]:focus {
+	color: red;
+}
+
+@media (min-width: 640px) {
+	.card .title::before {
+		content: "{";
+	}
+}
+
+@keyframes fade {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+</style>

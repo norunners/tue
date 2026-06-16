@@ -219,6 +219,7 @@ func mountComponentVNode(dom domBoundary, parent domNode, before domNode, vnode 
 		target:       childMountTarget{domBoundary: dom, parent: parent},
 		owner:        mounted,
 		insertBefore: before,
+		scopeAttrs:   vnode.scopeAttrs,
 	}
 	child.renderEffect = newComponentRenderEffect(child)
 	child.renderEffect.run()
@@ -242,6 +243,7 @@ func patchComponentVNode(old *mountedVNode, next VNode) (*mountedVNode, error) {
 	if next.ComponentUpdater != nil {
 		next.ComponentUpdater(old.component.component)
 	}
+	old.component.scopeAttrs = next.scopeAttrs
 	old.vnode = next
 	if err := old.component.Update(); err != nil {
 		return nil, err

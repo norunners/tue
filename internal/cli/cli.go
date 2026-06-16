@@ -133,6 +133,9 @@ func runBuild(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "%s\n", file.ScriptFile)
 		fmt.Fprintf(stdout, "%s\n", file.RenderFile)
 	}
+	if manifest.StyleFile != "" {
+		fmt.Fprintf(stdout, "%s\n", manifest.StyleFile)
+	}
 
 	return exitOK
 }
@@ -218,6 +221,7 @@ func discoverTueFiles(root string) ([]string, error) {
 type parsedTueFile struct {
 	CheckerFile  checker.File
 	ScriptSource string
+	Style        *gogen.Style
 }
 
 func (f parsedTueFile) gogenFile() gogen.File {
@@ -226,6 +230,7 @@ func (f parsedTueFile) gogenFile() gogen.File {
 		Template:     f.CheckerFile.Template,
 		Script:       f.CheckerFile.Script,
 		ScriptSource: f.ScriptSource,
+		Style:        f.Style,
 	}
 }
 
@@ -290,6 +295,7 @@ func parseTueFile(root string, path string) (*parsedTueFile, []checker.Diagnosti
 			Script:   scriptFile,
 		},
 		ScriptSource: sfcFile.Script.Content,
+		Style:        gogen.StyleFromBlock(sfcFile.Style),
 	}, nil, nil
 }
 

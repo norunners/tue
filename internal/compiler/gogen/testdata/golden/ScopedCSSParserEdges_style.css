@@ -1,0 +1,26 @@
+/* App.tue */
+/* before selectors */
+.panel[data-tue-c-d8d60a14], button[aria-label=","][data-tue-c-d8d60a14]:hover, .card > h1[data-tue-c-d8d60a14]::before {
+	--template: "{ value; still }";
+	background-image: url("/icons/a,b{c}.svg");
+	content: "x,y;{}";
+}
+
+@media (min-width: 640px) {
+	/* nested grouping */
+	@supports (display: grid) {
+		.grid[data-tue-c-d8d60a14], .grid > .item[data-tue-c-d8d60a14]:focus {
+			display: grid;
+		}
+	}
+}
+
+@keyframes fade {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+@font-face {
+	font-family: "Comma,Brace";
+	src: url("/font{a};b.woff2");
+}

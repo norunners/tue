@@ -1,0 +1,15 @@
+<template>
+	<section class="banner">Global</section>
+</template>
+
+<script lang="go">
+package app
+
+type Banner struct{}
+</script>
+
+<style>
+body {
+	margin: 0;
+}
+</style>

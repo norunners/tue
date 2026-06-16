@@ -299,6 +299,79 @@ func TestGenerateProjectEmitsStyleBindingRenderFiles(t *testing.T) {
 	}
 }
 
+func TestGenerateProjectEmitsScopedStyleFiles(t *testing.T) {
+	project, err := parseProjectFixture("testdata/scoped_styles")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	result, diagnostics := GenerateProject(*project)
+	if result == nil {
+		t.Fatal("GenerateProject result is nil")
+	}
+
+	expectedDiagnostics := []diagnosticSummary{}
+	if diff := cmp.Diff(expectedDiagnostics, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+	expectedPaths := []string{
+		"App_tue.go",
+		"App_render_tue.go",
+		"Banner_tue.go",
+		"Banner_render_tue.go",
+		"style.css",
+	}
+	if diff := cmp.Diff(expectedPaths, generatedPaths(result.Files)); diff != "" {
+		t.Errorf("mismatch generated paths (-expected, +actual):\n%s", diff)
+	}
+	expectedRender, err := testFixtureString("testdata/golden/ScopedStyle_render_tue.go")
+	if err != nil {
+		t.Fatalf("read expected scoped style render fixture: %v", err)
+	}
+	actualRender, err := generatedSource(result, "App_render_tue.go")
+	if err != nil {
+		t.Fatalf("read actual generated scoped style render: %v", err)
+	}
+	if diff := cmp.Diff(expectedRender, string(actualRender)); diff != "" {
+		t.Errorf("mismatch generated scoped style render (-expected, +actual):\n%s", diff)
+	}
+	expectedStyle, err := testFixtureString("testdata/golden/ScopedStyle_style.css")
+	if err != nil {
+		t.Fatalf("read expected scoped stylesheet fixture: %v", err)
+	}
+	actualStyle, err := generatedSource(result, "style.css")
+	if err != nil {
+		t.Fatalf("read actual generated stylesheet: %v", err)
+	}
+	if diff := cmp.Diff(expectedStyle, string(actualStyle)); diff != "" {
+		t.Errorf("mismatch generated stylesheet (-expected, +actual):\n%s", diff)
+	}
+
+	expectedManifest := manifestSummary{
+		GeneratedBy: "tue",
+		StyleFile:   "style.css",
+		Files: []manifestFileSummary{
+			{Source: "App.tue", Component: "App", ScriptFile: "App_tue.go", RenderFile: "App_render_tue.go", ScopeAttr: "data-tue-c-d8d60a14"},
+			{Source: "Banner.tue", Component: "Banner", ScriptFile: "Banner_tue.go", RenderFile: "Banner_render_tue.go"},
+		},
+	}
+	actualManifest := summarizeManifest(result.Manifest)
+	actualManifest.Files[0].Nodes = nil
+	actualManifest.Files[1].Nodes = nil
+	if diff := cmp.Diff(expectedManifest, actualManifest); diff != "" {
+		t.Errorf("mismatch scoped style manifest (-expected, +actual):\n%s", diff)
+	}
+
+	for _, file := range result.Files {
+		if filepath.Ext(file.Path) != ".go" {
+			continue
+		}
+		if _, err := goparser.ParseFile(token.NewFileSet(), file.Path, file.Source, goparser.AllErrors); err != nil {
+			t.Errorf("generated file %s should parse: %v", file.Path, err)
+		}
+	}
+}
+
 func TestGenerateProjectEmitsModelBindingRenderFiles(t *testing.T) {
 	project, err := parseProjectFixture("testdata/models/App.tue")
 	if err != nil {
@@ -671,6 +744,17 @@ func TestGeneratedDefaultSlotFixtureCompilesForWASM(t *testing.T) {
 	}
 }
 
+func TestGeneratedScopedStyleFixtureCompilesForWASM(t *testing.T) {
+	project, err := parseProjectFixture("testdata/scoped_styles")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	if err := compileGeneratedProjectForWASM(t.TempDir(), *project); err != nil {
+		t.Fatalf("compile generated scoped style fixture for WASM: %v", err)
+	}
+}
+
 func TestWriteProjectWritesCacheFilesAndManifest(t *testing.T) {
 	root := t.TempDir()
 	project, err := parseProjectFixture("testdata/static/App.tue")
@@ -681,9 +765,6 @@ func TestWriteProjectWritesCacheFilesAndManifest(t *testing.T) {
 	manifest, diagnostics, err := WriteProject(root, *project)
 	if err != nil {
 		t.Fatalf("WriteProject returned error: %v", err)
-	}
-	if manifest == nil {
-		t.Fatal("WriteProject manifest is nil")
 	}
 	if diff := cmp.Diff([]diagnosticSummary{}, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
@@ -708,6 +789,37 @@ func TestWriteProjectWritesCacheFilesAndManifest(t *testing.T) {
 	}
 	if diff := cmp.Diff(*manifest, decoded); diff != "" {
 		t.Errorf("mismatch manifest JSON (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestWriteProjectWritesStylesheet(t *testing.T) {
+	root := t.TempDir()
+	project, err := parseProjectFixture("testdata/scoped_styles")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	manifest, diagnostics, err := WriteProject(root, *project)
+	if err != nil {
+		t.Fatalf("WriteProject returned error: %v", err)
+	}
+	if diff := cmp.Diff([]diagnosticSummary{}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff("style.css", manifest.StyleFile); diff != "" {
+		t.Errorf("mismatch manifest style file (-expected, +actual):\n%s", diff)
+	}
+
+	expectedStyle, err := testFixtureString("testdata/golden/ScopedStyle_style.css")
+	if err != nil {
+		t.Fatalf("read expected scoped stylesheet fixture: %v", err)
+	}
+	actualStyle, err := os.ReadFile(filepath.Join(root, CacheDir, "style.css"))
+	if err != nil {
+		t.Fatalf("read generated stylesheet: %v", err)
+	}
+	if diff := cmp.Diff(expectedStyle, string(actualStyle)); diff != "" {
+		t.Errorf("mismatch written stylesheet (-expected, +actual):\n%s", diff)
 	}
 }
 
@@ -775,6 +887,7 @@ func parseProjectFixtureFile(path string) (*File, error) {
 		Template:     templateTree,
 		Script:       scriptFile,
 		ScriptSource: sfcFile.Script.Content,
+		Style:        StyleFromBlock(sfcFile.Style),
 	}, nil
 }
 
@@ -872,6 +985,7 @@ func summarizeDiagnostics(diagnostics []Diagnostic) []diagnosticSummary {
 
 type manifestSummary struct {
 	GeneratedBy string
+	StyleFile   string
 	Files       []manifestFileSummary
 }
 
@@ -880,6 +994,7 @@ type manifestFileSummary struct {
 	Component  string
 	ScriptFile string
 	RenderFile string
+	ScopeAttr  string
 	Nodes      []manifestNodeSummary
 }
 
@@ -893,6 +1008,7 @@ type manifestNodeSummary struct {
 func summarizeManifest(manifest Manifest) manifestSummary {
 	summary := manifestSummary{
 		GeneratedBy: manifest.GeneratedBy,
+		StyleFile:   manifest.StyleFile,
 		Files:       make([]manifestFileSummary, len(manifest.Files)),
 	}
 	for i, file := range manifest.Files {
@@ -901,6 +1017,7 @@ func summarizeManifest(manifest Manifest) manifestSummary {
 			Component:  file.Component,
 			ScriptFile: file.ScriptFile,
 			RenderFile: file.RenderFile,
+			ScopeAttr:  file.ScopeAttr,
 			Nodes:      make([]manifestNodeSummary, len(file.Nodes)),
 		}
 		for j, node := range file.Nodes {

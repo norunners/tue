@@ -130,6 +130,37 @@ func TestRunBuildGeneratesCacheFiles(t *testing.T) {
 	}
 }
 
+func TestRunBuildGeneratesStylesheet(t *testing.T) {
+	root := t.TempDir()
+	if err := writeFixture(filepath.Join(root, "App.tue"), "testdata/StyledApp.tue"); err != nil {
+		t.Fatalf("setup App.tue: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{"build", root}, &stdout, &stderr)
+
+	if code != exitOK {
+		t.Errorf("Run(build) exit code actual = %d, expected %d; stderr = %q", code, exitOK, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr actual = %q, expected empty", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "style.css") {
+		t.Errorf("stdout actual = %q, expected stylesheet path", stdout.String())
+	}
+
+	source, err := os.ReadFile(filepath.Join(root, ".tue-cache", "style.css"))
+	if err != nil {
+		t.Fatalf("read generated stylesheet: %v", err)
+	}
+	expected := ".page[data-tue-c-d8d60a14]"
+	if !strings.Contains(string(source), expected) {
+		t.Errorf("style.css actual = %q, expected scoped selector %q", string(source), expected)
+	}
+}
+
 func TestRunBuildReportsGenerationDiagnostics(t *testing.T) {
 	root := t.TempDir()
 	if err := writeFile(filepath.Join(root, "App.tue"), `<template><button :title="kind">Save</button></template>

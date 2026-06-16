@@ -1,0 +1,40 @@
+<template>
+	<main class="panel">Hello</main>
+</template>
+
+<script lang="go">
+package app
+
+type App struct{}
+</script>
+
+<style scoped>
+/* before selectors */
+.panel,
+button[aria-label=","]:hover,
+.card > h1::before {
+	--template: "{ value; still }";
+	background-image: url("/icons/a,b{c}.svg");
+	content: "x,y;{}";
+}
+
+@media (min-width: 640px) {
+	/* nested grouping */
+	@supports (display: grid) {
+		.grid,
+		.grid > .item:focus {
+			display: grid;
+		}
+	}
+}
+
+@keyframes fade {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+@font-face {
+	font-family: "Comma,Brace";
+	src: url("/font{a};b.woff2");
+}
+</style>

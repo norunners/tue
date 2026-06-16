@@ -1,0 +1,24 @@
+/* App.tue */
+.page[data-tue-c-d8d60a14], .card > h1[data-tue-c-d8d60a14]:hover {
+	color: red;
+}
+
+.banner[data-tue-c-d8d60a14] {
+	margin-block: 1rem;
+}
+
+@media (min-width: 640px) {
+	.card[data-tue-c-d8d60a14] {
+		padding: 1rem;
+	}
+}
+
+@keyframes fade {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+/* Banner.tue */
+body {
+	margin: 0;
+}

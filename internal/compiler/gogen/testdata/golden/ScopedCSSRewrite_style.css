@@ -1,0 +1,16 @@
+/* App.tue */
+/* component */
+.page[data-tue-c-d8d60a14], .card > h1[data-tue-c-d8d60a14]:hover, button[aria-label=","][data-tue-c-d8d60a14]:focus {
+	color: red;
+}
+
+@media (min-width: 640px) {
+	.card .title[data-tue-c-d8d60a14]::before {
+		content: "{";
+	}
+}
+
+@keyframes fade {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}

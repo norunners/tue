@@ -5,6 +5,7 @@ import "github.com/norunners/tue/internal/compiler/sfc"
 // Manifest records generated files and source spans for later diagnostics.
 type Manifest struct {
 	GeneratedBy string         `json:"generatedBy"`
+	StyleFile   string         `json:"styleFile,omitempty"`
 	Files       []ManifestFile `json:"files"`
 }
 
@@ -14,6 +15,7 @@ type ManifestFile struct {
 	Component  string         `json:"component"`
 	ScriptFile string         `json:"scriptFile"`
 	RenderFile string         `json:"renderFile"`
+	ScopeAttr  string         `json:"scopeAttr,omitempty"`
 	Nodes      []ManifestNode `json:"nodes"`
 }
 
