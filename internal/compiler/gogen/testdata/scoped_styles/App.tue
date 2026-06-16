@@ -1,0 +1,51 @@
+<template>
+	<main class="page">
+		<Banner />
+		<section class="card">
+			<h1>{{ title }}</h1>
+		</section>
+		<button v-if="enabled">Save</button>
+		<ul>
+			<li v-for="item in items" :key="item.id">
+				{{ item.text }}
+			</li>
+		</ul>
+	</main>
+</template>
+
+<script lang="go">
+package app
+
+type item struct {
+	id   int
+	text string
+}
+
+type App struct {
+	title   string
+	enabled bool
+	items   []item
+}
+</script>
+
+<style scoped>
+.page,
+.card > h1:hover {
+	color: red;
+}
+
+.banner {
+	margin-block: 1rem;
+}
+
+@media (min-width: 640px) {
+	.card {
+		padding: 1rem;
+	}
+}
+
+@keyframes fade {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+</style>

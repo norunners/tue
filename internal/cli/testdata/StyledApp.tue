@@ -1,0 +1,15 @@
+<template>
+	<main class="page">Hello</main>
+</template>
+
+<script lang="go">
+package app
+
+type App struct{}
+</script>
+
+<style scoped>
+.page {
+	color: red;
+}
+</style>

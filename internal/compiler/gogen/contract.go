@@ -17,6 +17,14 @@ type File struct {
 	Template     *gotemplate.Tree
 	Script       *script.File
 	ScriptSource string
+	Style        *Style
+}
+
+// Style is one parsed <style> block attached to a .tue file.
+type Style struct {
+	Source string
+	Scoped bool
+	Span   sfc.Span
 }
 
 // Result is the generated output for a project.

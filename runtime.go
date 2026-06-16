@@ -34,6 +34,8 @@ type VNode struct {
 	Text             string
 	ComponentFactory func() *Comp
 	ComponentUpdater func(*Comp)
+
+	scopeAttrs []string
 }
 
 // Attribute is a static DOM attribute.
@@ -124,6 +126,13 @@ func ComponentWithUpdate(name string, factory func() *Comp, update func(*Comp)) 
 		ComponentFactory: factory,
 		ComponentUpdater: update,
 	}
+}
+
+// WithScopeAttrs returns a VNode that applies inherited scoped-CSS attributes
+// to component root elements.
+func WithScopeAttrs(node VNode, attrs ...string) VNode {
+	node.scopeAttrs = mergeScopeAttrNames(node.scopeAttrs, attrs)
+	return node
 }
 
 // Comp is a generated component instance.
@@ -287,10 +296,73 @@ func renderHTML(builder *strings.Builder, node VNode) {
 		if component == nil {
 			return
 		}
-		renderHTML(builder, component.renderVNode())
+		renderHTML(builder, withInheritedScopeAttrs(component.renderVNode(), node.scopeAttrs))
 	default:
 		builder.WriteString(html.EscapeString(fmt.Sprint(node.Text)))
 	}
+}
+
+func withInheritedScopeAttrs(node VNode, scopeAttrs []string) VNode {
+	if len(scopeAttrs) == 0 {
+		return node
+	}
+
+	switch node.Type {
+	case VNodeTypeElement:
+		node.Attrs = attrsWithScopeAttrs(node.Attrs, scopeAttrs)
+	case VNodeTypeFragment:
+		children := append([]VNode(nil), node.Children...)
+		for i := range children {
+			children[i] = withInheritedScopeAttrs(children[i], scopeAttrs)
+		}
+		node.Children = children
+	case VNodeTypeComponent:
+		node.scopeAttrs = mergeScopeAttrNames(node.scopeAttrs, scopeAttrs)
+	}
+	return node
+}
+
+func attrsWithScopeAttrs(attrs []Attribute, scopeAttrs []string) []Attribute {
+	next := append([]Attribute(nil), attrs...)
+	for _, attr := range scopeAttrs {
+		if attr == "" || hasAttr(next, attr) {
+			continue
+		}
+		next = append(next, BoolAttr(attr))
+	}
+	return next
+}
+
+func mergeScopeAttrNames(existing []string, next []string) []string {
+	merged := append([]string(nil), existing...)
+	for _, attr := range next {
+		if attr == "" || stringInSlice(merged, attr) {
+			continue
+		}
+		merged = append(merged, attr)
+	}
+	if len(merged) == 0 {
+		return nil
+	}
+	return merged
+}
+
+func hasAttr(attrs []Attribute, name string) bool {
+	for _, attr := range attrs {
+		if attr.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func stringInSlice(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func renderHTMLAttr(builder *strings.Builder, attr Attribute) {

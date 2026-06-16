@@ -13,7 +13,10 @@ const CacheDir = ".tue-cache"
 func WriteProject(root string, project Project) (*Manifest, []Diagnostic, error) {
 	result, diagnostics := GenerateProject(project)
 	if len(diagnostics) != 0 {
-		return nil, diagnostics, nil
+		return &Manifest{GeneratedBy: "tue"}, diagnostics, nil
+	}
+	if result == nil {
+		return nil, nil, fmt.Errorf("generate project: missing result")
 	}
 
 	cacheDir := filepath.Join(root, CacheDir)

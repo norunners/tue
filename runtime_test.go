@@ -341,6 +341,77 @@ func TestMountedComponentVNodeRunsChildLifecycleAndUpdates(t *testing.T) {
 	}
 }
 
+func TestMountedComponentVNodeAppliesInheritedScopeAttrsToRoot(t *testing.T) {
+	scopeAttrs := []string{"data-tue-c-parent"}
+	childTag := "section"
+	target := newStubDOMTarget()
+	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		child := Component("Child", func() *Comp {
+			return CompOf(&patchFixture{}, func(*patchFixture) VNode {
+				return Element(childTag, []Attribute{Attr("class", "banner")}, []VNode{
+					Element("p", nil, []VNode{Text("Child")}),
+				})
+			})
+		})
+		return WithScopeAttrs(child, scopeAttrs...)
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	expected := `<section class="banner" data-tue-c-parent><p>Child</p></section>`
+	if diff := cmp.Diff(expected, target.html()); diff != "" {
+		t.Errorf("mismatch mounted inherited scope HTML (-expected, +actual):\n%s", diff)
+	}
+
+	scopeAttrs = nil
+	childTag = "article"
+	if err := mounted.Update(); err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+
+	expected = `<article class="banner"><p>Child</p></article>`
+	if diff := cmp.Diff(expected, target.html()); diff != "" {
+		t.Errorf("mismatch patched inherited scope HTML (-expected, +actual):\n%s", diff)
+	}
+
+	if err := mounted.Unmount(); err != nil {
+		t.Fatalf("Unmount returned error: %v", err)
+	}
+}
+
+func TestMountedComponentVNodeAppendsNestedInheritedScopeAttrsToRoot(t *testing.T) {
+	target := newStubDOMTarget()
+	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		parent := Component("Parent", func() *Comp {
+			return CompOf(&patchFixture{}, func(*patchFixture) VNode {
+				child := Component("Child", func() *Comp {
+					return CompOf(&patchFixture{}, func(*patchFixture) VNode {
+						return Element("section", []Attribute{
+							Attr("class", "child-root"),
+							BoolAttr("data-tue-c-child"),
+						}, []VNode{Text("Child")})
+					})
+				})
+				return WithScopeAttrs(child, "data-tue-c-parent")
+			})
+		})
+		return WithScopeAttrs(parent, "data-tue-c-grandparent")
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	expected := `<section class="child-root" data-tue-c-child data-tue-c-grandparent data-tue-c-parent>Child</section>`
+	if diff := cmp.Diff(expected, target.html()); diff != "" {
+		t.Errorf("mismatch nested inherited scope HTML (-expected, +actual):\n%s", diff)
+	}
+
+	if err := mounted.Unmount(); err != nil {
+		t.Fatalf("Unmount returned error: %v", err)
+	}
+}
+
 func TestMountedComponentVNodeTracksChildReactiveReads(t *testing.T) {
 	count := RefOf(0)
 	target := newStubDOMTarget()

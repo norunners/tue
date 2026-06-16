@@ -9,6 +9,7 @@ type Mounted struct {
 	tree         *mountedVNode
 	owner        *mountedVNode
 	insertBefore domNode
+	scopeAttrs   []string
 	renderEffect *componentRenderEffect
 
 	mounted   bool
@@ -129,6 +130,7 @@ func (e *componentRenderEffect) run() {
 		defer popSubscriber()
 		vnode = e.mounted.component.renderVNode()
 	}()
+	vnode = withInheritedScopeAttrs(vnode, e.mounted.scopeAttrs)
 
 	e.mounted.renderErr = e.mounted.patchRenderedVNode(vnode)
 	if e.mounted.renderErr != nil {
