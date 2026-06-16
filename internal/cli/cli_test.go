@@ -161,6 +161,66 @@ func TestRunBuildGeneratesStylesheet(t *testing.T) {
 	}
 }
 
+func TestRunBuildGeneratesAssets(t *testing.T) {
+	root := t.TempDir()
+	if err := writeFixture(filepath.Join(root, "App.tue"), "testdata/AssetApp.tue"); err != nil {
+		t.Fatalf("setup App.tue: %v", err)
+	}
+	if err := writeFile(filepath.Join(root, "logo.svg"), "<svg>logo</svg>\n"); err != nil {
+		t.Fatalf("setup logo.svg: %v", err)
+	}
+	if err := writeFile(filepath.Join(root, "hero.png"), "hero\n"); err != nil {
+		t.Fatalf("setup hero.png: %v", err)
+	}
+	if err := writeFile(filepath.Join(root, "public", "favicon.svg"), "<svg>favicon</svg>\n"); err != nil {
+		t.Fatalf("setup public favicon.svg: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{"build", root}, &stdout, &stderr)
+
+	if code != exitOK {
+		t.Errorf("Run(build) exit code actual = %d, expected %d; stderr = %q", code, exitOK, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr actual = %q, expected empty", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "assets/logo.") {
+		t.Errorf("stdout actual = %q, expected hashed logo asset", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "public/favicon.svg") {
+		t.Errorf("stdout actual = %q, expected public favicon asset", stdout.String())
+	}
+
+	logos, err := filepath.Glob(filepath.Join(root, ".tue-cache", "assets", "logo.*.svg"))
+	if err != nil {
+		t.Fatalf("glob generated logo asset: %v", err)
+	}
+	if len(logos) != 1 {
+		t.Errorf("generated logo assets actual = %#v, expected exactly one", logos)
+	}
+	heroes, err := filepath.Glob(filepath.Join(root, ".tue-cache", "assets", "hero.*.png"))
+	if err != nil {
+		t.Fatalf("glob generated hero asset: %v", err)
+	}
+	if len(heroes) != 1 {
+		t.Errorf("generated hero assets actual = %#v, expected exactly one", heroes)
+	}
+	if _, err := os.ReadFile(filepath.Join(root, ".tue-cache", "public", "favicon.svg")); err != nil {
+		t.Errorf("generated public favicon should exist: %v", err)
+	}
+
+	style, err := os.ReadFile(filepath.Join(root, ".tue-cache", "style.css"))
+	if err != nil {
+		t.Fatalf("read generated stylesheet: %v", err)
+	}
+	if !strings.Contains(string(style), "assets/hero.") {
+		t.Errorf("style.css actual = %q, expected hashed hero URL", string(style))
+	}
+}
+
 func TestRunBuildReportsGenerationDiagnostics(t *testing.T) {
 	root := t.TempDir()
 	if err := writeFile(filepath.Join(root, "App.tue"), `<template><button :title="kind">Save</button></template>

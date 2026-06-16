@@ -372,6 +372,88 @@ func TestGenerateProjectEmitsScopedStyleFiles(t *testing.T) {
 	}
 }
 
+func TestGenerateProjectRewritesTemplateAndStyleAssets(t *testing.T) {
+	root := t.TempDir()
+	if err := copyTestFixtureDir(root, "testdata/assets"); err != nil {
+		t.Fatalf("copy asset fixture: %v", err)
+	}
+	project, err := parseProjectRoot(root, []string{"App.tue"})
+	if err != nil {
+		t.Fatalf("parse project root: %v", err)
+	}
+
+	result, diagnostics := GenerateProject(*project)
+	if result == nil {
+		t.Fatal("GenerateProject result is nil")
+	}
+
+	expectedDiagnostics := []diagnosticSummary{}
+	if diff := cmp.Diff(expectedDiagnostics, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+
+	logoOutput, err := assetOutput(result.Manifest, "logo.svg")
+	if err != nil {
+		t.Fatalf("find logo asset: %v", err)
+	}
+	heroOutput, err := assetOutput(result.Manifest, "hero,(1).png")
+	if err != nil {
+		t.Fatalf("find hero asset: %v", err)
+	}
+	expectedAssets := []manifestAssetSummary{
+		{Source: "hero,(1).png", Output: heroOutput},
+		{Source: "logo.svg", Output: logoOutput},
+		{Source: "public/App_render_tue.go", Output: "public/App_render_tue.go", Public: true},
+		{Source: "public/favicon.svg", Output: "public/favicon.svg", Public: true},
+		{Source: "public/foo.go", Output: "public/foo.go", Public: true},
+		{Source: "public/manifest.json", Output: "public/manifest.json", Public: true},
+		{Source: "public/mask.svg", Output: "public/mask.svg", Public: true},
+		{Source: "public/robots.txt", Output: "public/robots.txt", Public: true},
+		{Source: "public/style.css", Output: "public/style.css", Public: true},
+	}
+	if diff := cmp.Diff(expectedAssets, summarizeManifest(result.Manifest).Assets); diff != "" {
+		t.Errorf("mismatch manifest assets (-expected, +actual):\n%s", diff)
+	}
+
+	render, err := generatedSource(result, "App_render_tue.go")
+	if err != nil {
+		t.Fatalf("read generated render: %v", err)
+	}
+	for _, expected := range []string{
+		fmt.Sprintf(`tue.Attr("src", %q)`, logoOutput),
+		`tue.Attr("href", "/favicon.svg")`,
+	} {
+		if !strings.Contains(string(render), expected) {
+			t.Errorf("mismatch generated render asset reference: expected source to contain %q", expected)
+		}
+	}
+
+	style, err := generatedSource(result, "style.css")
+	if err != nil {
+		t.Fatalf("read generated style: %v", err)
+	}
+	for _, expected := range []string{
+		fmt.Sprintf(`url("%s")`, heroOutput),
+		`url('/mask.svg#icon')`,
+		`url("https://example.com/banner.png")`,
+	} {
+		if !strings.Contains(string(style), expected) {
+			t.Errorf("mismatch generated style asset reference: expected source to contain %q", expected)
+		}
+	}
+
+	repeatedResult, repeatedDiagnostics := GenerateProject(*project)
+	if repeatedResult == nil {
+		t.Fatal("repeated GenerateProject result is nil")
+	}
+	if diff := cmp.Diff(expectedDiagnostics, summarizeDiagnostics(repeatedDiagnostics)); diff != "" {
+		t.Errorf("mismatch repeated diagnostics (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff(generatedPaths(result.Files), generatedPaths(repeatedResult.Files)); diff != "" {
+		t.Errorf("mismatch repeated generated paths (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestGenerateProjectEmitsModelBindingRenderFiles(t *testing.T) {
 	project, err := parseProjectFixture("testdata/models/App.tue")
 	if err != nil {
@@ -823,6 +905,75 @@ func TestWriteProjectWritesStylesheet(t *testing.T) {
 	}
 }
 
+func TestWriteProjectWritesAssets(t *testing.T) {
+	root := t.TempDir()
+	if err := copyTestFixtureDir(root, "testdata/assets"); err != nil {
+		t.Fatalf("copy asset fixture: %v", err)
+	}
+	project, err := parseProjectRoot(root, []string{"App.tue"})
+	if err != nil {
+		t.Fatalf("parse project root: %v", err)
+	}
+
+	manifest, diagnostics, err := WriteProject(root, *project)
+	if err != nil {
+		t.Fatalf("WriteProject returned error: %v", err)
+	}
+	if diff := cmp.Diff([]diagnosticSummary{}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+
+	for _, asset := range manifest.Assets {
+		actual, err := os.ReadFile(filepath.Join(root, CacheDir, filepath.FromSlash(asset.Output)))
+		if err != nil {
+			t.Errorf("read generated asset %s: %v", asset.Output, err)
+			continue
+		}
+		expected, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(asset.Source)))
+		if err != nil {
+			t.Errorf("read source asset %s: %v", asset.Source, err)
+			continue
+		}
+		if diff := cmp.Diff(string(expected), string(actual)); diff != "" {
+			t.Errorf("mismatch copied asset %q (-expected, +actual):\n%s", asset.Output, diff)
+		}
+	}
+
+	generatedStyle, err := os.ReadFile(filepath.Join(root, CacheDir, "style.css"))
+	if err != nil {
+		t.Fatalf("read generated stylesheet: %v", err)
+	}
+	if strings.Contains(string(generatedStyle), "public style collision fixture") {
+		t.Errorf("generated stylesheet was overwritten by public/style.css")
+	}
+	if !strings.Contains(string(generatedStyle), "assets/hero,(1).") {
+		t.Errorf("style.css actual = %q, expected generated stylesheet with hashed hero URL", string(generatedStyle))
+	}
+
+	generatedRender, err := os.ReadFile(filepath.Join(root, CacheDir, "App_render_tue.go"))
+	if err != nil {
+		t.Fatalf("read generated render file: %v", err)
+	}
+	if _, err := goparser.ParseFile(token.NewFileSet(), "App_render_tue.go", generatedRender, goparser.AllErrors); err != nil {
+		t.Errorf("generated render file should remain valid Go after public/App_render_tue.go copy: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, CacheDir, "foo.go")); !os.IsNotExist(err) {
+		t.Errorf("public/foo.go should not be copied into generated package root; stat error = %v", err)
+	}
+
+	manifestSource, err := os.ReadFile(filepath.Join(root, CacheDir, "manifest.json"))
+	if err != nil {
+		t.Fatalf("read generated manifest: %v", err)
+	}
+	var decodedManifest Manifest
+	if err := json.Unmarshal(manifestSource, &decodedManifest); err != nil {
+		t.Fatalf("decode generated manifest: %v", err)
+	}
+	if diff := cmp.Diff("tue", decodedManifest.GeneratedBy); diff != "" {
+		t.Errorf("mismatch generated manifest marker (-expected, +actual):\n%s", diff)
+	}
+}
+
 func parseProjectFixture(path string) (*Project, error) {
 	info, err := fs.Stat(testFixtures, path)
 	if err != nil {
@@ -889,6 +1040,78 @@ func parseProjectFixtureFile(path string) (*File, error) {
 		ScriptSource: sfcFile.Script.Content,
 		Style:        StyleFromBlock(sfcFile.Style),
 	}, nil
+}
+
+func parseProjectRoot(root string, paths []string) (*Project, error) {
+	project := Project{
+		Root:  root,
+		Files: make([]File, 0, len(paths)),
+	}
+	for _, path := range paths {
+		file, err := parseProjectRootFile(root, path)
+		if err != nil {
+			return nil, err
+		}
+		project.Files = append(project.Files, *file)
+	}
+	return &project, nil
+}
+
+func parseProjectRootFile(root string, path string) (*File, error) {
+	source, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
+	if err != nil {
+		return nil, fmt.Errorf("read project fixture %s: %w", path, err)
+	}
+	sfcFile, sfcDiagnostics := sfc.Parse(path, source)
+	if len(sfcDiagnostics) != 0 {
+		return nil, fmt.Errorf("sfc.Parse diagnostics = %#v, expected none", sfcDiagnosticMessages(sfcDiagnostics))
+	}
+
+	templateTree, templateDiagnostics := gotemplate.ParseBlock(sfcFile.Template)
+	if len(templateDiagnostics) != 0 {
+		return nil, fmt.Errorf("template.ParseBlock diagnostics = %#v, expected none", templateDiagnosticMessages(templateDiagnostics))
+	}
+
+	scriptFile, scriptDiagnostics := script.ParseSFC(sfcFile)
+	if len(scriptDiagnostics) != 0 {
+		return nil, fmt.Errorf("script.ParseSFC diagnostics = %#v, expected none", scriptDiagnosticMessages(scriptDiagnostics))
+	}
+
+	return &File{
+		Path:         sfcFile.Path,
+		Template:     templateTree,
+		Script:       scriptFile,
+		ScriptSource: sfcFile.Script.Content,
+		Style:        StyleFromBlock(sfcFile.Style),
+	}, nil
+}
+
+func copyTestFixtureDir(root string, dir string) error {
+	return fs.WalkDir(testFixtures, dir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+
+		source, err := testFixture(path)
+		if err != nil {
+			return err
+		}
+		relativePath, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(root, filepath.FromSlash(relativePath))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return fmt.Errorf("create fixture dir %s: %w", filepath.Dir(target), err)
+		}
+		if err := os.WriteFile(target, source, 0o644); err != nil {
+			return fmt.Errorf("write fixture %s: %w", target, err)
+		}
+		return nil
+	})
 }
 
 func compileGeneratedProjectForWASM(root string, project Project) error {
@@ -963,6 +1186,15 @@ func testFixtureString(path string) (string, error) {
 	return string(source), nil
 }
 
+func assetOutput(manifest Manifest, source string) (string, error) {
+	for _, asset := range manifest.Assets {
+		if asset.Source == source {
+			return asset.Output, nil
+		}
+	}
+	return "", fmt.Errorf("manifest asset source %q not found in %#v", source, manifest.Assets)
+}
+
 type diagnosticSummary struct {
 	Path    string
 	Message string
@@ -986,7 +1218,14 @@ func summarizeDiagnostics(diagnostics []Diagnostic) []diagnosticSummary {
 type manifestSummary struct {
 	GeneratedBy string
 	StyleFile   string
+	Assets      []manifestAssetSummary
 	Files       []manifestFileSummary
+}
+
+type manifestAssetSummary struct {
+	Source string
+	Output string
+	Public bool
 }
 
 type manifestFileSummary struct {
@@ -1010,6 +1249,16 @@ func summarizeManifest(manifest Manifest) manifestSummary {
 		GeneratedBy: manifest.GeneratedBy,
 		StyleFile:   manifest.StyleFile,
 		Files:       make([]manifestFileSummary, len(manifest.Files)),
+	}
+	if len(manifest.Assets) != 0 {
+		summary.Assets = make([]manifestAssetSummary, len(manifest.Assets))
+		for i, asset := range manifest.Assets {
+			summary.Assets[i] = manifestAssetSummary{
+				Source: asset.Source,
+				Output: asset.Output,
+				Public: asset.Public,
+			}
+		}
 	}
 	for i, file := range manifest.Files {
 		summary.Files[i] = manifestFileSummary{

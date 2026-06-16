@@ -1,0 +1,1 @@
+public go collision fixture

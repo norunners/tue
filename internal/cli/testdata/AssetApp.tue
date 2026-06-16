@@ -1,0 +1,18 @@
+<template>
+	<main>
+		<img src="./logo.svg" alt="Logo" />
+		<link rel="icon" href="/favicon.svg" />
+	</main>
+</template>
+
+<script lang="go">
+package app
+
+type App struct{}
+</script>
+
+<style>
+.hero {
+	background-image: url("./hero.png");
+}
+</style>
