@@ -141,6 +141,21 @@ func TestCheckProjectReportsStyleBindingTypeDiagnostics(t *testing.T) {
 	}
 }
 
+func TestCheckProjectReportsBoundAttributeTypeDiagnostics(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_bound_attribute")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	diagnostics := CheckProject(project)
+	expected := []diagnosticSummary{
+		{Path: "testdata/invalid_bound_attribute/Parent.tue", Message: `bound attribute ":href" expects string, got bool`, Line: 2, Column: 15},
+	}
+	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestCheckProjectReportsNamedSlotDiagnostics(t *testing.T) {
 	project, err := parseProjectFixture("testdata/invalid_slot_binding")
 	if err != nil {

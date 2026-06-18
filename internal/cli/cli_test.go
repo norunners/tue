@@ -239,7 +239,7 @@ func TestRunFmtReportsDiagnosticsWithoutWriting(t *testing.T) {
 }
 
 func TestExamplesCheckAndBuild(t *testing.T) {
-	examples := []string{"todo", "user-table", "settings-form", "dashboard"}
+	examples := []string{"todo", "user-table", "settings-form", "dashboard", "router"}
 	for _, example := range examples {
 		t.Run(example, func(t *testing.T) {
 			sourceRoot := filepath.Join("..", "..", "examples", example)
@@ -286,7 +286,7 @@ func TestExamplesCheckAndBuild(t *testing.T) {
 }
 
 func TestExamplesAvoidSameNodeForIf(t *testing.T) {
-	examples := []string{"todo", "user-table", "settings-form", "dashboard"}
+	examples := []string{"todo", "user-table", "settings-form", "dashboard", "router"}
 	for _, example := range examples {
 		t.Run(example, func(t *testing.T) {
 			root := filepath.Join("..", "..", "examples", example)
@@ -593,7 +593,7 @@ func TestRunBuildReportsGenerationDiagnostics(t *testing.T) {
 package app
 
 type App struct {
-	kind string
+	kind bool
 }
 </script>
 `); err != nil {
@@ -611,7 +611,7 @@ type App struct {
 	if stdout.Len() != 0 {
 		t.Errorf("stdout actual = %q, expected empty", stdout.String())
 	}
-	expected := `App.tue:1:19: bound attribute ":title" generation is not supported in the static render slice`
+	expected := `App.tue:1:27: bound attribute ":title" expects string, got bool`
 	if !strings.Contains(stderr.String(), expected) {
 		t.Errorf("stderr actual = %q, expected %q", stderr.String(), expected)
 	}

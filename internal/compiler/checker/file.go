@@ -58,10 +58,14 @@ func (c *fileChecker) checkNativeAttrs(node *gotemplate.Node, scope *scope) {
 		if attr.Kind == gotemplate.AttrBind {
 			value := c.checkExpression(attr.Expression, attr.ExpressionSpan, scope)
 			switch attr.Argument {
+			case "key":
+				continue
 			case "class":
 				c.expectType("string", value.Type, "class binding", attr.ExpressionSpan)
 			case "style":
 				c.expectType("string", value.Type, "style binding", attr.ExpressionSpan)
+			default:
+				c.expectType("string", value.Type, fmt.Sprintf("bound attribute %q", attr.RawName), attr.ExpressionSpan)
 			}
 		}
 	}

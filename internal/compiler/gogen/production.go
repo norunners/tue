@@ -34,8 +34,19 @@ type ProductionBuild struct {
 
 // WriteProductionProject writes generated cache files and a static dist build.
 func WriteProductionProject(root string, project Project) (*ProductionBuild, []Diagnostic, error) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve project root %s: %w", root, err)
+	}
+	root = absRoot
 	if project.Root == "" {
 		project.Root = root
+	} else if !filepath.IsAbs(project.Root) {
+		absProjectRoot, err := filepath.Abs(project.Root)
+		if err != nil {
+			return nil, nil, fmt.Errorf("resolve project root %s: %w", project.Root, err)
+		}
+		project.Root = absProjectRoot
 	}
 	result, diagnostics := GenerateProject(project)
 	if len(diagnostics) != 0 {
