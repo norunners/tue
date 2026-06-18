@@ -1,0 +1,41 @@
+<template>
+	<article class="activity-item" :class="tone">
+		<span>{{ time }}</span>
+		<p>{{ message }}</p>
+	</article>
+</template>
+
+<script lang="go">
+package app
+
+import tue "github.com/norunners/tue"
+
+type ActivityItem struct {
+	message tue.Prop[string] `prop:"message,required"`
+	time    tue.Prop[string] `prop:"time,required"`
+	tone    tue.Prop[string] `prop:"tone"`
+}
+</script>
+
+<style scoped>
+.activity-item {
+	align-items: center;
+	border-bottom: 1px solid #eaecf0;
+	display: flex;
+	gap: 1rem;
+	padding-block: 0.75rem;
+}
+
+.activity-item span {
+	color: #667085;
+	font-variant-numeric: tabular-nums;
+}
+
+.healthy p {
+	color: #067647;
+}
+
+.warning p {
+	color: #b54708;
+}
+</style>

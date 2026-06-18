@@ -13,10 +13,18 @@ The pre-migration Vue runtime and examples remain available on the
 ## Current State
 
 - The GitHub repository and Go module path are `github.com/norunners/tue`.
-- The active root package is intentionally a placeholder until the Tue runtime
-  is rebuilt in reviewable slices.
-- Initial `.tue` source fixtures live under `testdata/fixtures/`; they define
-  the intended component shape before parser/runtime work lands.
+- Tue currently includes the runtime, compiler, CLI, production build, dev
+  server, and formatter slices needed for small internal-app examples.
+- Realistic `.tue` examples live under [`examples/`](examples/). They cover a
+  todo queue, user table, settings form, and dashboard.
+
+Try an example from the repository root:
+
+```bash
+go run ./cmd/tue check examples/todo
+go run ./cmd/tue dev examples/todo
+go run ./cmd/tue build examples/todo
+```
 
 ## Verification
 

@@ -1,0 +1,51 @@
+<template>
+	<section class="metric-card" :class="tone">
+		<p>{{ label }}</p>
+		<strong>{{ value }}</strong>
+		<slot>
+			<span>No detail</span>
+		</slot>
+	</section>
+</template>
+
+<script lang="go">
+package app
+
+import tue "github.com/norunners/tue"
+
+type MetricCard struct {
+	label tue.Prop[string] `prop:"label,required"`
+	value tue.Prop[string] `prop:"value,required"`
+	tone  tue.Prop[string] `prop:"tone"`
+}
+</script>
+
+<style scoped>
+.metric-card {
+	border: 1px solid #d0d5dd;
+	display: grid;
+	gap: 0.5rem;
+	padding: 1rem;
+}
+
+.metric-card p {
+	color: #5b6472;
+	margin: 0;
+}
+
+.metric-card strong {
+	font-size: 1.75rem;
+}
+
+.healthy {
+	border-color: #079455;
+}
+
+.warning {
+	border-color: #dc6803;
+}
+
+.neutral {
+	border-color: #667085;
+}
+</style>
