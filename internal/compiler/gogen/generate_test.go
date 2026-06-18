@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
+	"sort"
 	"strings"
 	"testing"
 
@@ -974,6 +976,203 @@ func TestWriteProjectWritesAssets(t *testing.T) {
 	}
 }
 
+func TestWriteProductionProjectWritesDist(t *testing.T) {
+	root := t.TempDir()
+	if err := copyTestFixtureDir(root, "testdata/production"); err != nil {
+		t.Fatalf("copy production fixture: %v", err)
+	}
+	project, err := parseProjectRoot(root, []string{"App.tue"})
+	if err != nil {
+		t.Fatalf("parse project root: %v", err)
+	}
+
+	build, diagnostics, err := WriteProductionProject(root, *project)
+	if err != nil {
+		t.Fatalf("WriteProductionProject returned error: %v", err)
+	}
+	if build == nil {
+		t.Fatal("WriteProductionProject build is nil")
+	}
+	if diff := cmp.Diff([]diagnosticSummary{}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+	if build.WASMSizeBytes <= 0 {
+		t.Errorf("WASM size actual = %d, expected positive", build.WASMSizeBytes)
+	}
+
+	logoOutput, err := assetOutput(build.Manifest, "logo.svg")
+	if err != nil {
+		t.Fatalf("find logo asset: %v", err)
+	}
+	heroOutput, err := assetOutput(build.Manifest, "hero.png")
+	if err != nil {
+		t.Fatalf("find hero asset: %v", err)
+	}
+	faviconOutput, err := assetOutput(build.Manifest, "public/favicon.svg")
+	if err != nil {
+		t.Fatalf("find favicon asset: %v", err)
+	}
+	expectedFiles := []string{
+		"app.wasm",
+		heroOutput,
+		logoOutput,
+		faviconOutput,
+		"index.html",
+		"manifest.json",
+		"style.css",
+		"tue_loader.js",
+	}
+	sort.Strings(expectedFiles)
+	if diff := cmp.Diff(expectedFiles, build.Files); diff != "" {
+		t.Errorf("mismatch dist files (-expected, +actual):\n%s", diff)
+	}
+
+	for _, path := range expectedFiles {
+		if _, err := os.Stat(filepath.Join(root, DistDir, filepath.FromSlash(path))); err != nil {
+			t.Errorf("dist file %s should exist: %v", path, err)
+		}
+	}
+	if diff := cmp.Diff("favicon.svg", faviconOutput); diff != "" {
+		t.Errorf("mismatch public asset dist output (-expected, +actual):\n%s", diff)
+	}
+
+	index, err := os.ReadFile(filepath.Join(root, DistDir, "index.html"))
+	if err != nil {
+		t.Fatalf("read dist index: %v", err)
+	}
+	for _, expected := range []string{`<div id="app"></div>`, `<script src="tue_loader.js" defer></script>`} {
+		if !strings.Contains(string(index), expected) {
+			t.Errorf("index.html actual = %q, expected %q", string(index), expected)
+		}
+	}
+
+	loader, err := os.ReadFile(filepath.Join(root, DistDir, "tue_loader.js"))
+	if err != nil {
+		t.Fatalf("read dist loader: %v", err)
+	}
+	if !strings.Contains(string(loader), `fetch("app.wasm")`) {
+		t.Errorf("tue_loader.js should load app.wasm")
+	}
+
+	style, err := os.ReadFile(filepath.Join(root, DistDir, "style.css"))
+	if err != nil {
+		t.Fatalf("read dist stylesheet: %v", err)
+	}
+	if !strings.Contains(string(style), ".page[data-tue-c-d8d60a14]") {
+		t.Errorf("style.css actual = %q, expected scoped selector", string(style))
+	}
+	if !strings.Contains(string(style), heroOutput) {
+		t.Errorf("style.css actual = %q, expected hero asset %q", string(style), heroOutput)
+	}
+
+	manifestSource, err := os.ReadFile(filepath.Join(root, DistDir, "manifest.json"))
+	if err != nil {
+		t.Fatalf("read dist manifest: %v", err)
+	}
+	var decoded Manifest
+	if err := json.Unmarshal(manifestSource, &decoded); err != nil {
+		t.Fatalf("decode dist manifest: %v", err)
+	}
+	if diff := cmp.Diff(build.Manifest, decoded); diff != "" {
+		t.Errorf("mismatch dist manifest (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestWriteProductionProjectRejectsPublicGeneratedFileCollisions(t *testing.T) {
+	for _, path := range []string{"app.wasm", "index.html", "manifest.json", "style.css", "tue_loader.js"} {
+		t.Run(path, func(t *testing.T) {
+			root := t.TempDir()
+			if err := copyTestFixtureDir(root, "testdata/production"); err != nil {
+				t.Fatalf("copy production fixture: %v", err)
+			}
+			if err := writeTestFile(filepath.Join(root, "public", filepath.FromSlash(path)), "collision\n"); err != nil {
+				t.Fatalf("write public collision fixture: %v", err)
+			}
+			project, err := parseProjectRoot(root, []string{"App.tue"})
+			if err != nil {
+				t.Fatalf("parse project root: %v", err)
+			}
+
+			_, diagnostics, err := WriteProductionProject(root, *project)
+
+			if diff := cmp.Diff([]diagnosticSummary{}, summarizeDiagnostics(diagnostics)); diff != "" {
+				t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+			}
+			expected := fmt.Sprintf(`public asset "public/%s" conflicts with generated production file %q`, path, path)
+			if err == nil || !strings.Contains(err.Error(), expected) {
+				t.Errorf("WriteProductionProject error actual = %v, expected %q", err, expected)
+			}
+		})
+	}
+}
+
+func TestProductionModuleDependencyUsesBuildInfoVersion(t *testing.T) {
+	moduleRootCalled := false
+	dependency, err := resolveTueModuleDependency(&debug.BuildInfo{
+		Main: debug.Module{Path: tueModulePath, Version: "v1.2.3"},
+	}, "", func() (string, error) {
+		moduleRootCalled = true
+		return "", fmt.Errorf("module root lookup should not run")
+	})
+	if err != nil {
+		t.Fatalf("resolve Tue module dependency: %v", err)
+	}
+	expected := productionModuleDependency{Version: "v1.2.3"}
+	if diff := cmp.Diff(expected, dependency); diff != "" {
+		t.Errorf("mismatch production module dependency (-expected, +actual):\n%s", diff)
+	}
+	if moduleRootCalled {
+		t.Errorf("module root lookup should not run for released build info")
+	}
+
+	actualGoMod := productionGoMod(dependency)
+	expectedGoMod := fmt.Sprintf("module %s\n\ngo %s\n\nrequire %s v1.2.3\n", generatedModulePath, goDirective(), tueModulePath)
+	if diff := cmp.Diff(expectedGoMod, actualGoMod); diff != "" {
+		t.Errorf("mismatch production go.mod (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestProductionModuleDependencyUsesExplicitReplaceOverride(t *testing.T) {
+	moduleRootCalled := false
+	dependency, err := resolveTueModuleDependency(&debug.BuildInfo{
+		Main: debug.Module{Path: tueModulePath, Version: "v1.2.3"},
+	}, "/local/tue", func() (string, error) {
+		moduleRootCalled = true
+		return "", fmt.Errorf("module root lookup should not run")
+	})
+	if err != nil {
+		t.Fatalf("resolve Tue module dependency: %v", err)
+	}
+	expected := productionModuleDependency{Version: "v0.0.0", Replace: "/local/tue"}
+	if diff := cmp.Diff(expected, dependency); diff != "" {
+		t.Errorf("mismatch production module dependency (-expected, +actual):\n%s", diff)
+	}
+	if moduleRootCalled {
+		t.Errorf("module root lookup should not run for explicit replace override")
+	}
+}
+
+func TestProductionModuleDependencyFallsBackToSourceTreeForDevelopmentBuild(t *testing.T) {
+	dependency, err := resolveTueModuleDependency(&debug.BuildInfo{
+		Main: debug.Module{Path: tueModulePath, Version: "(devel)"},
+	}, "", func() (string, error) {
+		return "/local/tue", nil
+	})
+	if err != nil {
+		t.Fatalf("resolve Tue module dependency: %v", err)
+	}
+	expected := productionModuleDependency{Version: "v0.0.0", Replace: "/local/tue"}
+	if diff := cmp.Diff(expected, dependency); diff != "" {
+		t.Errorf("mismatch production module dependency (-expected, +actual):\n%s", diff)
+	}
+
+	actualGoMod := productionGoMod(dependency)
+	expectedGoMod := fmt.Sprintf("module %s\n\ngo %s\n\nrequire %s v0.0.0\n\nreplace %s => /local/tue\n", generatedModulePath, goDirective(), tueModulePath, tueModulePath)
+	if diff := cmp.Diff(expectedGoMod, actualGoMod); diff != "" {
+		t.Errorf("mismatch production go.mod (-expected, +actual):\n%s", diff)
+	}
+}
+
 func parseProjectFixture(path string) (*Project, error) {
 	info, err := fs.Stat(testFixtures, path)
 	if err != nil {
@@ -1112,6 +1311,16 @@ func copyTestFixtureDir(root string, dir string) error {
 		}
 		return nil
 	})
+}
+
+func writeTestFile(path string, source string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create test file dir %s: %w", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+		return fmt.Errorf("write test file %s: %w", path, err)
+	}
+	return nil
 }
 
 func compileGeneratedProjectForWASM(root string, project Project) error {

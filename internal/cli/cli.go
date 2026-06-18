@@ -118,7 +118,7 @@ func runBuild(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
-	manifest, buildDiagnostics, err := gogen.WriteProject(root, gogen.Project{
+	build, buildDiagnostics, err := gogen.WriteProductionProject(root, gogen.Project{
 		Root:  root,
 		Files: gogenFiles,
 	})
@@ -131,16 +131,10 @@ func runBuild(args []string, stdout, stderr io.Writer) int {
 		return exitError
 	}
 
-	fmt.Fprintf(stdout, "tue build: generated %d component(s) in %s\n", len(manifest.Files), filepath.Join(filepath.Clean(root), gogen.CacheDir))
-	for _, file := range manifest.Files {
-		fmt.Fprintf(stdout, "%s\n", file.ScriptFile)
-		fmt.Fprintf(stdout, "%s\n", file.RenderFile)
-	}
-	if manifest.StyleFile != "" {
-		fmt.Fprintf(stdout, "%s\n", manifest.StyleFile)
-	}
-	for _, asset := range manifest.Assets {
-		fmt.Fprintf(stdout, "%s\n", asset.Output)
+	fmt.Fprintf(stdout, "tue build: generated %d component(s) in %s\n", len(build.Manifest.Files), filepath.Join(filepath.Clean(root), gogen.DistDir))
+	fmt.Fprintf(stdout, "tue build: app.wasm %d byte(s)\n", build.WASMSizeBytes)
+	for _, file := range build.Files {
+		fmt.Fprintf(stdout, "%s\n", file)
 	}
 
 	return exitOK

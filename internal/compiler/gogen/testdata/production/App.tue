@@ -1,0 +1,17 @@
+<template>
+	<main class="page">
+		<img src="./logo.svg" alt="Logo" />
+	</main>
+</template>
+
+<script lang="go">
+package app
+
+type App struct{}
+</script>
+
+<style scoped>
+.page {
+	background-image: url("./hero.png");
+}
+</style>
