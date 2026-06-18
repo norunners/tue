@@ -38,7 +38,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runCheck(args[1:], stdout, stderr)
 	case "build":
 		return runBuild(args[1:], stdout, stderr)
-	case "dev", "fmt":
+	case "dev":
+		return runDev(args[1:], stdout, stderr)
+	case "fmt":
 		return runStub(args[0], args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "tue: unknown command %q\n\n", args[0])
@@ -376,12 +378,24 @@ func printUsage(out io.Writer) {
 
 Commands:
   check [project-root]  Parse and check .tue files under a project root.
-  build [project-root]  Generate Go files under .tue-cache.
-  dev [project-root]    Start the Tue dev server. Not implemented yet.
+  build [project-root]  Generate static production files under dist.
+  dev [project-root]    Start the Tue dev server.
   fmt [project-root]    Format Tue source files. Not implemented yet.
 `)
 }
 
 func printCommandUsage(command string, out io.Writer) {
+	if command == "dev" {
+		fmt.Fprint(out, `Usage:
+  tue dev [flags] [project-root]
+
+Flags:
+  -addr string
+        address to listen on (default "127.0.0.1:5173")
+  -poll duration
+        file polling interval (default 500ms)
+`)
+		return
+	}
 	fmt.Fprintf(out, "Usage:\n  tue %s [project-root]\n", command)
 }

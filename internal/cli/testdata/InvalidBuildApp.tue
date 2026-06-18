@@ -1,0 +1,11 @@
+<template>
+	<button :title="kind">Save</button>
+</template>
+
+<script lang="go">
+package app
+
+type App struct {
+	kind string
+}
+</script>
