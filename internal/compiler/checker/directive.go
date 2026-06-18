@@ -161,18 +161,28 @@ func nativeModelBinding(node *gotemplate.Node) (nativeModel, bool) {
 	switch node.Tag {
 	case "input":
 		inputType, _ := staticAttrValue(node, "type")
-		switch inputType {
-		case "", "text":
+		if isTextInputType(inputType) {
 			return nativeModel{ValueType: "string"}, true
-		case "checkbox":
-			return nativeModel{ValueType: "bool"}, true
-		default:
-			return nativeModel{}, false
 		}
+		if inputType == "checkbox" {
+			return nativeModel{ValueType: "bool"}, true
+		}
+		return nativeModel{}, false
 	case "select":
+		return nativeModel{ValueType: "string"}, true
+	case "textarea":
 		return nativeModel{ValueType: "string"}, true
 	default:
 		return nativeModel{}, false
+	}
+}
+
+func isTextInputType(inputType string) bool {
+	switch inputType {
+	case "", "text", "email", "password", "search", "tel", "url":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -185,7 +195,7 @@ func modelUnsupportedMessage(node *gotemplate.Node) string {
 			return fmt.Sprintf("v-model is not supported for input type %q", inputType)
 		}
 	}
-	return "v-model is only supported on text inputs, checkboxes, and selects"
+	return "v-model is only supported on text inputs, textareas, checkboxes, and selects"
 }
 
 func directiveAttr(node *gotemplate.Node, kind gotemplate.DirectiveKind) (gotemplate.Attr, bool) {
@@ -195,6 +205,11 @@ func directiveAttr(node *gotemplate.Node, kind gotemplate.DirectiveKind) (gotemp
 		}
 	}
 	return gotemplate.Attr{}, false
+}
+
+func hasDirective(node *gotemplate.Node, kind gotemplate.DirectiveKind) bool {
+	_, ok := directiveAttr(node, kind)
+	return ok
 }
 
 func hasBoundKey(node *gotemplate.Node) bool {

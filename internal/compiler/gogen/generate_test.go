@@ -219,6 +219,45 @@ func TestGenerateProjectEmitsKeyedEmptyFragmentForFalseLoopCondition(t *testing.
 	}
 }
 
+func TestGenerateProjectEmitsMethodControlRenderFiles(t *testing.T) {
+	project, err := parseProjectFixture("testdata/method_control/App.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	result, diagnostics := GenerateProject(*project)
+	if result == nil {
+		t.Fatal("GenerateProject result is nil")
+	}
+	if diff := cmp.Diff([]diagnosticSummary{}, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+
+	actualRender, err := generatedSource(result, "App_render_tue.go")
+	if err != nil {
+		t.Fatalf("read actual generated render: %v", err)
+	}
+	actual := string(actualRender)
+	for _, expected := range []string{
+		"component.visibleTodos()",
+		`if __tueItem.Done`,
+		`tue.Element("li", []tue.Attribute{tue.Attr("class", "done")}`,
+		`tue.Element("li", []tue.Attribute{tue.Attr("class", "open")}`,
+		`tue.ElementWithEvents("textarea"`,
+		`tue.ElementWithEvents("input", []tue.Attribute{tue.Attr("type", "email")`,
+	} {
+		if !strings.Contains(actual, expected) {
+			t.Errorf("generated render actual = %q, expected to contain %q", actual, expected)
+		}
+	}
+
+	for _, file := range result.Files {
+		if _, err := goparser.ParseFile(token.NewFileSet(), file.Path, file.Source, goparser.AllErrors); err != nil {
+			t.Errorf("generated file %s should parse: %v", file.Path, err)
+		}
+	}
+}
+
 func TestGenerateProjectReportsUnsupportedLoopConstructs(t *testing.T) {
 	project, err := parseProjectFixture("testdata/invalid_loops/App.tue")
 	if err != nil {
@@ -232,6 +271,7 @@ func TestGenerateProjectReportsUnsupportedLoopConstructs(t *testing.T) {
 		{Path: "App.tue", Message: `v-for requires a :key attribute`, Line: 4, Column: 6},
 		{Path: "App.tue", Message: `v-for source expression is not supported in the static render slice`, Line: 5, Column: 21},
 		{Path: "App.tue", Message: `v-for key expression is not supported in the static render slice`, Line: 6, Column: 34},
+		{Path: "App.tue", Message: `v-else cannot follow v-if on an element that also has v-for; use a <template v-for> wrapper`, Line: 8, Column: 6},
 	}, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}
@@ -664,7 +704,6 @@ func TestGenerateProjectReportsModelBindingDiagnostics(t *testing.T) {
 	expected := []diagnosticSummary{
 		{Path: "App.tue", Message: `v-model expects bool, got string`, Line: 3, Column: 35},
 		{Path: "App.tue", Message: `v-model expects string, got bool`, Line: 4, Column: 20},
-		{Path: "App.tue", Message: `v-model is only supported on text inputs, checkboxes, and selects`, Line: 8, Column: 13},
 		{Path: "App.tue", Message: `v-model is not supported for input type "number"`, Line: 9, Column: 24},
 		{Path: "App.tue", Message: `v-model target "query.Text" is not writable`, Line: 11, Column: 19},
 	}

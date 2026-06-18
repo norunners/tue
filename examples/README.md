@@ -13,9 +13,9 @@ go run ./cmd/tue build examples/todo
 
 Replace `todo` with any example directory:
 
-- `todo`: refs, events, `v-model`, keyed lists, dynamic classes, and filtered list state
-- `user-table`: text filtering, checkbox state, derived list state, and table rendering
-- `settings-form`: string and boolean `v-model` controls with save/dirty feedback
+- `todo`: refs, events, `v-model`, keyed lists, dynamic classes, and method-derived filtered lists
+- `user-table`: text filtering, checkbox state, method-derived lists, and table rendering
+- `settings-form`: string and boolean `v-model` controls, including textarea, with save/dirty feedback
 - `dashboard`: component props, default slots, scoped styles, and child components
 - `router`: explicit hash routes, `router.Href` links, route params, and not-found state
 

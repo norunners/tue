@@ -1,5 +1,5 @@
 <template>
-<p v-if="visible()">Visible</p>
+<p v-if="visible(true)">Visible</p>
 </template>
 
 <script lang="go">
@@ -7,7 +7,7 @@ package app
 
 type App struct{}
 
-func (a *App) visible() bool {
+func (a *App) visible(enabled bool) bool {
 	return true
 }
 </script>

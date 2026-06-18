@@ -1,0 +1,33 @@
+<template>
+	<main>
+		<ul>
+			<template v-for="todo in visibleTodos()" :key="todo.ID">
+				<li v-if="todo.Done" class="done">{{ todo.Text }}</li>
+				<li v-else class="open">{{ todo.Text }}</li>
+			</template>
+		</ul>
+
+		<textarea v-model="notes"></textarea>
+		<input type="email" v-model="email" />
+	</main>
+</template>
+
+<script lang="go">
+package app
+
+type Todo struct {
+	ID   int
+	Text string
+	Done bool
+}
+
+type App struct {
+	todos []Todo
+	notes string
+	email string
+}
+
+func (a *App) visibleTodos() []Todo {
+	return a.todos
+}
+</script>

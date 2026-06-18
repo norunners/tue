@@ -246,6 +246,7 @@ func (g *projectGenerator) generatedRenderSource(file File, scopeAttr string) ([
 		components: g.components,
 		fields:     componentFields(file.Script.Component),
 		methods:    componentMethods(file.Script.Component),
+		typeFields: structFieldMaps(file.Script.Structs),
 		scopeAttr:  scopeAttr,
 		assets:     g.assets,
 	}
@@ -273,6 +274,7 @@ type fileGenerator struct {
 	components  map[string]componentBinding
 	fields      map[string]script.Field
 	methods     map[string]script.Method
+	typeFields  map[string]map[string]script.Field
 	scopeAttr   string
 	assets      *assetPipeline
 	locals      map[string]string
@@ -294,16 +296,74 @@ func (g *fileGenerator) generate(tree *gotemplate.Tree) {
 }
 
 func (g *fileGenerator) renderNodes(nodes []*gotemplate.Node) jen.Code {
-	rendered := make([]jen.Code, 0, len(nodes))
-	for _, node := range nodes {
-		if code, ok := g.renderNode(node); ok {
-			rendered = append(rendered, code)
-		}
-	}
+	rendered := g.renderNodeList(nodes)
 	if len(rendered) == 1 {
 		return rendered[0]
 	}
 	return jen.Qual(tueImportPath, "Fragment").Call(g.vnodeSlice(rendered))
+}
+
+func (g *fileGenerator) renderNodeList(nodes []*gotemplate.Node) []jen.Code {
+	rendered := make([]jen.Code, 0, len(nodes))
+	for index := 0; index < len(nodes); index++ {
+		node := nodes[index]
+		if g.ignorableControlSibling(node) {
+			continue
+		}
+		if attr := nodeDirectiveAttr(node, gotemplate.DirectiveElse); attr != nil {
+			g.add("v-else must follow v-if", attr.DirectiveSpan)
+			continue
+		}
+		if attr := nodeDirectiveAttr(node, gotemplate.DirectiveIf); attr != nil {
+			elseIndex := g.nextElseNode(nodes, index+1)
+			if elseIndex != -1 {
+				if nodeDirectiveAttr(node, gotemplate.DirectiveFor) != nil {
+					if elseAttr := nodeDirectiveAttr(nodes[elseIndex], gotemplate.DirectiveElse); elseAttr != nil {
+						g.add("v-else cannot follow v-if on an element that also has v-for; use a <template v-for> wrapper", elseAttr.DirectiveSpan)
+					}
+					index = elseIndex
+					continue
+				}
+				if code, ok := g.renderIfElse(node, *attr, nodes[elseIndex]); ok {
+					rendered = append(rendered, code)
+				}
+				index = elseIndex
+				continue
+			}
+		}
+		if code, ok := g.renderNode(node); ok {
+			rendered = append(rendered, code)
+		}
+	}
+	return rendered
+}
+
+func (g *fileGenerator) nextElseNode(nodes []*gotemplate.Node, start int) int {
+	for index := start; index < len(nodes); index++ {
+		node := nodes[index]
+		if g.ignorableControlSibling(node) {
+			continue
+		}
+		if nodeDirectiveAttr(node, gotemplate.DirectiveElse) != nil {
+			return index
+		}
+		return -1
+	}
+	return -1
+}
+
+func (g *fileGenerator) ignorableControlSibling(node *gotemplate.Node) bool {
+	if node == nil {
+		return true
+	}
+	switch node.Kind {
+	case gotemplate.NodeComment:
+		return true
+	case gotemplate.NodeText:
+		return strings.TrimSpace(node.Text) == ""
+	default:
+		return false
+	}
 }
 
 func (g *fileGenerator) renderNode(node *gotemplate.Node) (jen.Code, bool) {
@@ -423,7 +483,26 @@ func (g *fileGenerator) renderIf(node *gotemplate.Node, attr gotemplate.Attr) (j
 	).Call(), true
 }
 
+func (g *fileGenerator) renderIfElse(ifNode *gotemplate.Node, ifAttr gotemplate.Attr, elseNode *gotemplate.Node) (jen.Code, bool) {
+	condition, conditionOK := g.renderExpressionFor("v-if", ifAttr.Expression, ifAttr.ExpressionSpan)
+	ifTrue, trueOK := g.renderNodeBody(ifNode)
+	ifFalse, falseOK := g.renderNodeBody(elseNode)
+	if !conditionOK || !trueOK || !falseOK {
+		return nil, false
+	}
+
+	return jen.Func().Params().Qual(tueImportPath, "VNode").Block(
+		jen.If(condition).Block(
+			jen.Return(ifTrue),
+		),
+		jen.Return(ifFalse),
+	).Call(), true
+}
+
 func (g *fileGenerator) renderElement(node *gotemplate.Node) (jen.Code, bool) {
+	if node.Tag == "template" {
+		return g.renderTemplate(node)
+	}
 	if node.Tag == "slot" {
 		return g.renderSlot(node)
 	}
@@ -437,13 +516,7 @@ func (g *fileGenerator) renderElement(node *gotemplate.Node) (jen.Code, bool) {
 	}
 	attrs = g.withScopeAttr(attrs)
 
-	children := make([]jen.Code, 0, len(node.Children))
-	for _, child := range node.Children {
-		childCode, ok := g.renderNode(child)
-		if ok {
-			children = append(children, childCode)
-		}
-	}
+	children := g.renderNodeList(node.Children)
 
 	g.recordNode(node)
 	if len(events) != 0 {
@@ -459,6 +532,24 @@ func (g *fileGenerator) renderElement(node *gotemplate.Node) (jen.Code, bool) {
 		g.attributeSlice(attrs),
 		g.vnodeSlice(children),
 	), true
+}
+
+func (g *fileGenerator) renderTemplate(node *gotemplate.Node) (jen.Code, bool) {
+	ok := true
+	for _, attr := range node.Attrs {
+		if attr.Kind == gotemplate.AttrDirective && isControlDirective(attr.Directive) {
+			continue
+		}
+		if attr.Kind == gotemplate.AttrBind && attr.Argument == "key" {
+			continue
+		}
+		g.add(fmt.Sprintf("template attribute %q generation is not supported", attr.RawName), attr.Span)
+		ok = false
+	}
+	if !ok {
+		return nil, false
+	}
+	return g.renderNodes(node.Children), true
 }
 
 func (g *fileGenerator) withScopeAttr(attrs []jen.Code) []jen.Code {
@@ -533,7 +624,7 @@ func (g *fileGenerator) renderComponentUpdater(child componentBinding, fields []
 func (g *fileGenerator) renderSlot(node *gotemplate.Node) (jen.Code, bool) {
 	ok := true
 	for _, attr := range node.Attrs {
-		if attr.Kind == gotemplate.AttrDirective && (attr.Directive == gotemplate.DirectiveIf || attr.Directive == gotemplate.DirectiveFor) {
+		if attr.Kind == gotemplate.AttrDirective && isControlDirective(attr.Directive) {
 			continue
 		}
 		if isNamedSlotAttr(attr) {
@@ -594,7 +685,7 @@ func (g *fileGenerator) renderComponentFields(node *gotemplate.Node, child compo
 			}
 			events[field.Name] = field.Value
 		case gotemplate.AttrDirective:
-			if attr.Directive == gotemplate.DirectiveIf || attr.Directive == gotemplate.DirectiveFor {
+			if isControlDirective(attr.Directive) {
 				continue
 			}
 			if attr.Directive == gotemplate.DirectiveModel {
@@ -824,7 +915,7 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 			}
 			events = append(events, event)
 		case gotemplate.AttrDirective:
-			if attr.Directive == gotemplate.DirectiveIf || attr.Directive == gotemplate.DirectiveFor || attr.Directive == gotemplate.DirectiveModel {
+			if isControlDirective(attr.Directive) || attr.Directive == gotemplate.DirectiveModel {
 				continue
 			}
 			g.add(fmt.Sprintf("directive %q generation is not supported in the static render slice", attr.RawName), attr.Span)
@@ -934,10 +1025,6 @@ func (g *fileGenerator) renderModelBinding(node *gotemplate.Node, attr gotemplat
 		return nil, nil, false
 	}
 
-	expression, expressionOK := g.renderExpressionFor("v-model", attr.Expression, attr.ExpressionSpan)
-	if !expressionOK {
-		return nil, nil, false
-	}
 	actualType := g.expressionType(attr.Expression)
 	if !assignableType(binding.ValueType, actualType) {
 		g.add(fmt.Sprintf("v-model expects %s, got %s", displayType(binding.ValueType), displayType(actualType)), attr.ExpressionSpan)
@@ -946,6 +1033,10 @@ func (g *fileGenerator) renderModelBinding(node *gotemplate.Node, attr gotemplat
 
 	setter, setterOK := g.renderModelSetter(attr.Expression, attr.ExpressionSpan, binding.ValueName)
 	if !setterOK {
+		return nil, nil, false
+	}
+	expression, expressionOK := g.renderExpressionFor("v-model", attr.Expression, attr.ExpressionSpan)
+	if !expressionOK {
 		return nil, nil, false
 	}
 
@@ -1099,8 +1190,11 @@ func (g *fileGenerator) renderExpressionFor(subject string, expression string, s
 	}
 
 	generated := expressionGenerator{
-		fields: g.fields,
-		locals: g.locals,
+		fields:     g.fields,
+		methods:    g.methods,
+		locals:     g.locals,
+		localTypes: g.localTypes,
+		typeFields: g.typeFields,
 	}
 	code, ok := generated.render(expr)
 	if !ok {
@@ -1186,6 +1280,15 @@ func nodeBindAttr(node *gotemplate.Node, argument string) *gotemplate.Attr {
 	return nil
 }
 
+func isControlDirective(kind gotemplate.DirectiveKind) bool {
+	switch kind {
+	case gotemplate.DirectiveIf, gotemplate.DirectiveElse, gotemplate.DirectiveFor:
+		return true
+	default:
+		return false
+	}
+}
+
 func isNamedSlotAttr(attr gotemplate.Attr) bool {
 	return (attr.Kind == gotemplate.AttrStatic && attr.Name == "name") ||
 		(attr.Kind == gotemplate.AttrBind && attr.Argument == "name")
@@ -1206,18 +1309,28 @@ func nativeModelBinding(node *gotemplate.Node) (nativeModel, bool) {
 	switch node.Tag {
 	case "input":
 		inputType, _ := nodeStaticAttrValue(node, "type")
-		switch inputType {
-		case "", "text":
+		if isTextInputType(inputType) {
 			return nativeModel{ValueType: "string", ValueName: "value", EventName: "input"}, true
-		case "checkbox":
-			return nativeModel{ValueType: "bool", ValueName: "checked", EventName: "change", Checked: true}, true
-		default:
-			return nativeModel{}, false
 		}
+		if inputType == "checkbox" {
+			return nativeModel{ValueType: "bool", ValueName: "checked", EventName: "change", Checked: true}, true
+		}
+		return nativeModel{}, false
 	case "select":
 		return nativeModel{ValueType: "string", ValueName: "value", EventName: "change"}, true
+	case "textarea":
+		return nativeModel{ValueType: "string", ValueName: "value", EventName: "input"}, true
 	default:
 		return nativeModel{}, false
+	}
+}
+
+func isTextInputType(inputType string) bool {
+	switch inputType {
+	case "", "text", "email", "password", "search", "tel", "url":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -1230,7 +1343,7 @@ func modelUnsupportedMessage(node *gotemplate.Node) string {
 			return fmt.Sprintf("v-model is not supported for input type %q", inputType)
 		}
 	}
-	return "v-model is only supported on text inputs, checkboxes, and selects"
+	return "v-model is only supported on text inputs, textareas, checkboxes, and selects"
 }
 
 func nodeStaticAttrValue(node *gotemplate.Node, name string) (string, bool) {
@@ -1421,6 +1534,18 @@ func componentMethods(component *script.Component) map[string]script.Method {
 		methods[method.Name] = method
 	}
 	return methods
+}
+
+func structFieldMaps(structs []script.Struct) map[string]map[string]script.Field {
+	byType := make(map[string]map[string]script.Field, len(structs))
+	for _, structure := range structs {
+		fields := make(map[string]script.Field, len(structure.Fields))
+		for _, field := range structure.Fields {
+			fields[field.Name] = field
+		}
+		byType[structure.Name] = fields
+	}
+	return byType
 }
 
 func propValueType(prop script.Prop) string {

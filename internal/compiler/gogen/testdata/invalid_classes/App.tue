@@ -1,5 +1,5 @@
 <template>
-<main :class="className()">Hello</main>
+<main :class="className(true)">Hello</main>
 </template>
 
 <script lang="go">
@@ -7,5 +7,5 @@ package app
 
 type App struct{}
 
-func (a *App) className() string { return "" }
+func (a *App) className(active bool) string { return "" }
 </script>

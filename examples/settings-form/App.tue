@@ -41,7 +41,7 @@
 
 			<label class="notes">
 				Release notes
-				<input v-model="notes" @input="markDirty" />
+				<textarea v-model="notes" @input="markDirty"></textarea>
 			</label>
 		</section>
 
@@ -136,7 +136,7 @@ label {
 	grid-column: 1 / -1;
 }
 
-.notes input {
+.notes textarea {
 	min-height: 7rem;
 }
 
