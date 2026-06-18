@@ -41,7 +41,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	case "dev":
 		return runDev(args[1:], stdout, stderr)
 	case "fmt":
-		return runStub(args[0], args[1:], stdout, stderr)
+		return runFmt(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "tue: unknown command %q\n\n", args[0])
 		printUsage(stderr)
@@ -140,15 +140,6 @@ func runBuild(args []string, stdout, stderr io.Writer) int {
 	}
 
 	return exitOK
-}
-
-func runStub(command string, args []string, stdout, stderr io.Writer) int {
-	if _, code, ok := parseProjectRoot(command, args, stdout, stderr); !ok {
-		return code
-	}
-
-	fmt.Fprintf(stderr, "tue %s: not implemented yet\n", command)
-	return exitError
 }
 
 func parseProjectRoot(command string, args []string, stdout, stderr io.Writer) (string, int, bool) {
@@ -380,7 +371,7 @@ Commands:
   check [project-root]  Parse and check .tue files under a project root.
   build [project-root]  Generate static production files under dist.
   dev [project-root]    Start the Tue dev server.
-  fmt [project-root]    Format Tue source files. Not implemented yet.
+  fmt [project-root]    Format Tue source files.
 `)
 }
 

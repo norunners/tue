@@ -1,0 +1,9 @@
+<template>
+	<main>
+</template>
+
+<script lang="go">
+package app
+
+type App struct{}
+</script>

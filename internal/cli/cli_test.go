@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 //go:embed testdata/*.tue
@@ -82,28 +84,6 @@ func TestRunRejectsUnknownCommand(t *testing.T) {
 	}
 }
 
-func TestRunStubCommandsReturnNotImplemented(t *testing.T) {
-	for _, command := range []string{"fmt"} {
-		t.Run(command, func(t *testing.T) {
-			var stdout bytes.Buffer
-			var stderr bytes.Buffer
-
-			code := Run([]string{command}, &stdout, &stderr)
-
-			if code != exitError {
-				t.Errorf("Run(%s) exit code actual = %d, expected %d", command, code, exitError)
-			}
-			if stdout.Len() != 0 {
-				t.Errorf("stdout actual = %q, expected empty", stdout.String())
-			}
-			expected := "tue " + command + ": not implemented yet"
-			if !strings.Contains(stderr.String(), expected) {
-				t.Errorf("stderr actual = %q, expected %q", stderr.String(), expected)
-			}
-		})
-	}
-}
-
 func TestRunDevPrintsHelp(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -121,6 +101,137 @@ func TestRunDevPrintsHelp(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Errorf("stderr actual = %q, expected empty", stderr.String())
+	}
+}
+
+func TestRunFmtPrintsHelp(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{"fmt", "--help"}, &stdout, &stderr)
+
+	if code != exitOK {
+		t.Errorf("Run(fmt --help) exit code actual = %d, expected %d", code, exitOK)
+	}
+	if !strings.Contains(stdout.String(), "tue fmt [project-root]") {
+		t.Errorf("stdout actual = %q, expected fmt usage", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr actual = %q, expected empty", stderr.String())
+	}
+}
+
+func TestRunFmtFormatsTueFiles(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "App.tue")
+	if err := writeFixture(path, "testdata/FmtUnformattedApp.tue"); err != nil {
+		t.Fatalf("setup App.tue: %v", err)
+	}
+	expected, err := cliFixture("testdata/FmtFormattedApp.tue")
+	if err != nil {
+		t.Fatalf("read expected fixture: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{"fmt", root}, &stdout, &stderr)
+
+	if code != exitOK {
+		t.Errorf("Run(fmt) exit code actual = %d, expected %d; stderr = %q", code, exitOK, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr actual = %q, expected empty", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "tue fmt: formatted 1 .tue file(s)") {
+		t.Errorf("stdout actual = %q, expected formatted summary", stdout.String())
+	}
+	actual, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read formatted App.tue: %v", err)
+	}
+	if diff := cmp.Diff(expected, string(actual)); diff != "" {
+		t.Errorf("mismatch formatted App.tue (-expected, +actual):\n%s", diff)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = Run([]string{"fmt", root}, &stdout, &stderr)
+
+	if code != exitOK {
+		t.Errorf("Run(fmt idempotent) exit code actual = %d, expected %d; stderr = %q", code, exitOK, stderr.String())
+	}
+	actual, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read reformatted App.tue: %v", err)
+	}
+	if diff := cmp.Diff(expected, string(actual)); diff != "" {
+		t.Errorf("mismatch reformatted App.tue (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestRunFmtPreservesTemplateTextWhitespace(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "App.tue")
+	if err := writeFixture(path, "testdata/FmtWhitespaceUnformattedApp.tue"); err != nil {
+		t.Fatalf("setup App.tue: %v", err)
+	}
+	expected, err := cliFixture("testdata/FmtWhitespaceFormattedApp.tue")
+	if err != nil {
+		t.Fatalf("read expected fixture: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{"fmt", root}, &stdout, &stderr)
+
+	if code != exitOK {
+		t.Errorf("Run(fmt) exit code actual = %d, expected %d; stderr = %q", code, exitOK, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr actual = %q, expected empty", stderr.String())
+	}
+	actual, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read formatted App.tue: %v", err)
+	}
+	if diff := cmp.Diff(expected, string(actual)); diff != "" {
+		t.Errorf("mismatch whitespace-sensitive formatted App.tue (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestRunFmtReportsDiagnosticsWithoutWriting(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "App.tue")
+	source, err := cliFixture("testdata/FmtInvalidTemplate.tue")
+	if err != nil {
+		t.Fatalf("read invalid fixture: %v", err)
+	}
+	if err := writeFile(path, source); err != nil {
+		t.Fatalf("setup App.tue: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{"fmt", root}, &stdout, &stderr)
+
+	if code != exitError {
+		t.Errorf("Run(fmt invalid) exit code actual = %d, expected %d", code, exitError)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout actual = %q, expected empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), `App.tue:2:2: missing closing </main> tag`) {
+		t.Errorf("stderr actual = %q, expected template diagnostic", stderr.String())
+	}
+	actual, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read invalid App.tue: %v", err)
+	}
+	if diff := cmp.Diff(source, string(actual)); diff != "" {
+		t.Errorf("mismatch invalid App.tue after fmt (-expected, +actual):\n%s", diff)
 	}
 }
 
