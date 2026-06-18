@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -82,7 +83,7 @@ func TestRunRejectsUnknownCommand(t *testing.T) {
 }
 
 func TestRunStubCommandsReturnNotImplemented(t *testing.T) {
-	for _, command := range []string{"dev", "fmt"} {
+	for _, command := range []string{"fmt"} {
 		t.Run(command, func(t *testing.T) {
 			var stdout bytes.Buffer
 			var stderr bytes.Buffer
@@ -101,6 +102,171 @@ func TestRunStubCommandsReturnNotImplemented(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRunDevPrintsHelp(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{"dev", "--help"}, &stdout, &stderr)
+
+	if code != exitOK {
+		t.Errorf("Run(dev --help) exit code actual = %d, expected %d", code, exitOK)
+	}
+	if !strings.Contains(stdout.String(), "tue dev [flags] [project-root]") {
+		t.Errorf("stdout actual = %q, expected dev usage", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "-addr string") {
+		t.Errorf("stdout actual = %q, expected dev flags", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr actual = %q, expected empty", stderr.String())
+	}
+}
+
+func TestBuildDevProjectWritesClient(t *testing.T) {
+	root := t.TempDir()
+	if err := writeFixture(filepath.Join(root, "App.tue"), "testdata/App.tue"); err != nil {
+		t.Fatalf("setup App.tue: %v", err)
+	}
+
+	event := buildDevProject(root, devEventTypeReady)
+
+	if event.Type != devEventTypeReady {
+		t.Errorf("dev event type actual = %q, expected %q; event = %#v", event.Type, devEventTypeReady, event)
+	}
+	index, err := os.ReadFile(filepath.Join(root, "dist", "index.html"))
+	if err != nil {
+		t.Fatalf("read dev index: %v", err)
+	}
+	if !strings.Contains(string(index), `<script src="/tue_dev.js" defer></script>`) {
+		t.Errorf("index.html actual = %q, expected dev client script", string(index))
+	}
+	client, err := os.ReadFile(filepath.Join(root, "dist", "tue_dev.js"))
+	if err != nil {
+		t.Fatalf("read dev client: %v", err)
+	}
+	if !strings.Contains(string(client), `new EventSource("/__tue/events")`) {
+		t.Errorf("tue_dev.js actual = %q, expected reload stream", string(client))
+	}
+}
+
+func TestBuildDevProjectWritesErrorFallback(t *testing.T) {
+	root := t.TempDir()
+	if err := writeFixture(filepath.Join(root, "App.tue"), "testdata/InvalidBuildApp.tue"); err != nil {
+		t.Fatalf("setup App.tue: %v", err)
+	}
+
+	event := buildDevProject(root, devEventTypeReady)
+
+	if event.Type != devEventTypeError {
+		t.Errorf("dev event type actual = %q, expected %q; event = %#v", event.Type, devEventTypeError, event)
+	}
+	if len(event.Diagnostics) != 1 {
+		t.Errorf("diagnostics actual = %#v, expected one diagnostic", event.Diagnostics)
+	}
+	index, err := os.ReadFile(filepath.Join(root, "dist", "index.html"))
+	if err != nil {
+		t.Fatalf("read dev error index: %v", err)
+	}
+	if !strings.Contains(string(index), `<script src="/tue_dev.js" defer></script>`) {
+		t.Errorf("index.html actual = %q, expected dev client script", string(index))
+	}
+	client, err := os.ReadFile(filepath.Join(root, "dist", "tue_dev.js"))
+	if err != nil {
+		t.Fatalf("read dev client: %v", err)
+	}
+	if !strings.Contains(string(client), "Tue dev error") {
+		t.Errorf("tue_dev.js actual = %q, expected error overlay client", string(client))
+	}
+}
+
+func TestClassifyDevEventTypeReportsStyleOnlyChanges(t *testing.T) {
+	before, err := cliFixture("testdata/StyledApp.tue")
+	if err != nil {
+		t.Fatalf("read styled fixture: %v", err)
+	}
+	after := strings.Replace(before, "color: red;", "color: blue;", 1)
+	changes := []devFileChange{{
+		Path:   "App.tue",
+		Before: &devWatchedFile{Source: []byte(before)},
+		After:  &devWatchedFile{Source: []byte(after)},
+	}}
+
+	actual := classifyDevEventType(changes)
+
+	if actual != devEventTypeStyle {
+		t.Errorf("dev event type actual = %q, expected %q", actual, devEventTypeStyle)
+	}
+}
+
+func TestClassifyDevEventTypeReloadsForTemplateChanges(t *testing.T) {
+	before, err := cliFixture("testdata/App.tue")
+	if err != nil {
+		t.Fatalf("read app fixture: %v", err)
+	}
+	after := strings.Replace(before, "<p>", "<main>", 1)
+	after = strings.Replace(after, "</p>", "</main>", 1)
+	changes := []devFileChange{{
+		Path:   "App.tue",
+		Before: &devWatchedFile{Source: []byte(before)},
+		After:  &devWatchedFile{Source: []byte(after)},
+	}}
+
+	actual := classifyDevEventType(changes)
+
+	if actual != devEventTypeReload {
+		t.Errorf("dev event type actual = %q, expected %q", actual, devEventTypeReload)
+	}
+}
+
+func TestDevBroadcasterUnsubscribeDoesNotCloseClientChannel(t *testing.T) {
+	broadcaster := newDevBroadcaster()
+	client, _ := broadcaster.subscribe()
+
+	broadcaster.unsubscribe(client)
+
+	select {
+	case _, ok := <-client:
+		if !ok {
+			t.Errorf("client channel closed after unsubscribe")
+		}
+	default:
+	}
+}
+
+func TestDevBroadcasterPublishWhileUnsubscribing(t *testing.T) {
+	broadcaster := newDevBroadcaster()
+	start := make(chan struct{})
+	var publishers sync.WaitGroup
+	for range 4 {
+		publishers.Add(1)
+		go func() {
+			defer publishers.Done()
+			<-start
+			for range 1000 {
+				broadcaster.publish(devEvent{Type: devEventTypeReload})
+			}
+		}()
+	}
+
+	var subscribers sync.WaitGroup
+	for range 100 {
+		subscribers.Add(1)
+		go func() {
+			defer subscribers.Done()
+			<-start
+			for range 100 {
+				client, _ := broadcaster.subscribe()
+				broadcaster.publish(devEvent{Type: devEventTypeStyle})
+				broadcaster.unsubscribe(client)
+			}
+		}()
+	}
+
+	close(start)
+	subscribers.Wait()
+	publishers.Wait()
 }
 
 func TestRunBuildGeneratesDistFiles(t *testing.T) {
