@@ -1,0 +1,14 @@
+<template>
+	<main>
+		<a :href="homeHref" :title='label + " link"'>Home</a>
+	</main>
+</template>
+
+<script lang="go">
+package app
+
+type App struct {
+	homeHref string
+	label    string
+}
+</script>

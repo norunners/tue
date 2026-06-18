@@ -16,7 +16,8 @@ The pre-migration Vue runtime and examples remain available on the
 - Tue currently includes the runtime, compiler, CLI, production build, dev
   server, and formatter slices needed for small internal-app examples.
 - Realistic `.tue` examples live under [`examples/`](examples/). They cover a
-  todo queue, user table, settings form, and dashboard.
+  todo queue, user table, settings form, dashboard, and small path-only hash
+  router.
 
 Try an example from the repository root:
 

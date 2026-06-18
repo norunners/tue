@@ -1,0 +1,155 @@
+<template>
+	<main class="router-shell">
+		<header>
+			<p class="eyebrow">Hash router</p>
+			<h1>Router</h1>
+			<p>Current route: {{ routeLabel }}</p>
+		</header>
+
+		<nav>
+			<a :href="homeHref" :class="homeClass">Overview</a>
+			<a :href="userHref" :class="userClass">User 42</a>
+			<a :href="settingsHref" :class="settingsClass">Settings</a>
+			<a :href="missingHref">Missing route</a>
+		</nav>
+
+		<section v-if="homeActive" class="panel">
+			<h2>Overview</h2>
+			<p>The explicit route table matched the static home route.</p>
+		</section>
+
+		<section v-if="userActive" class="panel">
+			<h2>User detail</h2>
+			<p>User ID: {{ currentUserID }}</p>
+		</section>
+
+		<section v-if="settingsActive" class="panel">
+			<h2>Settings</h2>
+			<p>Settings use a static route with the same reactive current-route state.</p>
+		</section>
+
+		<section v-if="notFoundActive" class="panel warning">
+			<h2>Not found</h2>
+			<p>{{ notFoundMessage }}</p>
+		</section>
+	</main>
+</template>
+
+<script lang="go">
+package app
+
+import tue "github.com/norunners/tue"
+
+type App struct {
+	router          *tue.Router
+	homeHref        string
+	userHref        string
+	settingsHref    string
+	missingHref     string
+	routeLabel      tue.Computed[string]
+	currentUserID   tue.Computed[string]
+	notFoundMessage tue.Computed[string]
+	homeActive      tue.Computed[bool]
+	userActive      tue.Computed[bool]
+	settingsActive  tue.Computed[bool]
+	notFoundActive  tue.Computed[bool]
+	homeClass       tue.Computed[string]
+	userClass       tue.Computed[string]
+	settingsClass   tue.Computed[string]
+}
+
+func (a *App) Init(ctx tue.Context) {
+	a.router = tue.RouterOf(ctx, []tue.Route{
+		{Path: "/"},
+		{Path: "/users/:id"},
+		{Path: "/settings"},
+	}, func(match tue.RouteMatch) tue.VNode {
+		return tue.Text("No route matched " + match.Path)
+	})
+	a.homeHref = a.router.Href("/")
+	a.userHref = a.router.Href("/users/42")
+	a.settingsHref = a.router.Href("/settings")
+	a.missingHref = a.router.Href("/missing")
+	a.routeLabel = tue.ComputedOfFunc(func() string {
+		match := a.router.Current()
+		if !match.Found {
+			return "not found"
+		}
+		return match.Pattern
+	})
+	a.currentUserID = tue.ComputedOfFunc(func() string {
+		return a.router.Current().Param("id")
+	})
+	a.notFoundMessage = tue.ComputedOfFunc(func() string {
+		return "No route matched " + a.router.Current().Path
+	})
+	a.homeActive = tue.ComputedOfFunc(func() bool {
+		return a.router.Current().Pattern == "/"
+	})
+	a.userActive = tue.ComputedOfFunc(func() bool {
+		return a.router.Current().Pattern == "/users/:id"
+	})
+	a.settingsActive = tue.ComputedOfFunc(func() bool {
+		return a.router.Current().Pattern == "/settings"
+	})
+	a.notFoundActive = tue.ComputedOfFunc(func() bool {
+		return !a.router.Current().Found
+	})
+	a.homeClass = tue.ComputedOfFunc(func() string {
+		return navClass(a.homeActive.Get())
+	})
+	a.userClass = tue.ComputedOfFunc(func() string {
+		return navClass(a.userActive.Get())
+	})
+	a.settingsClass = tue.ComputedOfFunc(func() string {
+		return navClass(a.settingsActive.Get())
+	})
+}
+
+func navClass(active bool) string {
+	if active {
+		return "active"
+	}
+	return ""
+}
+</script>
+
+<style scoped>
+.router-shell {
+	font-family: system-ui, sans-serif;
+	margin: 2rem;
+	max-width: 48rem;
+}
+
+.eyebrow {
+	color: #5b6472;
+	font-size: 0.75rem;
+	text-transform: uppercase;
+}
+
+nav {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+	margin-block: 1.5rem;
+}
+
+a {
+	color: #334155;
+	text-decoration: none;
+}
+
+a.active {
+	color: #0f766e;
+	font-weight: 700;
+}
+
+.panel {
+	border: 1px solid #d0d5dd;
+	padding: 1rem;
+}
+
+.warning {
+	border-color: #f97316;
+}
+</style>

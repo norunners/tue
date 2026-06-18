@@ -1,11 +1,11 @@
 <template>
-	<button :title="kind">Save</button>
+	<a :href="visible">Home</a>
 </template>
 
 <script lang="go">
 package app
 
-type App struct {
-	kind bool
+type BoolHref struct {
+	visible bool
 }
 </script>

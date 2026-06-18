@@ -301,6 +301,41 @@ func TestGenerateProjectEmitsStyleBindingRenderFiles(t *testing.T) {
 	}
 }
 
+func TestGenerateProjectEmitsBoundAttributeRenderFiles(t *testing.T) {
+	project, err := parseProjectFixture("testdata/bound_attrs/App.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	result, diagnostics := GenerateProject(*project)
+	if result == nil {
+		t.Fatal("GenerateProject result is nil")
+	}
+
+	expectedDiagnostics := []diagnosticSummary{}
+	if diff := cmp.Diff(expectedDiagnostics, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+	render, err := generatedSource(result, "App_render_tue.go")
+	if err != nil {
+		t.Fatalf("read generated bound attribute render: %v", err)
+	}
+	for _, expected := range []string{
+		`tue.Attr("href", component.homeHref)`,
+		`tue.Attr("title", (component.label + " link"))`,
+	} {
+		if !strings.Contains(string(render), expected) {
+			t.Errorf("mismatch generated bound attribute render: expected source to contain %q", expected)
+		}
+	}
+
+	for _, file := range result.Files {
+		if _, err := goparser.ParseFile(token.NewFileSet(), file.Path, file.Source, goparser.AllErrors); err != nil {
+			t.Errorf("generated file %s should parse: %v", file.Path, err)
+		}
+	}
+}
+
 func TestGenerateProjectEmitsScopedStyleFiles(t *testing.T) {
 	project, err := parseProjectFixture("testdata/scoped_styles")
 	if err != nil {
@@ -596,6 +631,22 @@ func TestGenerateProjectReportsStyleBindingTypeDiagnostics(t *testing.T) {
 
 	expected := []diagnosticSummary{
 		{Path: "BoolStyle.tue", Message: `style binding expects string, got bool`, Line: 2, Column: 16},
+	}
+	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestGenerateProjectReportsBoundAttributeTypeDiagnostics(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_attrs/BoolHref.tue")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	_, diagnostics := GenerateProject(*project)
+
+	expected := []diagnosticSummary{
+		{Path: "BoolHref.tue", Message: `bound attribute ":href" expects string, got bool`, Line: 2, Column: 12},
 	}
 	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
@@ -1075,6 +1126,35 @@ func TestWriteProductionProjectWritesDist(t *testing.T) {
 	}
 	if diff := cmp.Diff(build.Manifest, decoded); diff != "" {
 		t.Errorf("mismatch dist manifest (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestWriteProductionProjectWritesDistFromRelativeRoot(t *testing.T) {
+	cwd := t.TempDir()
+	root := filepath.Join(cwd, "app")
+	if err := copyTestFixtureDir(root, "testdata/production"); err != nil {
+		t.Fatalf("copy production fixture: %v", err)
+	}
+	t.Chdir(cwd)
+
+	project, err := parseProjectRoot("app", []string{"App.tue"})
+	if err != nil {
+		t.Fatalf("parse project root: %v", err)
+	}
+
+	build, diagnostics, err := WriteProductionProject("app", *project)
+	if err != nil {
+		t.Fatalf("WriteProductionProject returned error: %v", err)
+	}
+	if build == nil {
+		t.Fatal("WriteProductionProject build is nil")
+	}
+	expectedDiagnostics := []diagnosticSummary{}
+	if diff := cmp.Diff(expectedDiagnostics, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+	if _, err := os.Stat(filepath.Join("app", DistDir, wasmFilePath)); err != nil {
+		t.Errorf("relative-root build should write app.wasm under dist: %v", err)
 	}
 }
 

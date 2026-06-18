@@ -810,8 +810,12 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 				styleDynamic = append(styleDynamic, styleValue)
 				continue
 			}
-			g.add(fmt.Sprintf("bound attribute %q generation is not supported in the static render slice", attr.RawName), attr.Span)
-			ok = false
+			attrValue, attrOK := g.renderNativeAttrBinding(attr)
+			if !attrOK {
+				ok = false
+				continue
+			}
+			attrs = append(attrs, attrValue)
 		case gotemplate.AttrEvent:
 			event, eventOK := g.renderEvent(attr)
 			if !eventOK {
@@ -884,6 +888,21 @@ func (g *fileGenerator) renderStyleBinding(attr gotemplate.Attr) (jen.Code, bool
 		return nil, false
 	}
 	return expression, true
+}
+
+func (g *fileGenerator) renderNativeAttrBinding(attr gotemplate.Attr) (jen.Code, bool) {
+	subject := fmt.Sprintf("bound attribute %q", attr.RawName)
+	expression, ok := g.renderExpressionFor(subject, attr.Expression, attr.ExpressionSpan)
+	if !ok {
+		return nil, false
+	}
+
+	valueType := g.expressionType(attr.Expression)
+	if !assignableType("string", valueType) {
+		g.add(fmt.Sprintf("%s expects string, got %s", subject, displayType(valueType)), attr.ExpressionSpan)
+		return nil, false
+	}
+	return jen.Qual(tueImportPath, "Attr").Call(jen.Lit(attr.Argument), expression), true
 }
 
 func renderClassAttr(static []string, dynamic []jen.Code) jen.Code {
