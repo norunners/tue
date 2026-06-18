@@ -132,6 +132,7 @@ func (e *extractor) parse(componentName string) (*File, []Diagnostic) {
 	file.PackageSpan = e.posSpan(astFile.Pos(), astFile.Name.End())
 	file.Imports = e.extractImports(astFile)
 	e.typeCheck(astFile)
+	file.Structs = e.extractStructs(astFile)
 
 	if componentName != "" {
 		e.extractComponent(file, astFile, componentName)
@@ -262,6 +263,55 @@ func findTypeSpec(file *ast.File, name string) (*ast.TypeSpec, bool) {
 		}
 	}
 	return nil, false
+}
+
+func (e *extractor) extractStructs(file *ast.File) []Struct {
+	var structs []Struct
+	for _, declaration := range file.Decls {
+		general, ok := declaration.(*ast.GenDecl)
+		if !ok || general.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range general.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+			structType, ok := typeSpec.Type.(*ast.StructType)
+			if !ok {
+				continue
+			}
+			structs = append(structs, Struct{
+				Name:   typeSpec.Name.Name,
+				Fields: e.structFields(structType),
+			})
+		}
+	}
+	return structs
+}
+
+func (e *extractor) structFields(structType *ast.StructType) []Field {
+	var fields []Field
+	for _, astField := range structType.Fields.List {
+		if len(astField.Names) == 0 {
+			continue
+		}
+		for _, name := range astField.Names {
+			tag, tagSpan := e.fieldTag(astField)
+			fields = append(fields, Field{
+				Kind:     FieldKindState,
+				Name:     name.Name,
+				Exported: name.IsExported(),
+				Type:     e.nodeString(astField.Type),
+				Tag:      tag,
+				Span:     e.posSpan(name.Pos(), astField.End()),
+				NameSpan: e.nodeSpan(name),
+				TypeSpan: e.nodeSpan(astField.Type),
+				TagSpan:  tagSpan,
+			})
+		}
+	}
+	return fields
 }
 
 func (e *extractor) extractFields(component *Component, structType *ast.StructType) {

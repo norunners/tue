@@ -1,5 +1,5 @@
 <template>
-	<main :style="styleName()">Hello</main>
+	<main :style="styleName(true)">Hello</main>
 </template>
 
 <script lang="go">
@@ -7,5 +7,5 @@ package app
 
 type App struct{}
 
-func (a *App) styleName() string { return "" }
+func (a *App) styleName(active bool) string { return "" }
 </script>

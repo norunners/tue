@@ -1,9 +1,9 @@
 <template>
 	<main>
 		<UserBadge :name="name" :isAdmin='role == "admin"' @select="selectUser" />
-		<ul>
-			<li v-for="todo in todos" :key="todo.ID">{{ todo.Text }}</li>
-		</ul>
+			<ul>
+				<li v-for="todo in visibleTodos()" :key="todo.ID">{{ todo.Text }}</li>
+			</ul>
 		<input v-model="query" />
 		<button type="button" @click="increment">Increment</button>
 		<p v-if="ready">Count: {{ count }}</p>
@@ -32,4 +32,8 @@ type Parent struct {
 func (p *Parent) increment() {}
 
 func (p *Parent) selectUser() {}
+
+func (p *Parent) visibleTodos() []Todo {
+	return p.todos
+}
 </script>

@@ -8,6 +8,7 @@ type File struct {
 	PackageName string
 	PackageSpan sfc.Span
 	Imports     []Import
+	Structs     []Struct
 	Component   *Component
 }
 
@@ -48,6 +49,12 @@ type Prop struct {
 	Field    Field
 	Name     string
 	Required bool
+}
+
+// Struct is a top-level Go struct declaration available to template expressions.
+type Struct struct {
+	Name   string
+	Fields []Field
 }
 
 // Field is a named field on the component struct.

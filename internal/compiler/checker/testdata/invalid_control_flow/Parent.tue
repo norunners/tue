@@ -1,0 +1,27 @@
+<template>
+	<main>
+		<p v-else>Hidden</p>
+		<ul>
+			<li v-for="todo in todos" v-if="todo.Done" :key="todo.ID">{{ todo.Text }}</li>
+			<li v-else>Open</li>
+			<li v-if="ready">Ready</li>
+			<li v-else>Fallback</li>
+			<li v-else>Extra fallback</li>
+		</ul>
+	</main>
+</template>
+
+<script lang="go">
+package fixtures
+
+type Todo struct {
+	ID   int
+	Text string
+	Done bool
+}
+
+type Parent struct {
+	todos []Todo
+	ready bool
+}
+</script>

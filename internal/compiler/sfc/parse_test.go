@@ -98,6 +98,34 @@ func TestParseScriptLangMayBeUnquoted(t *testing.T) {
 	}
 }
 
+func TestParseTemplateAllowsNestedTemplateTags(t *testing.T) {
+	source := `<template>
+	<ul>
+		<template v-for="todo in todos">
+			<li>{{ todo.Text }}</li>
+		</template>
+	</ul>
+</template>
+<script lang="go">
+package fixtures
+</script>
+`
+
+	file, diagnostics := Parse("nested.tue", []byte(source))
+	if len(diagnostics) != 0 {
+		t.Fatalf("Parse diagnostics = %#v, want none", diagnosticMessages(diagnostics))
+	}
+	if file.Template == nil {
+		t.Fatal("file.Template is nil")
+	}
+	if !strings.Contains(file.Template.Content, `<template v-for="todo in todos">`) {
+		t.Fatalf("template content = %q, want nested template tag", file.Template.Content)
+	}
+	if strings.Contains(file.Template.Content, `<script`) {
+		t.Fatalf("template content = %q, should not include script block", file.Template.Content)
+	}
+}
+
 func TestParseFixtures(t *testing.T) {
 	root := filepath.Join("..", "..", "..", "testdata", "fixtures")
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {

@@ -80,6 +80,7 @@ func (c *projectChecker) checkFile(file File) {
 		path:       path,
 		component:  file.Script.Component,
 		components: c.components,
+		structs:    structFieldMaps(file.Script.Structs),
 	}
 	fileChecker.checkNodes(file.Template.Nodes, componentScope(file.Script.Component))
 	c.diagnostics = append(c.diagnostics, fileChecker.diagnostics...)

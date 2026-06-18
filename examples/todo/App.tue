@@ -10,14 +10,14 @@
 			<input v-model="newTodo" @input="markEditing" placeholder="Add an operational follow-up" />
 			<button type="button" @click="addTodo">Add</button>
 			<label>
-				<input type="checkbox" v-model="showDone" @change="showDoneChanged" />
+				<input type="checkbox" v-model="showDone" />
 				Show completed
 			</label>
 			<button type="button" @click="archiveDone">Archive completed</button>
 		</section>
 
 		<ul class="todo-list">
-			<li v-for="todo in visibleTodos" :key="todo.id" class="todo-row" :class="todo.className">
+			<li v-for="todo in visibleTodos()" :key="todo.id" class="todo-row" :class="todo.className">
 				<span>{{ todo.text }}</span>
 				<strong v-if="todo.done">Done</strong>
 				<strong v-if="!todo.done">Open</strong>
@@ -48,7 +48,6 @@ type App struct {
 	showDone     tue.Ref[bool]
 	summary      tue.Ref[string]
 	summaryClass tue.Ref[string]
-	visibleTodos tue.Ref[[]todo]
 	nextID       int
 	todos        []todo
 }
@@ -58,7 +57,6 @@ func (a *App) Init(tue.Context) {
 	a.showDone = tue.RefOf(true)
 	a.summary = tue.RefOf("")
 	a.summaryClass = tue.RefOf("summary")
-	a.visibleTodos = tue.RefOf([]todo{})
 	a.nextID = 4
 	a.todos = []todo{
 		{id: 1, text: "Review support escalations", className: "priority-high"},
@@ -66,7 +64,6 @@ func (a *App) Init(tue.Context) {
 		{id: 3, text: "Confirm launch checklist", className: "priority-medium"},
 	}
 	a.updateSummary()
-	a.updateVisibleTodos()
 }
 
 func (a *App) markEditing() {
@@ -88,7 +85,6 @@ func (a *App) addTodo() {
 	a.newTodo.Set("")
 	a.summaryClass.Set("summary updated")
 	a.updateSummary()
-	a.updateVisibleTodos()
 }
 
 func (a *App) archiveDone() {
@@ -101,11 +97,6 @@ func (a *App) archiveDone() {
 	a.todos = open
 	a.summaryClass.Set("summary updated")
 	a.updateSummary()
-	a.updateVisibleTodos()
-}
-
-func (a *App) showDoneChanged() {
-	a.updateVisibleTodos()
 }
 
 func (a *App) updateSummary() {
@@ -118,14 +109,14 @@ func (a *App) updateSummary() {
 	a.summary.Set("Open items: " + strconv.Itoa(open))
 }
 
-func (a *App) updateVisibleTodos() {
+func (a *App) visibleTodos() []todo {
 	visible := make([]todo, 0, len(a.todos))
 	for _, item := range a.todos {
 		if a.showDone.Get() || !item.done {
 			visible = append(visible, item)
 		}
 	}
-	a.visibleTodos.Set(visible)
+	return visible
 }
 </script>
 

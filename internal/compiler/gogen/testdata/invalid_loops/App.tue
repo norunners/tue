@@ -4,6 +4,8 @@
 	<li v-for="todo in todos">Missing key</li>
 	<li v-for="todo in makeTodos()" :key="todo.ID">Bad source</li>
 	<li v-for="todo in todos" :key="key(todo)">Bad key</li>
+	<li v-for="todo in todos" v-if="todo.Done" :key="todo.ID">Done</li>
+	<li v-else>Open</li>
 </ul>
 </template>
 
@@ -13,6 +15,7 @@ package app
 type Todo struct {
 	ID   int
 	Text string
+	Done bool
 }
 
 type App struct {

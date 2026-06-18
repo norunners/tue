@@ -19,6 +19,7 @@ type scope struct {
 type symbol struct {
 	Name       string
 	Type       string
+	ResultType string
 	Writable   bool
 	Method     bool
 	Parameters int
@@ -49,7 +50,14 @@ func componentScope(component *script.Component) *scope {
 		scope.add(symbol{Name: field.Name, Type: fieldType(field)})
 	}
 	for _, method := range component.Methods {
-		scope.add(symbol{Name: method.Name, Type: funcType, Method: true, Parameters: len(method.Parameters), Results: len(method.Results)})
+		scope.add(symbol{
+			Name:       method.Name,
+			Type:       funcType,
+			ResultType: methodResultType(method),
+			Method:     true,
+			Parameters: len(method.Parameters),
+			Results:    len(method.Results),
+		})
 	}
 	return scope
 }
@@ -86,6 +94,25 @@ func fieldType(field script.Field) string {
 		return field.Type
 	}
 	return unknownType
+}
+
+func methodResultType(method script.Method) string {
+	if len(method.Results) != 1 {
+		return unknownType
+	}
+	return method.Results[0].Type
+}
+
+func structFieldMaps(structs []script.Struct) map[string]map[string]script.Field {
+	byType := make(map[string]map[string]script.Field, len(structs))
+	for _, structure := range structs {
+		fields := make(map[string]script.Field, len(structure.Fields))
+		for _, field := range structure.Fields {
+			fields[field.Name] = field
+		}
+		byType[structure.Name] = fields
+	}
+	return byType
 }
 
 func iterableTypesFor(typ string) (iterableTypes, bool) {

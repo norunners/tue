@@ -3,16 +3,16 @@
 		<header>
 			<p class="eyebrow">Directory</p>
 			<h1>User Table</h1>
-			<p>{{ status }}</p>
+			<p>{{ status() }}</p>
 		</header>
 
 		<section class="filters">
-			<input v-model="query" @input="applyFilter" placeholder="Filter by name, email, or role" />
+			<input v-model="query" placeholder="Filter by name, email, or role" />
 			<label>
-				<input type="checkbox" v-model="showInactive" @change="inactiveVisibilityChanged" />
+				<input type="checkbox" v-model="showInactive" />
 				Show inactive users
 			</label>
-			<button type="button" @click="toggleInactive">{{ toggleLabel }}</button>
+			<button type="button" @click="toggleInactive">{{ toggleLabel() }}</button>
 		</section>
 
 		<table>
@@ -25,7 +25,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				<tr v-for="user in visibleUsers" :key="user.id" :class="user.rowClass">
+				<tr v-for="user in visibleUsers()" :key="user.id" :class="user.rowClass">
 					<td>{{ user.name }}</td>
 					<td>{{ user.email }}</td>
 					<td>{{ user.role }}</td>
@@ -54,65 +54,51 @@ type user struct {
 	active   bool
 	status   string
 	rowClass string
-	match    bool
 }
 
 type App struct {
 	query        tue.Ref[string]
 	showInactive tue.Ref[bool]
-	toggleLabel  tue.Ref[string]
-	status       tue.Ref[string]
-	visibleUsers tue.Ref[[]user]
 	users        []user
 }
 
 func (a *App) Init(tue.Context) {
 	a.query = tue.RefOf("")
 	a.showInactive = tue.RefOf(false)
-	a.toggleLabel = tue.RefOf("Show inactive")
-	a.status = tue.RefOf("")
-	a.visibleUsers = tue.RefOf([]user{})
 	a.users = []user{
-		{id: 1, name: "Ada Lovelace", email: "ada@example.com", role: "Admin", active: true, status: "Active", rowClass: "active", match: true},
-		{id: 2, name: "Grace Hopper", email: "grace@example.com", role: "Operator", active: true, status: "Active", rowClass: "active", match: true},
-		{id: 3, name: "Katherine Johnson", email: "katherine@example.com", role: "Analyst", active: false, status: "Suspended", rowClass: "inactive", match: true},
-		{id: 4, name: "Mary Jackson", email: "mary@example.com", role: "Reviewer", active: true, status: "Active", rowClass: "active", match: true},
+		{id: 1, name: "Ada Lovelace", email: "ada@example.com", role: "Admin", active: true, status: "Active", rowClass: "active"},
+		{id: 2, name: "Grace Hopper", email: "grace@example.com", role: "Operator", active: true, status: "Active", rowClass: "active"},
+		{id: 3, name: "Katherine Johnson", email: "katherine@example.com", role: "Analyst", active: false, status: "Suspended", rowClass: "inactive"},
+		{id: 4, name: "Mary Jackson", email: "mary@example.com", role: "Reviewer", active: true, status: "Active", rowClass: "active"},
 	}
-	a.refreshVisibleUsers()
-}
-
-func (a *App) applyFilter() {
-	needle := strings.ToLower(strings.TrimSpace(a.query.Get()))
-	for index := range a.users {
-		haystack := strings.ToLower(a.users[index].name + " " + a.users[index].email + " " + a.users[index].role)
-		a.users[index].match = needle == "" || strings.Contains(haystack, needle)
-	}
-	a.refreshVisibleUsers()
 }
 
 func (a *App) toggleInactive() {
 	a.showInactive.Set(!a.showInactive.Get())
-	a.inactiveVisibilityChanged()
 }
 
-func (a *App) inactiveVisibilityChanged() {
+func (a *App) toggleLabel() string {
 	if a.showInactive.Get() {
-		a.toggleLabel.Set("Hide inactive")
-	} else {
-		a.toggleLabel.Set("Show inactive")
+		return "Hide inactive"
 	}
-	a.refreshVisibleUsers()
+	return "Show inactive"
 }
 
-func (a *App) refreshVisibleUsers() {
+func (a *App) status() string {
+	return "Visible users: " + strconv.Itoa(len(a.visibleUsers()))
+}
+
+func (a *App) visibleUsers() []user {
+	needle := strings.ToLower(strings.TrimSpace(a.query.Get()))
 	visible := make([]user, 0, len(a.users))
 	for _, item := range a.users {
-		if item.match && (a.showInactive.Get() || item.active) {
+		haystack := strings.ToLower(item.name + " " + item.email + " " + item.role)
+		match := needle == "" || strings.Contains(haystack, needle)
+		if match && (a.showInactive.Get() || item.active) {
 			visible = append(visible, item)
 		}
 	}
-	a.visibleUsers.Set(visible)
-	a.status.Set("Visible users: " + strconv.Itoa(len(visible)))
+	return visible
 }
 </script>
 

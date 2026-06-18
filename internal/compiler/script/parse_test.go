@@ -29,6 +29,19 @@ func TestParseExtractsComponentContract(t *testing.T) {
 	}}, summarizeImports(file.Imports)); diff != "" {
 		t.Errorf("mismatch imports (-expected, +actual):\n%s", diff)
 	}
+	if diff := cmp.Diff([]structSummary{
+		{Name: "User", Fields: []fieldSummary{}},
+		{Name: "Dashboard", Fields: []fieldSummary{
+			{Kind: FieldKindState, Name: "name", Type: "tue.Prop[string]"},
+			{Kind: FieldKindState, Name: "count", Type: "tue.Ref[int]"},
+			{Kind: FieldKindState, Name: "total", Type: "tue.Computed[int]"},
+			{Kind: FieldKindState, Name: "user", Type: "tue.Resource[User]"},
+			{Kind: FieldKindState, Name: "onSave", Type: "func()"},
+			{Kind: FieldKindState, Name: "label", Type: "string"},
+		}},
+	}, summarizeStructs(file.Structs)); diff != "" {
+		t.Errorf("mismatch structs (-expected, +actual):\n%s", diff)
+	}
 
 	component := requireComponent(t, file)
 	if diff := cmp.Diff("Dashboard", component.Name); diff != "" {
@@ -387,6 +400,11 @@ type fieldSummary struct {
 	ValueType string
 }
 
+type structSummary struct {
+	Name   string
+	Fields []fieldSummary
+}
+
 type methodSummary struct {
 	Name            string
 	ReceiverName    string
@@ -443,6 +461,17 @@ func summarizeFields(fields []Field) []fieldSummary {
 	summaries := make([]fieldSummary, len(fields))
 	for i, field := range fields {
 		summaries[i] = summarizeField(field)
+	}
+	return summaries
+}
+
+func summarizeStructs(structs []Struct) []structSummary {
+	summaries := make([]structSummary, len(structs))
+	for i, structure := range structs {
+		summaries[i] = structSummary{
+			Name:   structure.Name,
+			Fields: summarizeFields(structure.Fields),
+		}
 	}
 	return summaries
 }

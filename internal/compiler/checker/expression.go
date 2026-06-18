@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/norunners/tue/internal/compiler/script"
 	"github.com/norunners/tue/internal/compiler/sfc"
 )
 
@@ -179,17 +180,41 @@ func (c *exprChecker) selector(selector *ast.SelectorExpr) value {
 	if base.Type == unknownType {
 		return value{Type: unknownType}
 	}
-	if isScalar(base.Type) || strings.HasPrefix(normalizeType(base.Type), "[]") {
+	if field, ok := c.fileChecker.structField(base.Type, selector.Sel.Name); ok {
+		return value{Type: fieldType(field)}
+	}
+	if _, ok := c.fileChecker.structs[normalizeType(base.Type)]; ok {
+		c.fileChecker.add(fmt.Sprintf("type %s has no field %q", displayType(base.Type), selector.Sel.Name), c.nodeSpan(selector.Sel))
+		return value{Type: unknownType}
+	}
+	if isScalar(base.Type) || strings.HasPrefix(normalizeType(base.Type), "[]") || strings.HasPrefix(normalizeType(base.Type), "map[") {
 		c.fileChecker.add(fmt.Sprintf("type %s has no field %q", displayType(base.Type), selector.Sel.Name), c.nodeSpan(selector.Sel))
 	}
 	return value{Type: unknownType}
 }
 
 func (c *exprChecker) call(call *ast.CallExpr) value {
-	c.eval(call.Fun)
 	for _, arg := range call.Args {
 		c.eval(arg)
 	}
+
+	if ident, ok := call.Fun.(*ast.Ident); ok {
+		symbol, found := c.scope.lookup(ident.Name)
+		if !found {
+			c.fileChecker.add(fmt.Sprintf("unknown identifier %q", ident.Name), c.nodeSpan(ident))
+			return value{Type: unknownType}
+		}
+		if !symbol.Method {
+			return value{Type: unknownType}
+		}
+		if len(call.Args) != 0 || symbol.Parameters != 0 || symbol.Results != 1 {
+			c.fileChecker.add(fmt.Sprintf("method call %q must have signature func() T", ident.Name), c.nodeSpan(call))
+			return value{Type: unknownType}
+		}
+		return value{Type: symbol.ResultType}
+	}
+
+	c.eval(call.Fun)
 	return value{Type: unknownType}
 }
 
@@ -207,6 +232,15 @@ func (c *exprChecker) expectOperand(expected string, actual value, expr ast.Expr
 		return
 	}
 	c.fileChecker.add(fmt.Sprintf("operand expects %s, got %s", displayType(expected), displayType(actual.Type)), c.nodeSpan(expr))
+}
+
+func (c *fileChecker) structField(typeName string, fieldName string) (script.Field, bool) {
+	fields, ok := c.structs[normalizeType(typeName)]
+	if !ok {
+		return script.Field{}, false
+	}
+	field, ok := fields[fieldName]
+	return field, ok
 }
 
 func (c *exprChecker) nodeSpan(node ast.Node) sfc.Span {

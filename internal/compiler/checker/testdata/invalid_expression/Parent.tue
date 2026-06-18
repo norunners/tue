@@ -1,0 +1,22 @@
+<template>
+	<main>
+		<p>{{ user.missing }}</p>
+		<p v-if="visible(true)">Visible</p>
+	</main>
+</template>
+
+<script lang="go">
+package fixtures
+
+type User struct {
+	name string
+}
+
+type Parent struct {
+	user User
+}
+
+func (p *Parent) visible(enabled bool) bool {
+	return enabled
+}
+</script>

@@ -12,8 +12,11 @@ import (
 )
 
 type expressionGenerator struct {
-	fields map[string]script.Field
-	locals map[string]string
+	fields     map[string]script.Field
+	methods    map[string]script.Method
+	locals     map[string]string
+	localTypes map[string]string
+	typeFields map[string]map[string]script.Field
 }
 
 func (g expressionGenerator) render(expr ast.Expr) (jen.Code, bool) {
@@ -45,11 +48,16 @@ func (g expressionGenerator) render(expr ast.Expr) (jen.Code, bool) {
 		}
 		return jen.Parens(inner), true
 	case *ast.SelectorExpr:
+		if !g.validSelector(typed) {
+			return nil, false
+		}
 		base, ok := g.render(typed.X)
 		if !ok {
 			return nil, false
 		}
 		return base.(*jen.Statement).Dot(typed.Sel.Name), true
+	case *ast.CallExpr:
+		return g.call(typed)
 	case *ast.IndexExpr:
 		base, ok := g.render(typed.X)
 		if !ok {
@@ -63,6 +71,44 @@ func (g expressionGenerator) render(expr ast.Expr) (jen.Code, bool) {
 	default:
 		return nil, false
 	}
+}
+
+func (g expressionGenerator) call(call *ast.CallExpr) (jen.Code, bool) {
+	ident, ok := call.Fun.(*ast.Ident)
+	if !ok {
+		return nil, false
+	}
+	if len(call.Args) != 0 {
+		return nil, false
+	}
+	if _, local := g.locals[ident.Name]; local {
+		return nil, false
+	}
+	method, ok := g.methods[ident.Name]
+	if !ok || len(method.Parameters) != 0 || len(method.Results) != 1 {
+		return nil, false
+	}
+	return jen.Id("component").Dot(method.Name).Call(), true
+}
+
+func (g expressionGenerator) validSelector(selector *ast.SelectorExpr) bool {
+	baseType := expressionTyper{
+		fields:     g.fields,
+		methods:    g.methods,
+		localTypes: g.localTypes,
+		typeFields: g.typeFields,
+	}.eval(selector.X)
+	if baseType == "unknown" {
+		return true
+	}
+	if _, ok := structField(g.typeFields, baseType, selector.Sel.Name); ok {
+		return true
+	}
+	baseType = normalizeType(baseType)
+	if _, known := g.typeFields[baseType]; known {
+		return false
+	}
+	return !isScalarType(baseType) && !strings.HasPrefix(baseType, "[]") && !strings.HasPrefix(baseType, "map[")
 }
 
 func (g expressionGenerator) ident(ident *ast.Ident) jen.Code {
@@ -131,14 +177,18 @@ func (g *fileGenerator) expressionType(expression string) string {
 	}
 	typer := expressionTyper{
 		fields:     g.fields,
+		methods:    g.methods,
 		localTypes: g.localTypes,
+		typeFields: g.typeFields,
 	}
 	return typer.eval(expr)
 }
 
 type expressionTyper struct {
 	fields     map[string]script.Field
+	methods    map[string]script.Method
 	localTypes map[string]string
+	typeFields map[string]map[string]script.Field
 }
 
 func (t expressionTyper) eval(expr ast.Expr) string {
@@ -154,9 +204,9 @@ func (t expressionTyper) eval(expr ast.Expr) string {
 	case *ast.ParenExpr:
 		return t.eval(typed.X)
 	case *ast.SelectorExpr:
-		return "unknown"
+		return t.selector(typed)
 	case *ast.CallExpr:
-		return "unknown"
+		return t.call(typed)
 	case *ast.IndexExpr:
 		base := t.eval(typed.X)
 		types, ok := iterableTypesFor(base)
@@ -185,6 +235,30 @@ func (t expressionTyper) ident(ident *ast.Ident) string {
 		return fieldValueType(field)
 	}
 	return "unknown"
+}
+
+func (t expressionTyper) selector(selector *ast.SelectorExpr) string {
+	baseType := t.eval(selector.X)
+	field, ok := structField(t.typeFields, baseType, selector.Sel.Name)
+	if !ok {
+		return "unknown"
+	}
+	return fieldValueType(field)
+}
+
+func (t expressionTyper) call(call *ast.CallExpr) string {
+	ident, ok := call.Fun.(*ast.Ident)
+	if !ok || len(call.Args) != 0 {
+		return "unknown"
+	}
+	if _, local := t.localTypes[ident.Name]; local {
+		return "unknown"
+	}
+	method, ok := t.methods[ident.Name]
+	if !ok || len(method.Parameters) != 0 || len(method.Results) != 1 {
+		return "unknown"
+	}
+	return method.Results[0].Type
 }
 
 func literalType(lit *ast.BasicLit) string {
@@ -312,4 +386,22 @@ func isNumericType(typ string) bool {
 	default:
 		return false
 	}
+}
+
+func isScalarType(typ string) bool {
+	switch normalizeType(typ) {
+	case "string", "bool":
+		return true
+	default:
+		return isNumericType(typ)
+	}
+}
+
+func structField(typeFields map[string]map[string]script.Field, typeName string, fieldName string) (script.Field, bool) {
+	fields, ok := typeFields[normalizeType(typeName)]
+	if !ok {
+		return script.Field{}, false
+	}
+	field, ok := fields[fieldName]
+	return field, ok
 }

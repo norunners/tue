@@ -2,6 +2,7 @@ package checker
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/norunners/tue/internal/compiler/script"
 	"github.com/norunners/tue/internal/compiler/sfc"
@@ -12,12 +13,28 @@ type fileChecker struct {
 	path        string
 	component   *script.Component
 	components  map[string]componentBinding
+	structs     map[string]map[string]script.Field
 	diagnostics []Diagnostic
 }
 
 func (c *fileChecker) checkNodes(nodes []*gotemplate.Node, scope *scope) {
+	previousIf := false
+	previousIfHasFor := false
 	for _, node := range nodes {
+		if ignorableControlSibling(node) {
+			continue
+		}
+		if attr, ok := directiveAttr(node, gotemplate.DirectiveElse); ok {
+			switch {
+			case !previousIf:
+				c.add("v-else must follow v-if", attr.DirectiveSpan)
+			case previousIfHasFor:
+				c.add("v-else cannot follow v-if on an element that also has v-for; use a <template v-for> wrapper", attr.DirectiveSpan)
+			}
+		}
 		c.checkNode(node, scope)
+		previousIf = hasDirective(node, gotemplate.DirectiveIf)
+		previousIfHasFor = previousIf && hasDirective(node, gotemplate.DirectiveFor)
 	}
 }
 
@@ -43,6 +60,8 @@ func (c *fileChecker) checkElement(node *gotemplate.Node, scope *scope) {
 	if node.IsComponent {
 		c.checkCommonAttrs(node, elementScope, false)
 		c.checkComponent(node, elementScope)
+	} else if node.Tag == "template" {
+		c.checkCommonAttrs(node, elementScope, false)
 	} else {
 		c.checkCommonAttrs(node, elementScope, true)
 		if node.Tag == "slot" {
@@ -175,4 +194,18 @@ func (c *fileChecker) add(message string, span sfc.Span) {
 		Message: message,
 		Span:    span,
 	})
+}
+
+func ignorableControlSibling(node *gotemplate.Node) bool {
+	if node == nil {
+		return true
+	}
+	switch node.Kind {
+	case gotemplate.NodeComment:
+		return true
+	case gotemplate.NodeText:
+		return strings.TrimSpace(node.Text) == ""
+	default:
+		return false
+	}
 }

@@ -102,7 +102,7 @@ func (p *parser) parse() (*File, []Diagnostic) {
 			continue
 		}
 
-		closeStart, closeEnd, found := p.findCloseTag(tag.name, tag.contentFrom)
+		closeStart, closeEnd, found := p.findBlockCloseTag(tag.name, tag.contentFrom)
 		if !found {
 			diagnostics = append(diagnostics, Diagnostic{
 				Message: fmt.Sprintf("missing closing </%s> tag", tag.name),
@@ -373,6 +373,82 @@ func (p *parser) findCloseTag(name string, start int) (int, int, bool) {
 	}
 
 	return 0, 0, false
+}
+
+func (p *parser) findBlockCloseTag(name string, start int) (int, int, bool) {
+	if name != string(BlockTemplate) {
+		return p.findCloseTag(name, start)
+	}
+
+	depth := 1
+	for searchFrom := start; searchFrom < len(p.source); {
+		index := strings.IndexByte(p.source[searchFrom:], '<')
+		if index == -1 {
+			return 0, 0, false
+		}
+
+		tagStart := searchFrom + index
+		if tagStart+1 < len(p.source) && p.source[tagStart+1] == '/' {
+			closeEnd, ok := p.closeTagEndAt(name, tagStart)
+			if !ok {
+				searchFrom = tagStart + 1
+				continue
+			}
+			depth--
+			if depth == 0 {
+				return tagStart, closeEnd, true
+			}
+			searchFrom = closeEnd
+			continue
+		}
+
+		openEnd, selfClosing, ok := p.openTagEndAt(name, tagStart)
+		if !ok {
+			searchFrom = p.advancePastTag(tagStart)
+			continue
+		}
+		if !selfClosing {
+			depth++
+		}
+		searchFrom = openEnd
+	}
+
+	return 0, 0, false
+}
+
+func (p *parser) openTagEndAt(name string, start int) (int, bool, bool) {
+	if start+1+len(name) > len(p.source) || p.source[start:start+1+len(name)] != "<"+name {
+		return 0, false, false
+	}
+	offset := start + 1 + len(name)
+	if offset < len(p.source) && isNameChar(rune(p.source[offset])) {
+		return 0, false, false
+	}
+	end, _, ok := p.findOpenTagEnd(start)
+	if !ok {
+		return 0, false, false
+	}
+	bodyEnd := end - 1
+	for bodyEnd > start && isSpace(p.source[bodyEnd-1]) {
+		bodyEnd--
+	}
+	selfClosing := bodyEnd > start && p.source[bodyEnd-1] == '/'
+	return end, selfClosing, true
+}
+
+func (p *parser) closeTagEndAt(name string, start int) (int, bool) {
+	if start+2+len(name) > len(p.source) || p.source[start:start+2+len(name)] != "</"+name {
+		return 0, false
+	}
+	offset := start + 2 + len(name)
+	if offset < len(p.source) && isNameChar(rune(p.source[offset])) {
+		return 0, false
+	}
+	offset = skipSpaces(p.source, offset, len(p.source))
+	if offset < len(p.source) && p.source[offset] == '>' {
+		return offset + 1, true
+	}
+	return 0, false
 }
 
 func (p *parser) skipUnsupportedBlock(tag openTag) int {

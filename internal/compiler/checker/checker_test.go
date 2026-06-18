@@ -156,6 +156,39 @@ func TestCheckProjectReportsBoundAttributeTypeDiagnostics(t *testing.T) {
 	}
 }
 
+func TestCheckProjectReportsExpressionShapeDiagnostics(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_expression")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	diagnostics := CheckProject(project)
+	expected := []diagnosticSummary{
+		{Path: "testdata/invalid_expression/Parent.tue", Message: `type User has no field "missing"`, Line: 3, Column: 14},
+		{Path: "testdata/invalid_expression/Parent.tue", Message: `method call "visible" must have signature func() T`, Line: 4, Column: 12},
+	}
+	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestCheckProjectReportsControlFlowDiagnostics(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_control_flow")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	diagnostics := CheckProject(project)
+	expected := []diagnosticSummary{
+		{Path: "testdata/invalid_control_flow/Parent.tue", Message: `v-else must follow v-if`, Line: 3, Column: 6},
+		{Path: "testdata/invalid_control_flow/Parent.tue", Message: `v-else cannot follow v-if on an element that also has v-for; use a <template v-for> wrapper`, Line: 6, Column: 8},
+		{Path: "testdata/invalid_control_flow/Parent.tue", Message: `v-else must follow v-if`, Line: 9, Column: 8},
+	}
+	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestCheckProjectReportsNamedSlotDiagnostics(t *testing.T) {
 	project, err := parseProjectFixture("testdata/invalid_slot_binding")
 	if err != nil {
@@ -182,7 +215,6 @@ func TestCheckProjectReportsModelBindingDiagnostics(t *testing.T) {
 	expected := []diagnosticSummary{
 		{Path: "testdata/invalid_model_binding/Parent.tue", Message: `v-model expects bool, got string`, Line: 3, Column: 35},
 		{Path: "testdata/invalid_model_binding/Parent.tue", Message: `v-model expects string, got bool`, Line: 4, Column: 20},
-		{Path: "testdata/invalid_model_binding/Parent.tue", Message: `v-model is only supported on text inputs, checkboxes, and selects`, Line: 8, Column: 13},
 		{Path: "testdata/invalid_model_binding/Parent.tue", Message: `v-model is not supported for input type "number"`, Line: 9, Column: 24},
 		{Path: "testdata/invalid_model_binding/Parent.tue", Message: `type string has no field "Text"`, Line: 11, Column: 25},
 	}
