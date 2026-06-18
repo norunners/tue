@@ -1,0 +1,16 @@
+<template>
+<main>
+<p>{{ name }}</p>
+<UserBadge name="Ada" />
+</main>
+</template>
+
+<script lang="go">
+package app
+type App struct{ name string}
+func (a *App) greet( ) string { return a.name}
+</script>
+
+<style scoped>
+.page { color: red; }
+</style>

@@ -1,0 +1,18 @@
+<template>
+<main>
+<pre>
+  first
+    second
+</pre>
+<p>  padded label  </p>
+ keep leading space
+<section>
+<span>{{ label }}</span>
+</section>
+</main>
+</template>
+
+<script lang="go">
+package app
+type App struct{ label string}
+</script>
