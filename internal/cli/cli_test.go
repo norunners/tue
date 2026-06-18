@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/norunners/tue/internal/compiler/sfc"
+	gotemplate "github.com/norunners/tue/internal/compiler/template"
 )
 
 //go:embed testdata/*.tue
@@ -232,6 +235,88 @@ func TestRunFmtReportsDiagnosticsWithoutWriting(t *testing.T) {
 	}
 	if diff := cmp.Diff(source, string(actual)); diff != "" {
 		t.Errorf("mismatch invalid App.tue after fmt (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestExamplesCheckAndBuild(t *testing.T) {
+	examples := []string{"todo", "user-table", "settings-form", "dashboard"}
+	for _, example := range examples {
+		t.Run(example, func(t *testing.T) {
+			sourceRoot := filepath.Join("..", "..", "examples", example)
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+
+			code := Run([]string{"check", sourceRoot}, &stdout, &stderr)
+
+			if code != exitOK {
+				t.Fatalf("Run(check %s) exit code actual = %d, expected %d; stderr = %q", example, code, exitOK, stderr.String())
+			}
+			if stderr.Len() != 0 {
+				t.Errorf("stderr actual = %q, expected empty", stderr.String())
+			}
+
+			buildRoot := filepath.Join(t.TempDir(), example)
+			if err := copyExampleProject(sourceRoot, buildRoot); err != nil {
+				t.Fatalf("copy example project: %v", err)
+			}
+
+			stdout.Reset()
+			stderr.Reset()
+			code = Run([]string{"build", buildRoot}, &stdout, &stderr)
+
+			if code != exitOK {
+				t.Fatalf("Run(build %s) exit code actual = %d, expected %d; stderr = %q", example, code, exitOK, stderr.String())
+			}
+			if stderr.Len() != 0 {
+				t.Errorf("stderr actual = %q, expected empty", stderr.String())
+			}
+			for _, path := range []string{
+				filepath.Join("dist", "app.wasm"),
+				filepath.Join("dist", "index.html"),
+				filepath.Join("dist", "manifest.json"),
+				filepath.Join("dist", "style.css"),
+				filepath.Join("dist", "tue_loader.js"),
+			} {
+				if _, err := os.Stat(filepath.Join(buildRoot, path)); err != nil {
+					t.Errorf("generated file %s should exist: %v", path, err)
+				}
+			}
+		})
+	}
+}
+
+func TestExamplesAvoidSameNodeForIf(t *testing.T) {
+	examples := []string{"todo", "user-table", "settings-form", "dashboard"}
+	for _, example := range examples {
+		t.Run(example, func(t *testing.T) {
+			root := filepath.Join("..", "..", "examples", example)
+			err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+				if walkErr != nil {
+					return walkErr
+				}
+				if entry.IsDir() || filepath.Ext(path) != ".tue" {
+					return nil
+				}
+
+				source, err := os.ReadFile(path)
+				if err != nil {
+					return fmt.Errorf("read %s: %w", path, err)
+				}
+				file, diagnostics := sfc.Parse(path, source)
+				if len(diagnostics) != 0 {
+					return fmt.Errorf("sfc.Parse(%s) diagnostics = %#v", path, sfcDiagnosticMessages(diagnostics))
+				}
+				tree, templateDiagnostics := gotemplate.ParseBlock(file.Template)
+				if len(templateDiagnostics) != 0 {
+					return fmt.Errorf("template.ParseBlock(%s) diagnostics = %#v", path, templateDiagnosticMessages(templateDiagnostics))
+				}
+				assertNoSameNodeForIf(t, path, tree.Nodes)
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("walk example templates: %v", err)
+			}
+		})
 	}
 }
 
@@ -665,6 +750,62 @@ func writeFixture(path string, fixture string) error {
 	return writeFile(path, contents)
 }
 
+func copyExampleProject(sourceRoot string, targetRoot string) error {
+	return filepath.WalkDir(sourceRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		if path != sourceRoot && entry.IsDir() {
+			switch entry.Name() {
+			case ".tue-cache", "dist":
+				return filepath.SkipDir
+			}
+		}
+
+		relativePath, err := filepath.Rel(sourceRoot, path)
+		if err != nil {
+			return err
+		}
+		targetPath := filepath.Join(targetRoot, relativePath)
+		if entry.IsDir() {
+			return os.MkdirAll(targetPath, 0o755)
+		}
+		if !entry.Type().IsRegular() {
+			return nil
+		}
+
+		source, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", path, err)
+		}
+		return writeFile(targetPath, string(source))
+	})
+}
+
+func assertNoSameNodeForIf(t *testing.T, path string, nodes []*gotemplate.Node) {
+	t.Helper()
+
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		if nodeHasDirective(node, gotemplate.DirectiveFor) && nodeHasDirective(node, gotemplate.DirectiveIf) {
+			t.Errorf("%s:%d:%d should avoid v-for and v-if on the same element", path, node.Span.Start.Line, node.Span.Start.Column)
+		}
+		assertNoSameNodeForIf(t, path, node.Children)
+	}
+}
+
+func nodeHasDirective(node *gotemplate.Node, directive gotemplate.DirectiveKind) bool {
+	for _, attr := range node.Attrs {
+		if attr.Kind == gotemplate.AttrDirective && attr.Directive == directive {
+			return true
+		}
+	}
+	return false
+}
+
 func writeFile(path string, contents string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
@@ -681,4 +822,20 @@ func cliFixture(path string) (string, error) {
 		return "", fmt.Errorf("read embedded fixture %s: %w", path, err)
 	}
 	return string(source), nil
+}
+
+func sfcDiagnosticMessages(diagnostics []sfc.Diagnostic) []string {
+	messages := make([]string, len(diagnostics))
+	for i, diagnostic := range diagnostics {
+		messages[i] = diagnostic.Message
+	}
+	return messages
+}
+
+func templateDiagnosticMessages(diagnostics []gotemplate.Diagnostic) []string {
+	messages := make([]string, len(diagnostics))
+	for i, diagnostic := range diagnostics {
+		messages[i] = diagnostic.Message
+	}
+	return messages
 }

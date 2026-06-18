@@ -1,0 +1,153 @@
+<template>
+	<main class="app-shell">
+		<header>
+			<p class="eyebrow">Directory</p>
+			<h1>User Table</h1>
+			<p>{{ status }}</p>
+		</header>
+
+		<section class="filters">
+			<input v-model="query" @input="applyFilter" placeholder="Filter by name, email, or role" />
+			<label>
+				<input type="checkbox" v-model="showInactive" @change="inactiveVisibilityChanged" />
+				Show inactive users
+			</label>
+			<button type="button" @click="toggleInactive">{{ toggleLabel }}</button>
+		</section>
+
+		<table>
+			<thead>
+				<tr>
+					<th>Name</th>
+					<th>Email</th>
+					<th>Role</th>
+					<th>Status</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr v-for="user in visibleUsers" :key="user.id" :class="user.rowClass">
+					<td>{{ user.name }}</td>
+					<td>{{ user.email }}</td>
+					<td>{{ user.role }}</td>
+					<td>{{ user.status }}</td>
+				</tr>
+			</tbody>
+		</table>
+	</main>
+</template>
+
+<script lang="go">
+package app
+
+import (
+	"strconv"
+	"strings"
+
+	tue "github.com/norunners/tue"
+)
+
+type user struct {
+	id       int
+	name     string
+	email    string
+	role     string
+	active   bool
+	status   string
+	rowClass string
+	match    bool
+}
+
+type App struct {
+	query        tue.Ref[string]
+	showInactive tue.Ref[bool]
+	toggleLabel  tue.Ref[string]
+	status       tue.Ref[string]
+	visibleUsers tue.Ref[[]user]
+	users        []user
+}
+
+func (a *App) Init(tue.Context) {
+	a.query = tue.RefOf("")
+	a.showInactive = tue.RefOf(false)
+	a.toggleLabel = tue.RefOf("Show inactive")
+	a.status = tue.RefOf("")
+	a.visibleUsers = tue.RefOf([]user{})
+	a.users = []user{
+		{id: 1, name: "Ada Lovelace", email: "ada@example.com", role: "Admin", active: true, status: "Active", rowClass: "active", match: true},
+		{id: 2, name: "Grace Hopper", email: "grace@example.com", role: "Operator", active: true, status: "Active", rowClass: "active", match: true},
+		{id: 3, name: "Katherine Johnson", email: "katherine@example.com", role: "Analyst", active: false, status: "Suspended", rowClass: "inactive", match: true},
+		{id: 4, name: "Mary Jackson", email: "mary@example.com", role: "Reviewer", active: true, status: "Active", rowClass: "active", match: true},
+	}
+	a.refreshVisibleUsers()
+}
+
+func (a *App) applyFilter() {
+	needle := strings.ToLower(strings.TrimSpace(a.query.Get()))
+	for index := range a.users {
+		haystack := strings.ToLower(a.users[index].name + " " + a.users[index].email + " " + a.users[index].role)
+		a.users[index].match = needle == "" || strings.Contains(haystack, needle)
+	}
+	a.refreshVisibleUsers()
+}
+
+func (a *App) toggleInactive() {
+	a.showInactive.Set(!a.showInactive.Get())
+	a.inactiveVisibilityChanged()
+}
+
+func (a *App) inactiveVisibilityChanged() {
+	if a.showInactive.Get() {
+		a.toggleLabel.Set("Hide inactive")
+	} else {
+		a.toggleLabel.Set("Show inactive")
+	}
+	a.refreshVisibleUsers()
+}
+
+func (a *App) refreshVisibleUsers() {
+	visible := make([]user, 0, len(a.users))
+	for _, item := range a.users {
+		if item.match && (a.showInactive.Get() || item.active) {
+			visible = append(visible, item)
+		}
+	}
+	a.visibleUsers.Set(visible)
+	a.status.Set("Visible users: " + strconv.Itoa(len(visible)))
+}
+</script>
+
+<style scoped>
+.app-shell {
+	font-family: system-ui, sans-serif;
+	margin: 2rem;
+}
+
+.eyebrow {
+	color: #5b6472;
+	font-size: 0.75rem;
+	text-transform: uppercase;
+}
+
+.filters {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+	margin-block: 1rem;
+}
+
+table {
+	border-collapse: collapse;
+	width: 100%;
+}
+
+th,
+td {
+	border-bottom: 1px solid #eaecf0;
+	padding: 0.75rem;
+	text-align: left;
+}
+
+.inactive {
+	color: #667085;
+}
+</style>

@@ -1,0 +1,146 @@
+<template>
+	<main class="app-shell">
+		<header>
+			<p class="eyebrow">Admin</p>
+			<h1>Settings Form</h1>
+			<p :class="statusClass">{{ status }}</p>
+		</header>
+
+		<section class="settings-grid">
+			<label>
+				Workspace name
+				<input v-model="workspaceName" @input="markDirty" />
+			</label>
+
+			<label>
+				Owner email
+				<input v-model="ownerEmail" @input="markDirty" />
+			</label>
+
+			<label>
+				Theme
+				<select v-model="theme" @change="markDirty">
+					<option value="system">System</option>
+					<option value="light">Light</option>
+					<option value="dark">Dark</option>
+				</select>
+			</label>
+
+			<label>
+				Density
+				<select v-model="density" @change="markDirty">
+					<option value="comfortable">Comfortable</option>
+					<option value="compact">Compact</option>
+				</select>
+			</label>
+
+			<label class="toggle">
+				<input type="checkbox" v-model="weeklyDigest" @change="markDirty" />
+				Send weekly digest
+			</label>
+
+			<label class="notes">
+				Release notes
+				<input v-model="notes" @input="markDirty" />
+			</label>
+		</section>
+
+		<footer>
+			<button type="button" @click="save">Save settings</button>
+			<p v-if="saved" class="saved">Saved changes are ready to publish.</p>
+		</footer>
+	</main>
+</template>
+
+<script lang="go">
+package app
+
+import tue "github.com/norunners/tue"
+
+type App struct {
+	workspaceName tue.Ref[string]
+	ownerEmail    tue.Ref[string]
+	theme         tue.Ref[string]
+	density       tue.Ref[string]
+	weeklyDigest  tue.Ref[bool]
+	notes         tue.Ref[string]
+	saved         tue.Ref[bool]
+	status        tue.Ref[string]
+	statusClass   tue.Ref[string]
+}
+
+func (a *App) Init(tue.Context) {
+	a.workspaceName = tue.RefOf("Control Room")
+	a.ownerEmail = tue.RefOf("ops@example.com")
+	a.theme = tue.RefOf("system")
+	a.density = tue.RefOf("comfortable")
+	a.weeklyDigest = tue.RefOf(true)
+	a.notes = tue.RefOf("Publish weekly status updates every Friday.")
+	a.saved = tue.RefOf(false)
+	a.status = tue.RefOf("No unsaved changes")
+	a.statusClass = tue.RefOf("status")
+}
+
+func (a *App) markDirty() {
+	a.saved.Set(false)
+	a.status.Set("Unsaved changes")
+	a.statusClass.Set("status dirty")
+}
+
+func (a *App) save() {
+	a.saved.Set(true)
+	a.status.Set("Settings saved")
+	a.statusClass.Set("status saved")
+}
+</script>
+
+<style scoped>
+.app-shell {
+	font-family: system-ui, sans-serif;
+	margin: 2rem;
+	max-width: 860px;
+}
+
+.eyebrow {
+	color: #5b6472;
+	font-size: 0.75rem;
+	text-transform: uppercase;
+}
+
+.status {
+	color: #344054;
+}
+
+.status.dirty {
+	color: #b42318;
+}
+
+.status.saved,
+.saved {
+	color: #067647;
+}
+
+.settings-grid {
+	display: grid;
+	gap: 1rem;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+label {
+	display: grid;
+	gap: 0.375rem;
+}
+
+.toggle,
+.notes {
+	grid-column: 1 / -1;
+}
+
+.notes input {
+	min-height: 7rem;
+}
+
+footer {
+	margin-top: 1.5rem;
+}
+</style>
