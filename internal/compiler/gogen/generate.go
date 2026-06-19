@@ -247,6 +247,7 @@ func (g *projectGenerator) generatedRenderSource(file File, scopeAttr string) ([
 		fields:     componentFields(file.Script.Component),
 		methods:    componentMethods(file.Script.Component),
 		typeFields: structFieldMaps(file.Script.Structs),
+		comparable: comparableTypeMap(file.Script.Types),
 		scopeAttr:  scopeAttr,
 		assets:     g.assets,
 	}
@@ -275,6 +276,7 @@ type fileGenerator struct {
 	fields      map[string]script.Field
 	methods     map[string]script.Method
 	typeFields  map[string]map[string]script.Field
+	comparable  map[string]bool
 	scopeAttr   string
 	assets      *assetPipeline
 	locals      map[string]string
@@ -310,24 +312,29 @@ func (g *fileGenerator) renderNodeList(nodes []*gotemplate.Node) []jen.Code {
 		if g.ignorableControlSibling(node) {
 			continue
 		}
+		if attr := nodeDirectiveAttr(node, gotemplate.DirectiveCase); attr != nil {
+			g.add("v-case must be a direct child of v-switch", attr.DirectiveSpan)
+			continue
+		}
+		if attr := nodeDirectiveAttr(node, gotemplate.DirectiveDefault); attr != nil {
+			g.add("v-default must be a direct child of v-switch", attr.DirectiveSpan)
+			continue
+		}
+		if attr := nodeDirectiveAttr(node, gotemplate.DirectiveElseIf); attr != nil {
+			g.add("v-else-if must follow v-if or v-else-if", attr.DirectiveSpan)
+			continue
+		}
 		if attr := nodeDirectiveAttr(node, gotemplate.DirectiveElse); attr != nil {
-			g.add("v-else must follow v-if", attr.DirectiveSpan)
+			g.add("v-else must follow v-if or v-else-if", attr.DirectiveSpan)
 			continue
 		}
 		if attr := nodeDirectiveAttr(node, gotemplate.DirectiveIf); attr != nil {
-			elseIndex := g.nextElseNode(nodes, index+1)
-			if elseIndex != -1 {
-				if nodeDirectiveAttr(node, gotemplate.DirectiveFor) != nil {
-					if elseAttr := nodeDirectiveAttr(nodes[elseIndex], gotemplate.DirectiveElse); elseAttr != nil {
-						g.add("v-else cannot follow v-if on an element that also has v-for; use a <template v-for> wrapper", elseAttr.DirectiveSpan)
-					}
-					index = elseIndex
-					continue
-				}
-				if code, ok := g.renderIfElse(node, *attr, nodes[elseIndex]); ok {
+			branches, end := g.conditionalChain(nodes, index, *attr)
+			if len(branches) > 1 {
+				if code, ok := g.renderConditionalChain(branches); ok {
 					rendered = append(rendered, code)
 				}
-				index = elseIndex
+				index = end
 				continue
 			}
 		}
@@ -338,18 +345,31 @@ func (g *fileGenerator) renderNodeList(nodes []*gotemplate.Node) []jen.Code {
 	return rendered
 }
 
-func (g *fileGenerator) nextElseNode(nodes []*gotemplate.Node, start int) int {
-	for index := start; index < len(nodes); index++ {
+type conditionalBranch struct {
+	node *gotemplate.Node
+	attr gotemplate.Attr
+}
+
+func (g *fileGenerator) conditionalChain(nodes []*gotemplate.Node, start int, ifAttr gotemplate.Attr) ([]conditionalBranch, int) {
+	branches := []conditionalBranch{{node: nodes[start], attr: ifAttr}}
+	end := start
+	for index := start + 1; index < len(nodes); index++ {
 		node := nodes[index]
 		if g.ignorableControlSibling(node) {
 			continue
 		}
-		if nodeDirectiveAttr(node, gotemplate.DirectiveElse) != nil {
-			return index
+		if attr := nodeDirectiveAttr(node, gotemplate.DirectiveElseIf); attr != nil {
+			branches = append(branches, conditionalBranch{node: node, attr: *attr})
+			end = index
+			continue
 		}
-		return -1
+		if attr := nodeDirectiveAttr(node, gotemplate.DirectiveElse); attr != nil {
+			branches = append(branches, conditionalBranch{node: node, attr: *attr})
+			end = index
+		}
+		break
 	}
-	return -1
+	return branches, end
 }
 
 func (g *fileGenerator) ignorableControlSibling(node *gotemplate.Node) bool {
@@ -379,6 +399,9 @@ func (g *fileGenerator) renderNode(node *gotemplate.Node) (jen.Code, bool) {
 }
 
 func (g *fileGenerator) renderNodeAfterFor(node *gotemplate.Node) (jen.Code, bool) {
+	if attr := nodeDirectiveAttr(node, gotemplate.DirectiveSwitch); attr != nil {
+		return g.renderSwitch(node, *attr)
+	}
 	attr := nodeDirectiveAttr(node, gotemplate.DirectiveIf)
 	if attr != nil {
 		return g.renderIf(node, *attr)
@@ -469,7 +492,7 @@ func (g *fileGenerator) renderNodeBody(node *gotemplate.Node) (jen.Code, bool) {
 }
 
 func (g *fileGenerator) renderIf(node *gotemplate.Node, attr gotemplate.Attr) (jen.Code, bool) {
-	condition, conditionOK := g.renderExpressionFor("v-if", attr.Expression, attr.ExpressionSpan)
+	condition, conditionOK := g.renderConditionalExpression(attr)
 	rendered, nodeOK := g.renderNodeBody(node)
 	if !conditionOK || !nodeOK {
 		return nil, false
@@ -483,20 +506,196 @@ func (g *fileGenerator) renderIf(node *gotemplate.Node, attr gotemplate.Attr) (j
 	).Call(), true
 }
 
-func (g *fileGenerator) renderIfElse(ifNode *gotemplate.Node, ifAttr gotemplate.Attr, elseNode *gotemplate.Node) (jen.Code, bool) {
-	condition, conditionOK := g.renderExpressionFor("v-if", ifAttr.Expression, ifAttr.ExpressionSpan)
-	ifTrue, trueOK := g.renderNodeBody(ifNode)
-	ifFalse, falseOK := g.renderNodeBody(elseNode)
-	if !conditionOK || !trueOK || !falseOK {
+func (g *fileGenerator) renderConditionalChain(branches []conditionalBranch) (jen.Code, bool) {
+	ok := true
+	statements := make([]jen.Code, 0, len(branches)+1)
+	for index, branch := range branches {
+		if switchAttr := nodeDirectiveAttr(branch.node, gotemplate.DirectiveSwitch); switchAttr != nil {
+			g.add("v-switch cannot be combined with v-if, v-else-if, or v-else", switchAttr.DirectiveSpan)
+			ok = false
+		}
+		if caseAttr := nodeDirectiveAttr(branch.node, gotemplate.DirectiveCase); caseAttr != nil {
+			g.add("v-case must be a direct child of v-switch", caseAttr.DirectiveSpan)
+			ok = false
+		}
+		if defaultAttr := nodeDirectiveAttr(branch.node, gotemplate.DirectiveDefault); defaultAttr != nil {
+			g.add("v-default must be a direct child of v-switch", defaultAttr.DirectiveSpan)
+			ok = false
+		}
+		if nodeDirectiveAttr(branch.node, gotemplate.DirectiveFor) != nil {
+			switch {
+			case index == 0 && len(branches) > 1:
+				next := branches[1].attr
+				g.add(fmt.Sprintf("%s cannot follow a conditional branch that also has v-for; use a <template v-for> wrapper", next.RawName), next.DirectiveSpan)
+			case branch.attr.Directive == gotemplate.DirectiveElseIf:
+				g.add("v-else-if cannot be combined with v-for; use a <template v-for> wrapper", branch.attr.DirectiveSpan)
+			case branch.attr.Directive == gotemplate.DirectiveElse:
+				g.add("v-else cannot be combined with v-for; use a <template v-for> wrapper", branch.attr.DirectiveSpan)
+			}
+			ok = false
+		}
+	}
+	if !ok {
 		return nil, false
 	}
 
-	return jen.Func().Params().Qual(tueImportPath, "VNode").Block(
-		jen.If(condition).Block(
-			jen.Return(ifTrue),
-		),
-		jen.Return(ifFalse),
-	).Call(), true
+	for _, branch := range branches {
+		rendered, renderedOK := g.renderNodeBody(branch.node)
+		if !renderedOK {
+			ok = false
+			continue
+		}
+		if branch.attr.Directive == gotemplate.DirectiveElse {
+			statements = append(statements, jen.Return(rendered))
+			continue
+		}
+		condition, conditionOK := g.renderConditionalExpression(branch.attr)
+		if !conditionOK {
+			ok = false
+			continue
+		}
+		statements = append(statements, jen.If(condition).Block(jen.Return(rendered)))
+	}
+	if !ok {
+		return nil, false
+	}
+	if branches[len(branches)-1].attr.Directive != gotemplate.DirectiveElse {
+		statements = append(statements, jen.Return(g.emptyFragment()))
+	}
+	return jen.Func().Params().Qual(tueImportPath, "VNode").Block(statements...).Call(), true
+}
+
+func (g *fileGenerator) renderConditionalExpression(attr gotemplate.Attr) (jen.Code, bool) {
+	condition, ok := g.renderExpressionFor(attr.RawName, attr.Expression, attr.ExpressionSpan)
+	if !ok {
+		return nil, false
+	}
+	conditionType := g.expressionType(attr.Expression)
+	if !assignableType("bool", conditionType) {
+		g.add(fmt.Sprintf("%s expects bool, got %s", attr.RawName, displayType(conditionType)), attr.ExpressionSpan)
+		return nil, false
+	}
+	return condition, true
+}
+
+func (g *fileGenerator) renderSwitch(node *gotemplate.Node, attr gotemplate.Attr) (jen.Code, bool) {
+	ok := true
+	hostValid := node.Tag == "template" && !node.IsComponent
+	if !hostValid {
+		g.add("v-switch is only supported on <template>", attr.DirectiveSpan)
+		ok = false
+	}
+	if conditionalAttr := nodeConditionalAttr(node); conditionalAttr != nil {
+		g.add("v-switch cannot be combined with v-if, v-else-if, or v-else", conditionalAttr.DirectiveSpan)
+		ok = false
+	}
+	if caseAttr := nodeDirectiveAttr(node, gotemplate.DirectiveCase); caseAttr != nil {
+		g.add("v-switch cannot be combined with v-case on the same element", caseAttr.DirectiveSpan)
+		ok = false
+	}
+	if defaultAttr := nodeDirectiveAttr(node, gotemplate.DirectiveDefault); defaultAttr != nil {
+		g.add("v-switch cannot be combined with v-default on the same element", defaultAttr.DirectiveSpan)
+		ok = false
+	}
+
+	switchValue, valueOK := g.renderExpressionFor("v-switch", attr.Expression, attr.ExpressionSpan)
+	switchType := g.expressionType(attr.Expression)
+	if !isSwitchComparableType(switchType, g.comparable) {
+		g.add(fmt.Sprintf("v-switch expression type %s is not comparable", displayType(switchType)), attr.ExpressionSpan)
+		ok = false
+	}
+	if !valueOK {
+		ok = false
+	}
+	if !hostValid {
+		return nil, false
+	}
+
+	branchCount := 0
+	defaultSeen := false
+	switchName := freshIdentifier(g.usedGeneratedNames(), "__tueSwitch")
+	caseStatements := make([]jen.Code, 0, len(node.Children))
+	var defaultRendered jen.Code
+	for _, branch := range node.Children {
+		if g.ignorableControlSibling(branch) {
+			continue
+		}
+		branchCount++
+
+		caseAttr := nodeDirectiveAttr(branch, gotemplate.DirectiveCase)
+		defaultAttr := nodeDirectiveAttr(branch, gotemplate.DirectiveDefault)
+		branchRenderable := true
+		if conditionalAttr := nodeConditionalAttr(branch); conditionalAttr != nil {
+			g.add("v-switch branches cannot combine v-case or v-default with v-if, v-else-if, or v-else", conditionalAttr.DirectiveSpan)
+			branchRenderable = false
+			ok = false
+		}
+		if nestedSwitch := nodeDirectiveAttr(branch, gotemplate.DirectiveSwitch); nestedSwitch != nil {
+			g.add("a v-switch branch must nest another v-switch inside its content", nestedSwitch.DirectiveSpan)
+			branchRenderable = false
+			ok = false
+		}
+		switch {
+		case caseAttr != nil && defaultAttr != nil:
+			g.add("v-switch branch cannot use both v-case and v-default", defaultAttr.DirectiveSpan)
+			ok = false
+		case caseAttr != nil:
+			if defaultSeen {
+				g.add("v-case must appear before v-default", caseAttr.DirectiveSpan)
+				ok = false
+			}
+			caseValue, caseOK := g.renderExpressionFor("v-case", caseAttr.Expression, caseAttr.ExpressionSpan)
+			caseType := g.expressionType(caseAttr.Expression)
+			if !switchTypesCompatible(switchType, caseType) {
+				g.add(fmt.Sprintf("v-case expects %s, got %s", displayType(switchType), displayType(caseType)), caseAttr.ExpressionSpan)
+				caseOK = false
+			}
+			var rendered jen.Code
+			renderedOK := false
+			if branchRenderable {
+				rendered, renderedOK = g.renderNode(branch)
+			}
+			if caseOK && renderedOK {
+				caseStatements = append(caseStatements, jen.If(jen.Id(switchName).Op("==").Add(caseValue)).Block(jen.Return(rendered)))
+			} else {
+				ok = false
+			}
+		case defaultAttr != nil:
+			if defaultSeen {
+				g.add("v-switch may only have one v-default", defaultAttr.DirectiveSpan)
+				ok = false
+			}
+			defaultSeen = true
+			var rendered jen.Code
+			renderedOK := false
+			if branchRenderable {
+				rendered, renderedOK = g.renderNode(branch)
+			}
+			if renderedOK {
+				defaultRendered = rendered
+			} else {
+				ok = false
+			}
+		default:
+			g.add("v-switch children must use v-case or v-default", branch.Span)
+			ok = false
+		}
+	}
+	if branchCount == 0 {
+		g.add("v-switch requires at least one v-case or v-default child", attr.DirectiveSpan)
+		ok = false
+	}
+	if !ok {
+		return nil, false
+	}
+
+	statements := append([]jen.Code{jen.Id(switchName).Op(":=").Add(switchValue)}, caseStatements...)
+	if defaultSeen {
+		statements = append(statements, jen.Return(defaultRendered))
+	} else {
+		statements = append(statements, jen.Return(g.emptyFragment()))
+	}
+	return jen.Func().Params().Qual(tueImportPath, "VNode").Block(statements...).Call(), true
 }
 
 func (g *fileGenerator) renderElement(node *gotemplate.Node) (jen.Code, bool) {
@@ -1297,6 +1496,19 @@ func nodeDirectiveAttr(node *gotemplate.Node, kind gotemplate.DirectiveKind) *go
 	return nil
 }
 
+func nodeConditionalAttr(node *gotemplate.Node) *gotemplate.Attr {
+	for _, kind := range []gotemplate.DirectiveKind{
+		gotemplate.DirectiveIf,
+		gotemplate.DirectiveElseIf,
+		gotemplate.DirectiveElse,
+	} {
+		if attr := nodeDirectiveAttr(node, kind); attr != nil {
+			return attr
+		}
+	}
+	return nil
+}
+
 func nodeBindAttr(node *gotemplate.Node, argument string) *gotemplate.Attr {
 	if node == nil || node.Kind != gotemplate.NodeElement {
 		return nil
@@ -1312,7 +1524,13 @@ func nodeBindAttr(node *gotemplate.Node, argument string) *gotemplate.Attr {
 
 func isControlDirective(kind gotemplate.DirectiveKind) bool {
 	switch kind {
-	case gotemplate.DirectiveIf, gotemplate.DirectiveElse, gotemplate.DirectiveFor:
+	case gotemplate.DirectiveIf,
+		gotemplate.DirectiveElseIf,
+		gotemplate.DirectiveElse,
+		gotemplate.DirectiveFor,
+		gotemplate.DirectiveSwitch,
+		gotemplate.DirectiveCase,
+		gotemplate.DirectiveDefault:
 		return true
 	default:
 		return false
@@ -1587,6 +1805,14 @@ func structFieldMaps(structs []script.Struct) map[string]map[string]script.Field
 	return byType
 }
 
+func comparableTypeMap(types []script.TypeInfo) map[string]bool {
+	comparable := make(map[string]bool, len(types))
+	for _, info := range types {
+		comparable[info.Expression] = info.Comparable
+	}
+	return comparable
+}
+
 func propValueType(prop script.Prop) string {
 	if prop.Field.ValueType != "" {
 		return prop.Field.ValueType
@@ -1668,6 +1894,28 @@ func assignableType(expected string, actual string) bool {
 		return true
 	}
 	return expected == actual
+}
+
+func switchTypesCompatible(switchType string, caseType string) bool {
+	return assignableType(switchType, caseType) || assignableType(caseType, switchType)
+}
+
+func isSwitchComparableType(typ string, comparable map[string]bool) bool {
+	typ = strings.TrimSpace(typ)
+	if strings.HasPrefix(typ, "*") {
+		return true
+	}
+	typ = normalizeType(typ)
+	if typ == "" || typ == "unknown" {
+		return true
+	}
+	if declared, ok := comparable[typ]; ok {
+		return declared
+	}
+	return typ != "any" && typ != "interface{}" &&
+		!strings.HasPrefix(typ, "[]") &&
+		!strings.HasPrefix(typ, "map[") &&
+		!strings.HasPrefix(typ, "func(")
 }
 
 func normalizeType(typ string) string {

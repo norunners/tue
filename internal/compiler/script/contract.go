@@ -8,6 +8,7 @@ type File struct {
 	PackageName string
 	PackageSpan sfc.Span
 	Imports     []Import
+	Types       []TypeInfo
 	Structs     []Struct
 	Component   *Component
 }
@@ -19,6 +20,12 @@ type Import struct {
 	Span     sfc.Span
 	NameSpan sfc.Span
 	PathSpan sfc.Span
+}
+
+// TypeInfo records Go type information used to validate template expressions.
+type TypeInfo struct {
+	Expression string
+	Comparable bool
 }
 
 // Component is the contract extracted from the expected component struct.

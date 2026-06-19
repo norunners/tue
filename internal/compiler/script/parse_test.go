@@ -29,6 +29,19 @@ func TestParseExtractsComponentContract(t *testing.T) {
 	}}, summarizeImports(file.Imports)); diff != "" {
 		t.Errorf("mismatch imports (-expected, +actual):\n%s", diff)
 	}
+	expectedTypes := map[string]bool{
+		"Dashboard": false,
+		"User":      true,
+	}
+	actualTypes := make(map[string]bool, len(expectedTypes))
+	for _, info := range file.Types {
+		if _, ok := expectedTypes[info.Expression]; ok {
+			actualTypes[info.Expression] = info.Comparable
+		}
+	}
+	if diff := cmp.Diff(expectedTypes, actualTypes); diff != "" {
+		t.Errorf("mismatch declared types (-expected, +actual):\n%s", diff)
+	}
 	if diff := cmp.Diff([]structSummary{
 		{Name: "User", Fields: []fieldSummary{}},
 		{Name: "Dashboard", Fields: []fieldSummary{

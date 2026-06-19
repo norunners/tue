@@ -29,6 +29,19 @@ func TestCheckProjectAcceptsValidProject(t *testing.T) {
 	}
 }
 
+func TestCheckProjectAcceptsConditionalControlFlow(t *testing.T) {
+	project, err := parseProjectFixture("testdata/conditional_control_flow")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	diagnostics := CheckProject(project)
+	expected := []diagnosticSummary{}
+	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestCheckProjectReportsTemplateDiagnostics(t *testing.T) {
 	project, err := parseProjectFixture("testdata/invalid")
 	if err != nil {
@@ -196,9 +209,40 @@ func TestCheckProjectReportsControlFlowDiagnostics(t *testing.T) {
 
 	diagnostics := CheckProject(project)
 	expected := []diagnosticSummary{
-		{Path: "testdata/invalid_control_flow/Parent.tue", Message: `v-else must follow v-if`, Line: 3, Column: 6},
-		{Path: "testdata/invalid_control_flow/Parent.tue", Message: `v-else cannot follow v-if on an element that also has v-for; use a <template v-for> wrapper`, Line: 6, Column: 8},
-		{Path: "testdata/invalid_control_flow/Parent.tue", Message: `v-else must follow v-if`, Line: 9, Column: 8},
+		{Path: "testdata/invalid_control_flow/Parent.tue", Message: `v-else must follow v-if or v-else-if`, Line: 3, Column: 6},
+		{Path: "testdata/invalid_control_flow/Parent.tue", Message: `v-else cannot follow a conditional branch that also has v-for; use a <template v-for> wrapper`, Line: 6, Column: 8},
+		{Path: "testdata/invalid_control_flow/Parent.tue", Message: `v-else must follow v-if or v-else-if`, Line: 9, Column: 8},
+	}
+	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestCheckProjectReportsConditionalControlFlowDiagnostics(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_conditional_control_flow")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	diagnostics := CheckProject(project)
+	expected := []diagnosticSummary{
+		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-else-if must follow v-if or v-else-if`, Line: 3, Column: 6},
+		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-else must follow v-if or v-else-if`, Line: 4, Column: 6},
+		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-else-if expects bool, got string`, Line: 7, Column: 17},
+		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-else-if cannot be combined with v-for; use a <template v-for> wrapper`, Line: 8, Column: 6},
+		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-switch children must use v-case or v-default`, Line: 12, Column: 4},
+		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-case expects string, got int`, Line: 13, Column: 15},
+		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-case must appear before v-default`, Line: 15, Column: 7},
+		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-switch may only have one v-default`, Line: 16, Column: 7},
+		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-case must appear before v-default`, Line: 17, Column: 7},
+		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-switch branches cannot combine v-case or v-default with v-if, v-else-if, or v-else`, Line: 17, Column: 24},
+		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-switch is only supported on <template>`, Line: 20, Column: 8},
+		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-case must be a direct child of v-switch`, Line: 21, Column: 6},
+		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-default must be a direct child of v-switch`, Line: 22, Column: 6},
+		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-switch expression type []string is not comparable`, Line: 23, Column: 23},
+		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-switch requires at least one v-case or v-default child`, Line: 23, Column: 13},
+		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-switch expression type Filter is not comparable`, Line: 24, Column: 23},
+		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-switch expression type bytes.Buffer is not comparable`, Line: 27, Column: 23},
 	}
 	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)

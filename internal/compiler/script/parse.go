@@ -131,7 +131,8 @@ func (e *extractor) parse(componentName string) (*File, []Diagnostic) {
 	file.PackageName = astFile.Name.Name
 	file.PackageSpan = e.posSpan(astFile.Pos(), astFile.Name.End())
 	file.Imports = e.extractImports(astFile)
-	e.typeCheck(astFile)
+	typesPackage, typesInfo := e.typeCheck(astFile)
+	file.Types = e.extractTypes(astFile, typesPackage, typesInfo)
 	file.Structs = e.extractStructs(astFile)
 
 	if componentName != "" {
@@ -202,8 +203,11 @@ func (e *extractor) extractImports(file *ast.File) []Import {
 	return imports
 }
 
-func (e *extractor) typeCheck(file *ast.File) {
+func (e *extractor) typeCheck(file *ast.File) (*types.Package, *types.Info) {
 	var diagnostics []Diagnostic
+	info := &types.Info{
+		Types: make(map[ast.Expr]types.TypeAndValue),
+	}
 	config := types.Config{
 		GoVersion:                "go1.26",
 		IgnoreFuncBodies:         true,
@@ -221,8 +225,58 @@ func (e *extractor) typeCheck(file *ast.File) {
 			diagnostics = append(diagnostics, diagnostic)
 		},
 	}
-	_, _ = config.Check(e.path, e.fset, []*ast.File{file}, nil)
+	pkg, _ := config.Check(e.path, e.fset, []*ast.File{file}, info)
 	e.diagnostics = append(e.diagnostics, diagnostics...)
+	return pkg, info
+}
+
+func (e *extractor) extractTypes(file *ast.File, pkg *types.Package, info *types.Info) []TypeInfo {
+	if pkg == nil || info == nil {
+		return nil
+	}
+
+	comparability := make(map[string]bool)
+	record := func(expression string, typ types.Type) {
+		comparable := types.Comparable(typ)
+		if previous, ok := comparability[expression]; ok {
+			comparable = previous && comparable
+		}
+		comparability[expression] = comparable
+	}
+
+	scope := pkg.Scope()
+	for _, name := range scope.Names() {
+		typeName, ok := scope.Lookup(name).(*types.TypeName)
+		if ok {
+			record(name, typeName.Type())
+		}
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		expr, ok := node.(ast.Expr)
+		if !ok {
+			return true
+		}
+		typeAndValue, ok := info.Types[expr]
+		if ok && typeAndValue.IsType() && typeAndValue.Type != nil {
+			record(e.nodeString(expr), typeAndValue.Type)
+		}
+		return true
+	})
+
+	expressions := make([]string, 0, len(comparability))
+	for expression := range comparability {
+		expressions = append(expressions, expression)
+	}
+	sort.Strings(expressions)
+
+	extracted := make([]TypeInfo, len(expressions))
+	for i, expression := range expressions {
+		extracted[i] = TypeInfo{
+			Expression: expression,
+			Comparable: comparability[expression],
+		}
+	}
+	return extracted
 }
 
 func (e *extractor) extractComponent(file *File, astFile *ast.File, componentName string) {
