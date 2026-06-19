@@ -15,7 +15,7 @@ func (hashRouteLocation) Path() string {
 	if location.IsUndefined() || location.IsNull() {
 		return "/"
 	}
-	return normalizeRoutePath(location.Get("hash").String())
+	return normalizeRouteTarget(location.Get("hash").String()).String()
 }
 
 func (hashRouteLocation) SetPath(path string) {
@@ -23,11 +23,11 @@ func (hashRouteLocation) SetPath(path string) {
 	if location.IsUndefined() || location.IsNull() {
 		return
 	}
-	location.Set("hash", normalizeRoutePath(path))
+	location.Set("hash", normalizeRouteTarget(path).String())
 }
 
 func (hashRouteLocation) Href(path string) string {
-	return "#" + normalizeRoutePath(path)
+	return "#" + normalizeRouteTarget(path).String()
 }
 
 func (l hashRouteLocation) Watch(handler func(string)) func() {
