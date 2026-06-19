@@ -1,0 +1,52 @@
+<template>
+	<main>
+		<p v-else-if="ready">Orphan else-if</p>
+		<p v-else>Orphan else</p>
+
+		<p v-if="ready">Ready</p>
+		<p v-else-if="status">Wrong condition type</p>
+		<p v-else-if="ready" v-for="item in items" :key="item">Loop branch</p>
+		<p v-else>Done</p>
+
+		<template v-switch="status">
+			<p>Missing branch directive</p>
+			<p v-case="count">Wrong case type</p>
+			<p v-default>Default</p>
+			<p v-case='"late"'>Late case</p>
+			<p v-default>Duplicate default</p>
+			<p v-case='"mixed"' v-if="ready">Mixed controls</p>
+		</template>
+
+		<div v-switch="status"></div>
+		<p v-case='"orphan"'>Orphan case</p>
+		<p v-default>Orphan default</p>
+		<template v-switch="items"></template>
+		<template v-switch="selected">
+			<p v-case="candidate">Struct case</p>
+		</template>
+		<template v-switch="buffer">
+			<p v-case="candidateBuffer">Imported struct case</p>
+		</template>
+	</main>
+</template>
+
+<script lang="go">
+package fixtures
+
+import "bytes"
+
+type Filter struct {
+	Tags []string
+}
+
+type Parent struct {
+	ready           bool
+	status          string
+	count           int
+	items           []string
+	selected        Filter
+	candidate       Filter
+	buffer          bytes.Buffer
+	candidateBuffer bytes.Buffer
+}
+</script>

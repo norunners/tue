@@ -1,0 +1,26 @@
+<template>
+	<main>
+		<p v-if="loading">Loading</p>
+		<p v-else-if="failed">Failed</p>
+		<p v-else>Ready</p>
+
+		<template v-switch="status">
+			<p v-case='"loading"'>Loading status</p>
+			<template v-case='"ready"'>
+				<strong>Ready status</strong>
+				<span>{{ status }}</span>
+			</template>
+			<p v-default>Unknown status</p>
+		</template>
+	</main>
+</template>
+
+<script lang="go">
+package fixtures
+
+type Parent struct {
+	loading bool
+	failed  bool
+	status  string
+}
+</script>

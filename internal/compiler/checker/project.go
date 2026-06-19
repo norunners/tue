@@ -81,6 +81,7 @@ func (c *projectChecker) checkFile(file File) {
 		component:  file.Script.Component,
 		components: c.components,
 		structs:    structFieldMaps(file.Script.Structs),
+		comparable: comparableTypeMap(file.Script.Types),
 	}
 	fileChecker.checkNodes(file.Template.Nodes, componentScope(file.Script.Component))
 	c.diagnostics = append(c.diagnostics, fileChecker.diagnostics...)

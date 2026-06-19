@@ -3,6 +3,7 @@ package checker
 import (
 	"fmt"
 	"go/ast"
+	"strings"
 
 	"github.com/norunners/tue/internal/compiler/sfc"
 	gotemplate "github.com/norunners/tue/internal/compiler/template"
@@ -17,16 +18,89 @@ func (c *fileChecker) checkCommonAttrs(node *gotemplate.Node, scope *scope, chec
 			}
 		case gotemplate.AttrDirective:
 			switch attr.Directive {
-			case gotemplate.DirectiveIf:
+			case gotemplate.DirectiveIf, gotemplate.DirectiveElseIf:
 				value := c.checkExpression(attr.Expression, attr.ExpressionSpan, scope)
-				c.expectType("bool", value.Type, "v-if", attr.ExpressionSpan)
+				c.expectType("bool", value.Type, attr.RawName, attr.ExpressionSpan)
 			case gotemplate.DirectiveHTML:
 				c.checkHTML(node, attr, scope)
 			case gotemplate.DirectiveModel:
 				c.checkModel(node, attr, scope)
-			case gotemplate.DirectiveFor, gotemplate.DirectiveElse:
+			case gotemplate.DirectiveFor, gotemplate.DirectiveElse, gotemplate.DirectiveSwitch, gotemplate.DirectiveCase, gotemplate.DirectiveDefault:
 			}
 		}
+	}
+}
+
+func (c *fileChecker) checkSwitch(node *gotemplate.Node, attr gotemplate.Attr, scope *scope) {
+	hostValid := node != nil && node.Tag == "template" && !node.IsComponent
+	if !hostValid {
+		c.add("v-switch is only supported on <template>", attr.DirectiveSpan)
+	}
+	if conditionalAttr, ok := firstConditionalDirective(node); ok {
+		c.add("v-switch cannot be combined with v-if, v-else-if, or v-else", conditionalAttr.DirectiveSpan)
+	}
+	if caseAttr, ok := directiveAttr(node, gotemplate.DirectiveCase); ok {
+		c.add("v-switch cannot be combined with v-case on the same element", caseAttr.DirectiveSpan)
+	}
+	if defaultAttr, ok := directiveAttr(node, gotemplate.DirectiveDefault); ok {
+		c.add("v-switch cannot be combined with v-default on the same element", defaultAttr.DirectiveSpan)
+	}
+
+	switchValue := c.checkExpression(attr.Expression, attr.ExpressionSpan, scope)
+	if !isSwitchComparableType(switchValue.Type, c.comparable) {
+		c.add(fmt.Sprintf("v-switch expression type %s is not comparable", displayType(switchValue.Type)), attr.ExpressionSpan)
+	}
+	if !hostValid {
+		return
+	}
+
+	branchCount := 0
+	defaultSeen := false
+	for _, branch := range node.Children {
+		if ignorableControlSibling(branch) {
+			continue
+		}
+		branchCount++
+
+		caseAttr, hasCase := directiveAttr(branch, gotemplate.DirectiveCase)
+		defaultAttr, hasDefault := directiveAttr(branch, gotemplate.DirectiveDefault)
+		switch {
+		case hasCase && hasDefault:
+			c.add("v-switch branch cannot use both v-case and v-default", defaultAttr.DirectiveSpan)
+		case hasCase:
+			if defaultSeen {
+				c.add("v-case must appear before v-default", caseAttr.DirectiveSpan)
+			}
+			caseValue := c.checkExpression(caseAttr.Expression, caseAttr.ExpressionSpan, scope)
+			if !switchTypesCompatible(switchValue.Type, caseValue.Type) {
+				c.add(
+					fmt.Sprintf("v-case expects %s, got %s", displayType(switchValue.Type), displayType(caseValue.Type)),
+					caseAttr.ExpressionSpan,
+				)
+			}
+		case hasDefault:
+			if defaultSeen {
+				c.add("v-switch may only have one v-default", defaultAttr.DirectiveSpan)
+			}
+			defaultSeen = true
+		default:
+			c.add("v-switch children must use v-case or v-default", branch.Span)
+		}
+
+		if conditionalAttr, ok := firstConditionalDirective(branch); ok {
+			c.add("v-switch branches cannot combine v-case or v-default with v-if, v-else-if, or v-else", conditionalAttr.DirectiveSpan)
+		}
+		checkBranch := true
+		if nestedSwitch, ok := directiveAttr(branch, gotemplate.DirectiveSwitch); ok {
+			c.add("a v-switch branch must nest another v-switch inside its content", nestedSwitch.DirectiveSpan)
+			checkBranch = false
+		}
+		if checkBranch {
+			c.checkNode(branch, scope)
+		}
+	}
+	if branchCount == 0 {
+		c.add("v-switch requires at least one v-case or v-default child", attr.DirectiveSpan)
 	}
 }
 
@@ -219,6 +293,56 @@ func directiveAttr(node *gotemplate.Node, kind gotemplate.DirectiveKind) (gotemp
 func hasDirective(node *gotemplate.Node, kind gotemplate.DirectiveKind) bool {
 	_, ok := directiveAttr(node, kind)
 	return ok
+}
+
+func isControlDirective(kind gotemplate.DirectiveKind) bool {
+	switch kind {
+	case gotemplate.DirectiveIf,
+		gotemplate.DirectiveElseIf,
+		gotemplate.DirectiveElse,
+		gotemplate.DirectiveFor,
+		gotemplate.DirectiveSwitch,
+		gotemplate.DirectiveCase,
+		gotemplate.DirectiveDefault:
+		return true
+	default:
+		return false
+	}
+}
+
+func firstConditionalDirective(node *gotemplate.Node) (gotemplate.Attr, bool) {
+	for _, kind := range []gotemplate.DirectiveKind{
+		gotemplate.DirectiveIf,
+		gotemplate.DirectiveElseIf,
+		gotemplate.DirectiveElse,
+	} {
+		if attr, ok := directiveAttr(node, kind); ok {
+			return attr, true
+		}
+	}
+	return gotemplate.Attr{}, false
+}
+
+func switchTypesCompatible(switchType string, caseType string) bool {
+	return assignable(switchType, caseType) || assignable(caseType, switchType)
+}
+
+func isSwitchComparableType(typ string, comparable map[string]bool) bool {
+	typ = strings.TrimSpace(typ)
+	if strings.HasPrefix(typ, "*") {
+		return true
+	}
+	typ = normalizeType(typ)
+	if typ == "" || typ == unknownType {
+		return true
+	}
+	if declared, ok := comparable[typ]; ok {
+		return declared
+	}
+	return typ != "any" && typ != "interface{}" &&
+		!strings.HasPrefix(typ, "[]") &&
+		!strings.HasPrefix(typ, "map[") &&
+		!strings.HasPrefix(typ, "func(")
 }
 
 func hasBoundKey(node *gotemplate.Node) bool {

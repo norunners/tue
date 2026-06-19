@@ -14,27 +14,59 @@ type fileChecker struct {
 	component   *script.Component
 	components  map[string]componentBinding
 	structs     map[string]map[string]script.Field
+	comparable  map[string]bool
 	diagnostics []Diagnostic
 }
 
 func (c *fileChecker) checkNodes(nodes []*gotemplate.Node, scope *scope) {
-	previousIf := false
-	previousIfHasFor := false
+	previousConditional := false
+	previousConditionalHasFor := false
 	for _, node := range nodes {
 		if ignorableControlSibling(node) {
 			continue
 		}
-		if attr, ok := directiveAttr(node, gotemplate.DirectiveElse); ok {
+
+		if attr, ok := directiveAttr(node, gotemplate.DirectiveCase); ok {
+			c.add("v-case must be a direct child of v-switch", attr.DirectiveSpan)
+		}
+		if attr, ok := directiveAttr(node, gotemplate.DirectiveDefault); ok {
+			c.add("v-default must be a direct child of v-switch", attr.DirectiveSpan)
+		}
+
+		if attr, ok := directiveAttr(node, gotemplate.DirectiveElseIf); ok {
 			switch {
-			case !previousIf:
-				c.add("v-else must follow v-if", attr.DirectiveSpan)
-			case previousIfHasFor:
-				c.add("v-else cannot follow v-if on an element that also has v-for; use a <template v-for> wrapper", attr.DirectiveSpan)
+			case !previousConditional:
+				c.add("v-else-if must follow v-if or v-else-if", attr.DirectiveSpan)
+			case previousConditionalHasFor:
+				c.add("v-else-if cannot follow a conditional branch that also has v-for; use a <template v-for> wrapper", attr.DirectiveSpan)
+			}
+			if hasDirective(node, gotemplate.DirectiveFor) {
+				c.add("v-else-if cannot be combined with v-for; use a <template v-for> wrapper", attr.DirectiveSpan)
+			}
+		} else if attr, ok := directiveAttr(node, gotemplate.DirectiveElse); ok {
+			switch {
+			case !previousConditional:
+				c.add("v-else must follow v-if or v-else-if", attr.DirectiveSpan)
+			case previousConditionalHasFor:
+				c.add("v-else cannot follow a conditional branch that also has v-for; use a <template v-for> wrapper", attr.DirectiveSpan)
+			}
+			if hasDirective(node, gotemplate.DirectiveFor) {
+				c.add("v-else cannot be combined with v-for; use a <template v-for> wrapper", attr.DirectiveSpan)
 			}
 		}
 		c.checkNode(node, scope)
-		previousIf = hasDirective(node, gotemplate.DirectiveIf)
-		previousIfHasFor = previousIf && hasDirective(node, gotemplate.DirectiveFor)
+
+		switch {
+		case hasDirective(node, gotemplate.DirectiveIf):
+			previousConditional = true
+			previousConditionalHasFor = hasDirective(node, gotemplate.DirectiveFor)
+		case hasDirective(node, gotemplate.DirectiveElseIf) && previousConditional:
+			previousConditional = true
+			previousConditionalHasFor = false
+		default:
+			previousConditional = false
+			previousConditionalHasFor = false
+		}
 	}
 }
 
@@ -55,6 +87,10 @@ func (c *fileChecker) checkElement(node *gotemplate.Node, scope *scope) {
 	elementScope := scope
 	if attr, ok := directiveAttr(node, gotemplate.DirectiveFor); ok {
 		elementScope = c.checkFor(node, attr, scope)
+	}
+	if attr, ok := directiveAttr(node, gotemplate.DirectiveSwitch); ok {
+		c.checkSwitch(node, attr, elementScope)
+		return
 	}
 
 	if node.IsComponent {
@@ -95,7 +131,7 @@ func (c *fileChecker) checkNativeAttrs(node *gotemplate.Node, scope *scope) {
 
 func (c *fileChecker) checkSlot(node *gotemplate.Node) {
 	for _, attr := range node.Attrs {
-		if attr.Kind == gotemplate.AttrDirective && (attr.Directive == gotemplate.DirectiveIf || attr.Directive == gotemplate.DirectiveFor) {
+		if attr.Kind == gotemplate.AttrDirective && isControlDirective(attr.Directive) {
 			continue
 		}
 		if isNamedSlotAttr(attr) {

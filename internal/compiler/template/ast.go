@@ -26,11 +26,15 @@ const (
 type DirectiveKind string
 
 const (
-	DirectiveIf    DirectiveKind = "if"
-	DirectiveElse  DirectiveKind = "else"
-	DirectiveFor   DirectiveKind = "for"
-	DirectiveModel DirectiveKind = "model"
-	DirectiveHTML  DirectiveKind = "html"
+	DirectiveIf      DirectiveKind = "if"
+	DirectiveElseIf  DirectiveKind = "else-if"
+	DirectiveElse    DirectiveKind = "else"
+	DirectiveFor     DirectiveKind = "for"
+	DirectiveModel   DirectiveKind = "model"
+	DirectiveHTML    DirectiveKind = "html"
+	DirectiveSwitch  DirectiveKind = "switch"
+	DirectiveCase    DirectiveKind = "case"
+	DirectiveDefault DirectiveKind = "default"
 )
 
 // Tree is a parsed template AST.

@@ -107,6 +107,39 @@ element section component=false selfClosing=false
 	}
 }
 
+func TestParseConditionalControlDirectives(t *testing.T) {
+	source := `<main><p v-if="ready">Ready</p><p v-else-if="failed">Failed</p><p v-else>Unknown</p><template v-switch="status"><p v-case='"loading"'>Loading</p><p v-default>Done</p></template></main>`
+
+	tree, diagnostics := Parse([]byte(source))
+	if len(diagnostics) != 0 {
+		t.Fatalf("Parse diagnostics = %#v, expected none", diagnosticMessages(diagnostics))
+	}
+
+	expected := strings.TrimSpace(`
+element main component=false selfClosing=false
+  element p component=false selfClosing=false
+    directive if expr="ready"
+    text "Ready"
+  element p component=false selfClosing=false
+    directive else-if expr="failed"
+    text "Failed"
+  element p component=false selfClosing=false
+    directive else
+    text "Unknown"
+  element template component=false selfClosing=false
+    directive switch expr="status"
+    element p component=false selfClosing=false
+      directive case expr="\"loading\""
+      text "Loading"
+    element p component=false selfClosing=false
+      directive default
+      text "Done"
+`)
+	if actual := dumpNodes(tree.Nodes); actual != expected {
+		t.Errorf("mismatch AST dump (-expected, +actual):\nexpected:\n%s\nactual:\n%s", expected, actual)
+	}
+}
+
 func TestParseBlockUsesSFCSourceSpans(t *testing.T) {
 	source := `<template>
 <p>{{ name }}</p>
@@ -206,9 +239,29 @@ func TestParseDiagnostics(t *testing.T) {
 			want: []string{"v-if requires an expression"},
 		},
 		{
+			name: "v-else-if without expression",
+			src:  `<p v-else-if></p>`,
+			want: []string{"v-else-if requires an expression"},
+		},
+		{
 			name: "v-else with value",
 			src:  `<p v-else="ok"></p>`,
 			want: []string{"v-else must not have a value"},
+		},
+		{
+			name: "v-switch without expression",
+			src:  `<template v-switch></template>`,
+			want: []string{"v-switch requires an expression"},
+		},
+		{
+			name: "v-case without expression",
+			src:  `<p v-case></p>`,
+			want: []string{"v-case requires an expression"},
+		},
+		{
+			name: "v-default with value",
+			src:  `<p v-default="ok"></p>`,
+			want: []string{"v-default must not have a value"},
 		},
 		{
 			name: "unsupported directive",

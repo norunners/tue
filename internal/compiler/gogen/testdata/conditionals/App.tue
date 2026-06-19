@@ -1,10 +1,27 @@
 <template>
-<main>
-	<p v-if="visible">Visible: {{ name }}</p>
-	<section v-if="count > 0">
-		<span>{{ count }}</span>
-	</section>
-</main>
+	<main>
+		<p v-if="visible">Visible: {{ name }}</p>
+		<!-- comments and whitespace do not break a conditional chain -->
+		<p v-else-if="count > 0">Count: {{ count }}</p>
+		<p v-else>Hidden</p>
+
+		<template v-switch="status">
+			<p v-case='"loading"'>Loading</p>
+			<p v-case='"error"'>Error</p>
+			<template v-case='"success"'>
+				<strong>Done</strong>
+				<span>{{ name }}</span>
+			</template>
+			<p v-default>Unknown</p>
+		</template>
+
+		<template v-switch="count">
+			<span v-case="1">One</span>
+		</template>
+
+		<section v-if="count == 1">One item</section>
+		<section v-else-if="count == 2">Two items</section>
+	</main>
 </template>
 
 <script lang="go">
@@ -14,5 +31,6 @@ type App struct {
 	visible bool
 	name    string
 	count   int
+	status  string
 }
 </script>

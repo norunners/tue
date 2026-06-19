@@ -536,6 +536,9 @@ func (p *parser) classifyAttr(syntax attrSyntax) (Attr, []Diagnostic) {
 		case DirectiveIf:
 			attr.Directive = DirectiveIf
 			diagnostics = append(diagnostics, p.requireExpression(&attr, "v-if requires an expression")...)
+		case DirectiveElseIf:
+			attr.Directive = DirectiveElseIf
+			diagnostics = append(diagnostics, p.requireExpression(&attr, "v-else-if requires an expression")...)
 		case DirectiveElse:
 			attr.Directive = DirectiveElse
 			if attr.HasValue {
@@ -553,6 +556,20 @@ func (p *parser) classifyAttr(syntax attrSyntax) (Attr, []Diagnostic) {
 		case DirectiveHTML:
 			attr.Directive = DirectiveHTML
 			diagnostics = append(diagnostics, p.requireExpression(&attr, "v-html requires an expression")...)
+		case DirectiveSwitch:
+			attr.Directive = DirectiveSwitch
+			diagnostics = append(diagnostics, p.requireExpression(&attr, "v-switch requires an expression")...)
+		case DirectiveCase:
+			attr.Directive = DirectiveCase
+			diagnostics = append(diagnostics, p.requireExpression(&attr, "v-case requires an expression")...)
+		case DirectiveDefault:
+			attr.Directive = DirectiveDefault
+			if attr.HasValue {
+				diagnostics = append(diagnostics, Diagnostic{
+					Message: "v-default must not have a value",
+					Span:    attr.ValueSpan,
+				})
+			}
 		default:
 			diagnostics = append(diagnostics, Diagnostic{
 				Message: fmt.Sprintf("unsupported directive %q", syntax.rawName),

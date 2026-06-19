@@ -115,6 +115,14 @@ func structFieldMaps(structs []script.Struct) map[string]map[string]script.Field
 	return byType
 }
 
+func comparableTypeMap(types []script.TypeInfo) map[string]bool {
+	comparable := make(map[string]bool, len(types))
+	for _, info := range types {
+		comparable[info.Expression] = info.Comparable
+	}
+	return comparable
+}
+
 func iterableTypesFor(typ string) (iterableTypes, bool) {
 	typ = normalizeType(typ)
 	if typ == unknownType || typ == "" {

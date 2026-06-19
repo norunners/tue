@@ -17,10 +17,34 @@ func renderApp(component *App) tue.VNode {
 		if component.visible {
 			return tue.Element("p", nil, []tue.VNode{tue.Text("Visible: "), tue.Text(fmt.Sprint(component.name))})
 		}
+		if component.count > 0 {
+			return tue.Element("p", nil, []tue.VNode{tue.Text("Count: "), tue.Text(fmt.Sprint(component.count))})
+		}
+		return tue.Element("p", nil, []tue.VNode{tue.Text("Hidden")})
+	}(), func() tue.VNode {
+		__tueSwitch := component.status
+		if __tueSwitch == "loading" {
+			return tue.Element("p", nil, []tue.VNode{tue.Text("Loading")})
+		}
+		if __tueSwitch == "error" {
+			return tue.Element("p", nil, []tue.VNode{tue.Text("Error")})
+		}
+		if __tueSwitch == "success" {
+			return tue.Fragment([]tue.VNode{tue.Element("strong", nil, []tue.VNode{tue.Text("Done")}), tue.Element("span", nil, []tue.VNode{tue.Text(fmt.Sprint(component.name))})})
+		}
+		return tue.Element("p", nil, []tue.VNode{tue.Text("Unknown")})
+	}(), func() tue.VNode {
+		__tueSwitch := component.count
+		if __tueSwitch == 1 {
+			return tue.Element("span", nil, []tue.VNode{tue.Text("One")})
+		}
 		return tue.Fragment(nil)
 	}(), func() tue.VNode {
-		if component.count > 0 {
-			return tue.Element("section", nil, []tue.VNode{tue.Element("span", nil, []tue.VNode{tue.Text(fmt.Sprint(component.count))})})
+		if component.count == 1 {
+			return tue.Element("section", nil, []tue.VNode{tue.Text("One item")})
+		}
+		if component.count == 2 {
+			return tue.Element("section", nil, []tue.VNode{tue.Text("Two items")})
 		}
 		return tue.Fragment(nil)
 	}()})
