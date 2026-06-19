@@ -18,15 +18,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/norunners/tue/internal/compiler/checker"
 	"github.com/norunners/tue/internal/compiler/gogen"
 	"github.com/norunners/tue/internal/compiler/sfc"
 )
 
 const (
-	defaultDevAddr = "127.0.0.1:5173"
-	devClientPath  = "tue_dev.js"
-	devEventsPath  = "/__tue/events"
+	defaultDevAddr           = "127.0.0.1:5173"
+	devClientPath            = "tue_dev.js"
+	devWebSocketPath         = "/__tue/ws"
+	devWebSocketWriteTimeout = 5 * time.Second
 )
 
 type devOptions struct {
@@ -134,7 +136,9 @@ func serveDev(ctx context.Context, options devOptions, stdout, stderr io.Writer)
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc(devEventsPath, broadcaster.serveEvents)
+	mux.HandleFunc(devWebSocketPath, func(w http.ResponseWriter, r *http.Request) {
+		broadcaster.serveWebSocket(ctx, w, r)
+	})
 	mux.Handle("/", http.FileServer(http.Dir(filepath.Join(root, gogen.DistDir))))
 	server := &http.Server{Handler: mux}
 
@@ -393,13 +397,41 @@ func devClientSource() []byte {
 		}
 	}
 
-	const source = new EventSource("/__tue/events");
-	source.onmessage = function (message) {
-		handleEvent(JSON.parse(message.data));
-	};
-	source.onerror = function () {
-		showError({ type: "error", message: "Lost connection to Tue dev server." });
-	};
+	let socket;
+	let reconnectTimer;
+
+	function socketURL() {
+		const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+		return protocol + "//" + window.location.host + "/__tue/ws";
+	}
+
+	function scheduleReconnect() {
+		if (reconnectTimer) {
+			return;
+		}
+		showError({ type: "error", message: "Lost WebSocket connection to Tue dev server. Reconnecting..." });
+		reconnectTimer = window.setTimeout(function () {
+			reconnectTimer = null;
+			connect();
+		}, 1000);
+	}
+
+	function connect() {
+		socket = new WebSocket(socketURL());
+		socket.onmessage = function (message) {
+			try {
+				handleEvent(JSON.parse(message.data));
+			} catch (error) {
+				showError({ type: "error", message: "Invalid Tue dev server message: " + String(error) });
+			}
+		};
+		socket.onclose = scheduleReconnect;
+		socket.onerror = function () {
+			socket.close();
+		};
+	}
+
+	connect();
 
 	window.addEventListener("error", function (event) {
 		showError({ type: "error", message: event.message || "Runtime error" });
@@ -475,39 +507,50 @@ func (b *devBroadcaster) unsubscribe(client chan devEvent) {
 	b.mu.Unlock()
 }
 
-func (b *devBroadcaster) serveEvents(w http.ResponseWriter, r *http.Request) {
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+func (b *devBroadcaster) serveWebSocket(serverCtx context.Context, w http.ResponseWriter, r *http.Request) {
+	conn, err := websocket.Accept(w, r, nil)
+	if err != nil {
 		return
 	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
+	defer conn.Close(websocket.StatusNormalClosure, "")
+
+	socketCtx := conn.CloseRead(context.Background())
 
 	client, current := b.subscribe()
 	defer b.unsubscribe(client)
 
-	writeDevSSE(w, current)
-	flusher.Flush()
+	if err := writeDevWebSocketEvent(socketCtx, conn, current); err != nil {
+		return
+	}
 
 	for {
 		select {
 		case event := <-client:
-			writeDevSSE(w, event)
-			flusher.Flush()
-		case <-r.Context().Done():
+			if err := writeDevWebSocketEvent(socketCtx, conn, event); err != nil {
+				return
+			}
+		case <-socketCtx.Done():
+			return
+		case <-serverCtx.Done():
+			conn.Close(websocket.StatusGoingAway, "dev server stopped")
 			return
 		}
 	}
 }
 
-func writeDevSSE(w io.Writer, event devEvent) {
+func writeDevWebSocketEvent(ctx context.Context, conn *websocket.Conn, event devEvent) error {
+	source := devEventJSON(event)
+	writeCtx, cancel := context.WithTimeout(ctx, devWebSocketWriteTimeout)
+	defer cancel()
+	return conn.Write(writeCtx, websocket.MessageText, source)
+}
+
+func devEventJSON(event devEvent) []byte {
 	source, err := json.Marshal(event)
 	if err != nil {
 		source, _ = json.Marshal(devErrorEvent(fmt.Sprintf("encode dev event: %v", err), nil))
 	}
-	fmt.Fprintf(w, "data: %s\n\n", source)
+	return source
 }
 
 type devSnapshot map[string]devWatchedFile

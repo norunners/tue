@@ -2,15 +2,21 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io/fs"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/coder/websocket"
 	"github.com/google/go-cmp/cmp"
 	"github.com/norunners/tue/internal/compiler/sfc"
 	gotemplate "github.com/norunners/tue/internal/compiler/template"
@@ -342,8 +348,31 @@ func TestBuildDevProjectWritesClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read dev client: %v", err)
 	}
-	if !strings.Contains(string(client), `new EventSource("/__tue/events")`) {
-		t.Errorf("tue_dev.js actual = %q, expected reload stream", string(client))
+	if !strings.Contains(string(client), `new WebSocket(socketURL())`) {
+		t.Errorf("tue_dev.js actual = %q, expected WebSocket client", string(client))
+	}
+	if !strings.Contains(string(client), `"/__tue/ws"`) {
+		t.Errorf("tue_dev.js actual = %q, expected WebSocket path", string(client))
+	}
+	if strings.Contains(string(client), "EventSource") {
+		t.Errorf("tue_dev.js actual = %q, expected no EventSource client", string(client))
+	}
+}
+
+func TestDevClientSourceClearsReconnectOverlayOnReadyEvent(t *testing.T) {
+	source := string(devClientSource())
+	readyBranch, err := sourceBetween(source, `if (!event || event.type === "ready")`, `if (event.type === "style")`)
+	if err != nil {
+		t.Fatalf("find ready event branch: %v", err)
+	}
+	if !strings.Contains(source, `Lost WebSocket connection to Tue dev server. Reconnecting...`) {
+		t.Errorf("tue_dev.js actual = %q, expected reconnect overlay message", source)
+	}
+	if !strings.Contains(readyBranch, `hideOverlay();`) {
+		t.Errorf("ready event branch actual = %q, expected overlay clear", readyBranch)
+	}
+	if !strings.Contains(readyBranch, `return;`) {
+		t.Errorf("ready event branch actual = %q, expected early return", readyBranch)
 	}
 }
 
@@ -463,6 +492,55 @@ func TestDevBroadcasterPublishWhileUnsubscribing(t *testing.T) {
 	close(start)
 	subscribers.Wait()
 	publishers.Wait()
+}
+
+func TestDevBroadcasterServesEventsOverWebSocket(t *testing.T) {
+	broadcaster := newDevBroadcaster()
+	expectedCurrent := devEvent{Type: devEventTypeReady, Message: "ready"}
+	broadcaster.publish(expectedCurrent)
+
+	serverCtx, stopServer := context.WithCancel(context.Background())
+	defer stopServer()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		broadcaster.serveWebSocket(serverCtx, w, r)
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	firstConn, _, err := websocket.Dial(ctx, websocketURL(server.URL), nil)
+	if err != nil {
+		t.Fatalf("dial first dev WebSocket: %v", err)
+	}
+	defer firstConn.Close(websocket.StatusNormalClosure, "")
+	secondConn, _, err := websocket.Dial(ctx, websocketURL(server.URL), nil)
+	if err != nil {
+		t.Fatalf("dial second dev WebSocket: %v", err)
+	}
+	defer secondConn.Close(websocket.StatusNormalClosure, "")
+
+	for name, conn := range map[string]*websocket.Conn{"first": firstConn, "second": secondConn} {
+		actual, err := readDevWebSocketEvent(ctx, conn)
+		if err != nil {
+			t.Fatalf("read %s current dev event: %v", name, err)
+		}
+		if diff := cmp.Diff(expectedCurrent, actual); diff != "" {
+			t.Errorf("mismatch %s current dev event (-expected, +actual):\n%s", name, diff)
+		}
+	}
+
+	expectedUpdate := devEvent{Type: devEventTypeStyle, Message: "style changed"}
+	broadcaster.publish(expectedUpdate)
+
+	for name, conn := range map[string]*websocket.Conn{"first": firstConn, "second": secondConn} {
+		actual, err := readDevWebSocketEvent(ctx, conn)
+		if err != nil {
+			t.Fatalf("read %s updated dev event: %v", name, err)
+		}
+		if diff := cmp.Diff(expectedUpdate, actual); diff != "" {
+			t.Errorf("mismatch %s updated dev event (-expected, +actual):\n%s", name, diff)
+		}
+	}
 }
 
 func TestRunBuildGeneratesDistFiles(t *testing.T) {
@@ -804,6 +882,38 @@ func nodeHasDirective(node *gotemplate.Node, directive gotemplate.DirectiveKind)
 		}
 	}
 	return false
+}
+
+func websocketURL(httpURL string) string {
+	return "ws" + strings.TrimPrefix(httpURL, "http")
+}
+
+func readDevWebSocketEvent(ctx context.Context, conn *websocket.Conn) (devEvent, error) {
+	messageType, source, err := conn.Read(ctx)
+	if err != nil {
+		return devEvent{}, err
+	}
+	if messageType != websocket.MessageText {
+		return devEvent{}, fmt.Errorf("read message type %s, expected %s", messageType, websocket.MessageText)
+	}
+
+	var event devEvent
+	if err := json.Unmarshal(source, &event); err != nil {
+		return devEvent{}, fmt.Errorf("decode dev event: %w", err)
+	}
+	return event, nil
+}
+
+func sourceBetween(source string, start string, end string) (string, error) {
+	startIndex := strings.Index(source, start)
+	if startIndex == -1 {
+		return "", fmt.Errorf("source missing start marker %q", start)
+	}
+	endIndex := strings.Index(source[startIndex:], end)
+	if endIndex == -1 {
+		return "", fmt.Errorf("source missing end marker %q", end)
+	}
+	return source[startIndex : startIndex+endIndex], nil
 }
 
 func writeFile(path string, contents string) error {
