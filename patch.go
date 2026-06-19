@@ -12,6 +12,7 @@ type domBoundary interface {
 	insertBefore(parent domNode, child domNode, before domNode) error
 	removeChild(parent domNode, child domNode) error
 	setText(node domNode, text string) error
+	setInnerHTML(node domNode, html string) error
 	setAttr(node domNode, attr Attribute) error
 	removeAttr(node domNode, name string) error
 	addEventListener(node domNode, name string, handler func(Event)) (func(), error)
@@ -65,13 +66,20 @@ func mountElement(dom domBoundary, parent domNode, before domNode, vnode VNode) 
 		return nil, err
 	}
 
-	children := make([]*mountedVNode, 0, len(vnode.Children))
-	for _, child := range vnode.Children {
-		mountedChild, err := mountVNode(dom, node, nil, child)
-		if err != nil {
-			return nil, err
+	var children []*mountedVNode
+	if vnode.HasInnerHTML {
+		if err := dom.setInnerHTML(node, string(vnode.InnerHTML)); err != nil {
+			return nil, fmt.Errorf("set inner HTML: %w", err)
 		}
-		children = append(children, mountedChild)
+	} else {
+		children = make([]*mountedVNode, 0, len(vnode.Children))
+		for _, child := range vnode.Children {
+			mountedChild, err := mountVNode(dom, node, nil, child)
+			if err != nil {
+				return nil, err
+			}
+			children = append(children, mountedChild)
+		}
 	}
 	if err := setMountAttrs(dom, node, vnode.Tag, vnode.Attrs, true); err != nil {
 		return nil, err
@@ -169,7 +177,7 @@ func patchElement(dom domBoundary, old *mountedVNode, next VNode) (*mountedVNode
 	if err != nil {
 		return nil, err
 	}
-	children, err := patchChildren(dom, node, nil, old.children, next.Children)
+	children, err := patchElementContent(dom, node, old, next)
 	if err != nil {
 		return nil, err
 	}
@@ -180,6 +188,26 @@ func patchElement(dom domBoundary, old *mountedVNode, next VNode) (*mountedVNode
 	old.children = children
 	old.events = events
 	return old, nil
+}
+
+func patchElementContent(dom domBoundary, node domNode, old *mountedVNode, next VNode) ([]*mountedVNode, error) {
+	if next.HasInnerHTML {
+		cleanupMountedChildren(old.children)
+		if !old.vnode.HasInnerHTML || old.vnode.InnerHTML != next.InnerHTML {
+			if err := dom.setInnerHTML(node, string(next.InnerHTML)); err != nil {
+				return nil, fmt.Errorf("set inner HTML: %w", err)
+			}
+		}
+		return nil, nil
+	}
+
+	if old.vnode.HasInnerHTML {
+		if err := dom.setInnerHTML(node, ""); err != nil {
+			return nil, fmt.Errorf("clear inner HTML: %w", err)
+		}
+		return patchChildren(dom, node, nil, nil, next.Children)
+	}
+	return patchChildren(dom, node, nil, old.children, next.Children)
 }
 
 func patchText(dom domBoundary, old *mountedVNode, next VNode) (*mountedVNode, error) {
@@ -590,6 +618,12 @@ func cleanupMountedVNode(mounted *mountedVNode) {
 	cleanupEvents(mounted.events)
 	mounted.events = nil
 	for _, child := range mounted.children {
+		cleanupMountedVNode(child)
+	}
+}
+
+func cleanupMountedChildren(children []*mountedVNode) {
+	for _, child := range children {
 		cleanupMountedVNode(child)
 	}
 }

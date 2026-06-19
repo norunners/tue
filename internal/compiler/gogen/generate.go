@@ -510,11 +510,27 @@ func (g *fileGenerator) renderElement(node *gotemplate.Node) (jen.Code, bool) {
 		return g.renderComponent(node)
 	}
 
+	htmlAttr := nodeDirectiveAttr(node, gotemplate.DirectiveHTML)
 	attrs, events, ok := g.renderAttrsAndEvents(node)
 	if !ok {
 		return nil, false
 	}
 	attrs = g.withScopeAttr(attrs)
+
+	if htmlAttr != nil {
+		innerHTML, htmlOK := g.renderHTMLBinding(*htmlAttr)
+		if !htmlOK {
+			return nil, false
+		}
+
+		g.recordNode(node)
+		return jen.Qual(tueImportPath, "ElementWithTrustedHTML").Call(
+			jen.Lit(node.Tag),
+			g.attributeSlice(attrs),
+			g.eventSlice(events),
+			innerHTML,
+		), true
+	}
 
 	children := g.renderNodeList(node.Children)
 
@@ -915,7 +931,7 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 			}
 			events = append(events, event)
 		case gotemplate.AttrDirective:
-			if isControlDirective(attr.Directive) || attr.Directive == gotemplate.DirectiveModel {
+			if isControlDirective(attr.Directive) || attr.Directive == gotemplate.DirectiveModel || attr.Directive == gotemplate.DirectiveHTML {
 				continue
 			}
 			g.add(fmt.Sprintf("directive %q generation is not supported in the static render slice", attr.RawName), attr.Span)
@@ -951,6 +967,20 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 		}
 	}
 	return attrs, events, ok
+}
+
+func (g *fileGenerator) renderHTMLBinding(attr gotemplate.Attr) (jen.Code, bool) {
+	expression, ok := g.renderExpressionFor("v-html", attr.Expression, attr.ExpressionSpan)
+	if !ok {
+		return nil, false
+	}
+
+	valueType := g.expressionType(attr.Expression)
+	if !isTrustedHTMLType(valueType) {
+		g.add(fmt.Sprintf("v-html expects tue.TrustedHTML, got %s", displayType(valueType)), attr.ExpressionSpan)
+		return nil, false
+	}
+	return expression, true
 }
 
 func (g *fileGenerator) renderClassBinding(attr gotemplate.Attr) (jen.Code, bool) {
@@ -1377,6 +1407,15 @@ func isStaticAssetAttr(node *gotemplate.Node, attr gotemplate.Attr) bool {
 		return attr.Name == "href" || attr.Name == "xlink:href"
 	case "video":
 		return attr.Name == "src" || attr.Name == "poster"
+	default:
+		return false
+	}
+}
+
+func isTrustedHTMLType(typ string) bool {
+	switch normalizeType(typ) {
+	case "tue.TrustedHTML", "TrustedHTML":
+		return true
 	default:
 		return false
 	}

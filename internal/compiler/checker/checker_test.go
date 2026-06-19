@@ -156,6 +156,22 @@ func TestCheckProjectReportsBoundAttributeTypeDiagnostics(t *testing.T) {
 	}
 }
 
+func TestCheckProjectReportsHTMLBindingDiagnostics(t *testing.T) {
+	project, err := parseProjectFixture("testdata/invalid_html")
+	if err != nil {
+		t.Fatalf("parse project fixture: %v", err)
+	}
+
+	diagnostics := CheckProject(project)
+	expected := []diagnosticSummary{
+		{Path: "testdata/invalid_html/Parent.tue", Message: `v-html expects tue.TrustedHTML, got string`, Line: 3, Column: 16},
+		{Path: "testdata/invalid_html/Parent.tue", Message: `v-html is only supported on native elements`, Line: 4, Column: 14},
+	}
+	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestCheckProjectReportsExpressionShapeDiagnostics(t *testing.T) {
 	project, err := parseProjectFixture("testdata/invalid_expression")
 	if err != nil {

@@ -1,0 +1,17 @@
+<template>
+	<main>
+		<div v-html="body"></div>
+		<UserBadge v-html="trusted" />
+	</main>
+</template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type Parent struct {
+	body    string
+	trusted tue.TrustedHTML
+}
+</script>

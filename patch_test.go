@@ -89,6 +89,66 @@ func TestMountedUpdatePatchesElementAttributesInPlace(t *testing.T) {
 	}
 }
 
+func TestMountedUpdatePatchesTrustedHTMLContent(t *testing.T) {
+	mode := "children"
+	target := newStubDOMTarget()
+	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		switch mode {
+		case "html":
+			return ElementWithTrustedHTML("main", nil, nil, TrustedHTML(`<strong>Ready</strong>`))
+		case "back":
+			return Element("main", nil, []VNode{Text("Back")})
+		default:
+			return Element("main", nil, []VNode{
+				ElementWithEvents("button", nil, []EventBinding{On("click", func() {})}, []VNode{Text("Save")}),
+			})
+		}
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	mainNode, err := onlyVisibleChild(target.rootNode)
+	if err != nil {
+		t.Fatalf("find mounted main node: %v", err)
+	}
+	mainID := mainNode.id
+	button := mainNode.children[0]
+	if diff := cmp.Diff(1, button.listenerCount("click")); diff != "" {
+		t.Errorf("mismatch initial button listener count (-expected, +actual):\n%s", diff)
+	}
+
+	mode = "html"
+	if err := mounted.Update(); err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+
+	actual, err := onlyVisibleChild(target.rootNode)
+	if err != nil {
+		t.Fatalf("find raw HTML main node: %v", err)
+	}
+	if diff := cmp.Diff(stubNodeSummary{ID: mainID, Kind: "element", Tag: "main"}, summarizeStubNode(actual)); diff != "" {
+		t.Errorf("mismatch raw HTML element identity (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff(`<main><strong>Ready</strong></main>`, target.html()); diff != "" {
+		t.Errorf("mismatch trusted HTML patch output (-expected, +actual):\n%s", diff)
+	}
+	if button.parent != nil {
+		t.Errorf("mismatch removed raw HTML child parent: expected nil, got %#v", button.parent)
+	}
+	if diff := cmp.Diff(0, button.listenerCount("click")); diff != "" {
+		t.Errorf("mismatch removed raw HTML child listener count (-expected, +actual):\n%s", diff)
+	}
+
+	mode = "back"
+	if err := mounted.Update(); err != nil {
+		t.Fatalf("second Update returned error: %v", err)
+	}
+	if diff := cmp.Diff(`<main>Back</main>`, target.html()); diff != "" {
+		t.Errorf("mismatch trusted HTML to children output (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestMountedSelectValueStateAppliesAfterOptionsMount(t *testing.T) {
 	target := newStubDOMTarget()
 	_, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
@@ -835,6 +895,7 @@ func (t *stubDOMTarget) appendChild(parent domNode, child domNode) error {
 	}
 	childNode.detach()
 	childNode.parent = parentNode
+	parentNode.innerHTML = nil
 	parentNode.children = append(parentNode.children, childNode)
 	return nil
 }
@@ -860,6 +921,7 @@ func (t *stubDOMTarget) insertBefore(parent domNode, child domNode, before domNo
 		return fmt.Errorf("before node %d is not a child of parent %d", beforeNode.id, parentNode.id)
 	}
 	childNode.parent = parentNode
+	parentNode.innerHTML = nil
 	parentNode.children = append(parentNode.children, nil)
 	copy(parentNode.children[index+1:], parentNode.children[index:])
 	parentNode.children[index] = childNode
@@ -886,6 +948,19 @@ func (t *stubDOMTarget) setText(node domNode, text string) error {
 		return fmt.Errorf("expected stub text node, got %T", node)
 	}
 	stubNode.text = text
+	return nil
+}
+
+func (t *stubDOMTarget) setInnerHTML(node domNode, html string) error {
+	stubNode, ok := node.(*stubDOMNode)
+	if !ok {
+		return fmt.Errorf("expected stub element node, got %T", node)
+	}
+	for _, child := range stubNode.children {
+		child.parent = nil
+	}
+	stubNode.children = nil
+	stubNode.innerHTML = &html
 	return nil
 }
 
@@ -970,6 +1045,7 @@ type stubDOMNode struct {
 	kind      string
 	tag       string
 	text      string
+	innerHTML *string
 	attrs     map[string]Attribute
 	parent    *stubDOMNode
 	children  []*stubDOMNode
@@ -1073,8 +1149,12 @@ func writeStubHTML(builder *strings.Builder, node *stubDOMNode) {
 			}
 		}
 		builder.WriteByte('>')
-		for _, child := range node.children {
-			writeStubHTML(builder, child)
+		if node.innerHTML != nil {
+			builder.WriteString(*node.innerHTML)
+		} else {
+			for _, child := range node.children {
+				writeStubHTML(builder, child)
+			}
 		}
 		builder.WriteString("</")
 		builder.WriteString(node.tag)

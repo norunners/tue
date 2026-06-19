@@ -80,6 +80,15 @@ func (t jsMountTarget) setText(node domNode, text string) error {
 	return nil
 }
 
+func (t jsMountTarget) setInnerHTML(node domNode, html string) error {
+	nodeValue, ok := node.(js.Value)
+	if !ok {
+		return fmt.Errorf("expected js.Value element node, got %T", node)
+	}
+	nodeValue.Set("innerHTML", html)
+	return nil
+}
+
 func (t jsMountTarget) setAttr(node domNode, attr Attribute) error {
 	nodeValue, ok := node.(js.Value)
 	if !ok {

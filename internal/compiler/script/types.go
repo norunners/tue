@@ -54,7 +54,7 @@ func stubTuePackage() *types.Package {
 		scope.Insert(typeName)
 	}
 
-	for _, name := range []string{"Context", "Route", "RouteMatch", "Router", "VNode"} {
+	for _, name := range []string{"Context", "Route", "RouteMatch", "Router", "TrustedHTML", "VNode"} {
 		typeName := types.NewTypeName(token.NoPos, pkg, name, nil)
 		types.NewNamed(typeName, emptyInterface, nil)
 		scope.Insert(typeName)
