@@ -32,11 +32,16 @@ type VNode struct {
 	Events           []EventBinding
 	Children         []VNode
 	Text             string
+	InnerHTML        TrustedHTML
+	HasInnerHTML     bool
 	ComponentFactory func() *Comp
 	ComponentUpdater func(*Comp)
 
 	scopeAttrs []string
 }
+
+// TrustedHTML is an explicitly trusted raw HTML payload for v-html.
+type TrustedHTML string
 
 // Attribute is a static DOM attribute.
 type Attribute struct {
@@ -100,6 +105,11 @@ func Element(tag string, attrs []Attribute, children []VNode) VNode {
 // ElementWithEvents returns an element VNode with native event bindings.
 func ElementWithEvents(tag string, attrs []Attribute, events []EventBinding, children []VNode) VNode {
 	return VNode{Type: VNodeTypeElement, Tag: tag, Attrs: attrs, Events: events, Children: children}
+}
+
+// ElementWithTrustedHTML returns an element VNode with trusted raw inner HTML.
+func ElementWithTrustedHTML(tag string, attrs []Attribute, events []EventBinding, innerHTML TrustedHTML) VNode {
+	return VNode{Type: VNodeTypeElement, Tag: tag, Attrs: attrs, Events: events, InnerHTML: innerHTML, HasInnerHTML: true}
 }
 
 // Text returns a text VNode.
@@ -276,8 +286,12 @@ func renderHTML(builder *strings.Builder, node VNode) {
 			renderHTMLAttr(builder, attr)
 		}
 		builder.WriteByte('>')
-		for _, child := range node.Children {
-			renderHTML(builder, child)
+		if node.HasInnerHTML {
+			builder.WriteString(string(node.InnerHTML))
+		} else {
+			for _, child := range node.Children {
+				renderHTML(builder, child)
+			}
 		}
 		builder.WriteString("</")
 		builder.WriteString(node.Tag)

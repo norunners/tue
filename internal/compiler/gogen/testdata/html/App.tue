@@ -1,0 +1,19 @@
+<template>
+	<main>
+		<section class="body" v-html="body">
+			{{ missing }}
+		</section>
+		<div v-html="summary"></div>
+	</main>
+</template>
+
+<script lang="go">
+package app
+
+import tue "github.com/norunners/tue"
+
+type App struct {
+	body    tue.TrustedHTML
+	summary tue.Prop[tue.TrustedHTML] `prop:"summary"`
+}
+</script>

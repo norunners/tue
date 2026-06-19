@@ -20,6 +20,17 @@ func TestRenderHTMLEscapesTextAndAttributes(t *testing.T) {
 	}
 }
 
+func TestRenderHTMLWritesTrustedHTMLWithoutEscaping(t *testing.T) {
+	node := ElementWithTrustedHTML("section", []Attribute{
+		Attr("data-state", "ready"),
+	}, nil, TrustedHTML(`<strong>Ready</strong><span data-raw="&">Now</span>`))
+
+	expected := `<section data-state="ready"><strong>Ready</strong><span data-raw="&">Now</span></section>`
+	if diff := cmp.Diff(expected, RenderHTML(node)); diff != "" {
+		t.Errorf("mismatch rendered trusted HTML (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestClassAttrNormalizesStaticAndBoundClasses(t *testing.T) {
 	actual := ClassAttr(" page  active ", "", " selected ", "wide")
 

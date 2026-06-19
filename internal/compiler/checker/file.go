@@ -69,6 +69,9 @@ func (c *fileChecker) checkElement(node *gotemplate.Node, scope *scope) {
 		}
 		c.checkNativeAttrs(node, elementScope)
 	}
+	if nativeHTMLDirective(node) {
+		return
+	}
 	c.checkNodes(node.Children, elementScope)
 }
 
@@ -208,4 +211,8 @@ func ignorableControlSibling(node *gotemplate.Node) bool {
 	default:
 		return false
 	}
+}
+
+func nativeHTMLDirective(node *gotemplate.Node) bool {
+	return node != nil && !node.IsComponent && node.Tag != "template" && node.Tag != "slot" && hasDirective(node, gotemplate.DirectiveHTML)
 }

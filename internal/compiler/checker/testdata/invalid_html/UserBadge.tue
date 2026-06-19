@@ -1,0 +1,9 @@
+<template>
+	<span>Badge</span>
+</template>
+
+<script lang="go">
+package fixtures
+
+type UserBadge struct{}
+</script>

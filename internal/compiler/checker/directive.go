@@ -21,13 +21,22 @@ func (c *fileChecker) checkCommonAttrs(node *gotemplate.Node, scope *scope, chec
 				value := c.checkExpression(attr.Expression, attr.ExpressionSpan, scope)
 				c.expectType("bool", value.Type, "v-if", attr.ExpressionSpan)
 			case gotemplate.DirectiveHTML:
-				value := c.checkExpression(attr.Expression, attr.ExpressionSpan, scope)
-				c.expectType("string", value.Type, "v-html", attr.ExpressionSpan)
+				c.checkHTML(node, attr, scope)
 			case gotemplate.DirectiveModel:
 				c.checkModel(node, attr, scope)
 			case gotemplate.DirectiveFor, gotemplate.DirectiveElse:
 			}
 		}
+	}
+}
+
+func (c *fileChecker) checkHTML(node *gotemplate.Node, attr gotemplate.Attr, scope *scope) {
+	value := c.checkExpression(attr.Expression, attr.ExpressionSpan, scope)
+	if !isTrustedHTMLType(value.Type) {
+		c.add(fmt.Sprintf("v-html expects tue.TrustedHTML, got %s", displayType(value.Type)), attr.ExpressionSpan)
+	}
+	if node == nil || node.IsComponent || node.Tag == "template" || node.Tag == "slot" {
+		c.add("v-html is only supported on native elements", attr.DirectiveSpan)
 	}
 }
 
@@ -233,4 +242,13 @@ func staticAttrValue(node *gotemplate.Node, name string) (string, bool) {
 func isNamedSlotAttr(attr gotemplate.Attr) bool {
 	return (attr.Kind == gotemplate.AttrStatic && attr.Name == "name") ||
 		(attr.Kind == gotemplate.AttrBind && attr.Argument == "name")
+}
+
+func isTrustedHTMLType(typ string) bool {
+	switch normalizeType(typ) {
+	case "tue.TrustedHTML", "TrustedHTML":
+		return true
+	default:
+		return false
+	}
 }

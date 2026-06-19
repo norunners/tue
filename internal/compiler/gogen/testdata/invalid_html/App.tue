@@ -1,0 +1,11 @@
+<template>
+	<main v-html="body"></main>
+</template>
+
+<script lang="go">
+package app
+
+type App struct {
+	body string
+}
+</script>
