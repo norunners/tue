@@ -1,8 +1,10 @@
 package tue
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -101,6 +103,86 @@ func TestResourceReloadClearsValueAndLoadsLatestResult(t *testing.T) {
 	}
 }
 
+func TestResourceReloadCancelsPreviousContextLoad(t *testing.T) {
+	firstStarted := make(chan struct{})
+	firstCanceled := make(chan struct{})
+	secondStarted := make(chan struct{})
+	releaseSecond := make(chan struct{})
+	var loads int32
+	resource := ResourceOfContextFunc(nil, func(ctx context.Context) (string, error) {
+		switch atomic.AddInt32(&loads, 1) {
+		case 1:
+			close(firstStarted)
+			<-ctx.Done()
+			close(firstCanceled)
+			return "", ctx.Err()
+		case 2:
+			close(secondStarted)
+			<-releaseSecond
+			return "second", nil
+		default:
+			return "", fmt.Errorf("unexpected resource load")
+		}
+	})
+	if err := waitClosed(firstStarted, "first resource load start"); err != nil {
+		t.Fatalf("wait first resource load start: %v", err)
+	}
+
+	resource.Reload()
+
+	if err := waitClosed(secondStarted, "second resource load start"); err != nil {
+		t.Fatalf("wait second resource load start: %v", err)
+	}
+	if err := waitClosed(firstCanceled, "first resource load cancellation"); err != nil {
+		t.Fatalf("wait first resource load cancellation: %v", err)
+	}
+
+	close(releaseSecond)
+	actual, err := waitForResourceSnapshot(resource, func(snapshot resourceSnapshot[string]) bool {
+		return snapshot.HasValue && snapshot.Value == "second"
+	})
+	if err != nil {
+		t.Fatalf("wait second resource snapshot: %v", err)
+	}
+	expected := resourceSnapshot[string]{Value: "second", HasValue: true}
+	if diff := cmp.Diff(expected, actual); diff != "" {
+		t.Errorf("mismatch second resource snapshot (-expected, +actual):\n%s", diff)
+	}
+}
+
+func TestResourceReloadIgnoresCanceledLoadThatFinishesLate(t *testing.T) {
+	resource := &ResourceValue[string]{
+		load: func(context.Context) (string, error) {
+			return "", nil
+		},
+	}
+
+	_, _, staleRunID, ok := resource.beginLoad()
+	if !ok {
+		t.Fatal("begin first resource load returned ok=false")
+	}
+	_, _, currentRunID, ok := resource.beginLoad()
+	if !ok {
+		t.Fatal("begin second resource load returned ok=false")
+	}
+
+	// This models a context-aware loader that was canceled on reload but still
+	// kept running long enough to return after a newer load started.
+	resource.finishLoad(staleRunID, "stale", nil)
+
+	expected := resourceSnapshot[string]{Loading: true}
+	if diff := cmp.Diff(expected, snapshotResource(resource)); diff != "" {
+		t.Errorf("mismatch stale resource snapshot (-expected, +actual):\n%s", diff)
+	}
+
+	resource.finishLoad(currentRunID, "current", nil)
+
+	expected = resourceSnapshot[string]{Value: "current", HasValue: true}
+	if diff := cmp.Diff(expected, snapshotResource(resource)); diff != "" {
+		t.Errorf("mismatch current resource snapshot (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestResourceReloadNotifiesWatchersWhenLoadingStarts(t *testing.T) {
 	started := make(chan struct{}, 2)
 	release := make(chan struct{})
@@ -189,6 +271,42 @@ func TestResourceUnmountIgnoresLateInFlightLoad(t *testing.T) {
 	}
 }
 
+func TestResourceUnmountCancelsInFlightContextLoad(t *testing.T) {
+	fixture := &resourceContextUnmountFixture{
+		started:  make(chan struct{}),
+		canceled: make(chan error, 1),
+	}
+	mounted, err := mountComponent(CompOf(fixture, func(*resourceContextUnmountFixture) VNode {
+		return Text("resource")
+	}), newStubDOMTarget())
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+	if err := waitClosed(fixture.started, "resource load start"); err != nil {
+		t.Fatalf("wait resource load start: %v", err)
+	}
+
+	expected := resourceSnapshot[string]{Loading: true}
+	if diff := cmp.Diff(expected, snapshotResource(fixture.resource)); diff != "" {
+		t.Errorf("mismatch mounted resource snapshot (-expected, +actual):\n%s", diff)
+	}
+
+	if err := mounted.Unmount(); err != nil {
+		t.Fatalf("Unmount returned error: %v", err)
+	}
+	cancelErr, err := receiveError(fixture.canceled, "resource load cancellation")
+	if err != nil {
+		t.Fatalf("wait resource load cancellation: %v", err)
+	}
+	if !errors.Is(cancelErr, context.Canceled) {
+		t.Errorf("resource load cancellation actual = %v, expected %v", cancelErr, context.Canceled)
+	}
+	expected = resourceSnapshot[string]{}
+	if diff := cmp.Diff(expected, snapshotResource(fixture.resource)); diff != "" {
+		t.Errorf("mismatch canceled resource snapshot (-expected, +actual):\n%s", diff)
+	}
+}
+
 type resourceSnapshot[T any] struct {
 	Value    T
 	HasValue bool
@@ -246,6 +364,15 @@ func waitClosed(done <-chan struct{}, subject string) error {
 	}
 }
 
+func receiveError(done <-chan error, subject string) (error, error) {
+	select {
+	case err := <-done:
+		return err, nil
+	case <-time.After(time.Second):
+		return nil, fmt.Errorf("timed out waiting for %s", subject)
+	}
+}
+
 type resourceUnmountFixture struct {
 	resource Resource[string]
 	started  chan struct{}
@@ -259,5 +386,20 @@ func (f *resourceUnmountFixture) Init(ctx Context) {
 		<-f.release
 		close(f.finished)
 		return "late", nil
+	})
+}
+
+type resourceContextUnmountFixture struct {
+	resource Resource[string]
+	started  chan struct{}
+	canceled chan error
+}
+
+func (f *resourceContextUnmountFixture) Init(ctx Context) {
+	f.resource = ResourceOfContextFunc(ctx, func(loadCtx context.Context) (string, error) {
+		close(f.started)
+		<-loadCtx.Done()
+		f.canceled <- loadCtx.Err()
+		return "late", loadCtx.Err()
 	})
 }
