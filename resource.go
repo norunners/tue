@@ -1,6 +1,9 @@
 package tue
 
-import "sync"
+import (
+	stdcontext "context"
+	"sync"
+)
 
 // Resource is the async-state interface exposed to component code.
 type Resource[T any] interface {
@@ -12,7 +15,7 @@ type Resource[T any] interface {
 
 // ResourceValue is the concrete runtime storage for async resource state.
 type ResourceValue[T any] struct {
-	load func() (T, error)
+	load func(stdcontext.Context) (T, error)
 
 	mu       sync.Mutex
 	value    T
@@ -21,12 +24,26 @@ type ResourceValue[T any] struct {
 	loading  bool
 	stopped  bool
 	runID    int
+	cancel   stdcontext.CancelFunc
 	dep      dependency
 }
 
 // ResourceOfFunc returns a resource backed by a load function and starts the
 // initial load immediately.
 func ResourceOfFunc[T any](ctx Context, load func() (T, error)) *ResourceValue[T] {
+	if load == nil {
+		return ResourceOfContextFunc[T](ctx, nil)
+	}
+	return ResourceOfContextFunc(ctx, func(stdcontext.Context) (T, error) {
+		return load()
+	})
+}
+
+// ResourceOfContextFunc returns a resource backed by a context-aware load
+// function and starts the initial load immediately. Cancellation is cooperative:
+// Reload and component cleanup cancel the load context, and stale results are
+// ignored if a loader keeps running after cancellation.
+func ResourceOfContextFunc[T any](ctx Context, load func(stdcontext.Context) (T, error)) *ResourceValue[T] {
 	resource := &ResourceValue[T]{load: load}
 	if ctx != nil {
 		ctx.OnCleanup(resource.stop)
@@ -78,36 +95,42 @@ func (r *ResourceValue[T]) Reload() {
 		return
 	}
 
-	load, runID, ok := r.beginLoad()
+	load, loadCtx, runID, ok := r.beginLoad()
 	if !ok {
 		return
 	}
 
 	go func() {
-		value, err := load()
+		value, err := load(loadCtx)
 		r.finishLoad(runID, value, err)
 	}()
 }
 
-func (r *ResourceValue[T]) beginLoad() (func() (T, error), int, bool) {
+func (r *ResourceValue[T]) beginLoad() (func(stdcontext.Context) (T, error), stdcontext.Context, int, bool) {
 	r.mu.Lock()
 	if r.stopped || r.load == nil {
 		r.mu.Unlock()
-		return nil, 0, false
+		return nil, nil, 0, false
 	}
 
 	var zero T
+	oldCancel := r.cancel
+	loadCtx, cancel := stdcontext.WithCancel(stdcontext.Background())
 	r.runID++
 	runID := r.runID
 	load := r.load
+	r.cancel = cancel
 	r.value = zero
 	r.hasValue = false
 	r.err = nil
 	r.loading = true
 	r.mu.Unlock()
 
+	if oldCancel != nil {
+		oldCancel()
+	}
 	r.dep.notify()
-	return load, runID, true
+	return load, loadCtx, runID, true
 }
 
 func (r *ResourceValue[T]) finishLoad(runID int, value T, err error) {
@@ -118,6 +141,8 @@ func (r *ResourceValue[T]) finishLoad(runID int, value T, err error) {
 	}
 
 	var zero T
+	cancel := r.cancel
+	r.cancel = nil
 	r.loading = false
 	r.err = err
 	if err != nil {
@@ -129,6 +154,9 @@ func (r *ResourceValue[T]) finishLoad(runID int, value T, err error) {
 	}
 	r.mu.Unlock()
 
+	if cancel != nil {
+		cancel()
+	}
 	r.dep.notify()
 }
 
@@ -140,8 +168,13 @@ func (r *ResourceValue[T]) stop() {
 	}
 	r.stopped = true
 	r.runID++
+	cancel := r.cancel
+	r.cancel = nil
 	r.loading = false
 	r.mu.Unlock()
 
+	if cancel != nil {
+		cancel()
+	}
 	r.dep.notify()
 }
