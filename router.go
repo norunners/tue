@@ -12,13 +12,16 @@ type Route struct {
 	Render func(RouteMatch) VNode
 }
 
-// RouteMatch is the current matched route state. The first router matches path
-// segments only; query strings and fragments are not preserved in RouteMatch.
+// RouteMatch is the current matched route state. The router matches path
+// segments only. RawQuery preserves the query string, while Query and
+// QueryParam expose parsed url.Values when the query is valid.
 type RouteMatch struct {
-	Path    string
-	Pattern string
-	Params  map[string]string
-	Found   bool
+	Path     string
+	Pattern  string
+	Params   map[string]string
+	RawQuery string
+	Query    url.Values
+	Found    bool
 }
 
 // Param returns a matched path parameter by name.
@@ -27,6 +30,14 @@ func (m RouteMatch) Param(name string) string {
 		return ""
 	}
 	return m.Params[name]
+}
+
+// QueryParam returns the first query value by name.
+func (m RouteMatch) QueryParam(name string) string {
+	if m.Query == nil {
+		return ""
+	}
+	return m.Query.Get(name)
 }
 
 // Router keeps reactive route state for a small explicit route table.
@@ -92,7 +103,7 @@ func (r *Router) Navigate(path string) {
 	if r == nil {
 		return
 	}
-	path = normalizeRoutePath(path)
+	path = normalizeRouteTarget(path).String()
 	if r.location != nil {
 		r.location.SetPath(path)
 	}
@@ -101,7 +112,7 @@ func (r *Router) Navigate(path string) {
 
 // Href returns the link target for a route path.
 func (r *Router) Href(path string) string {
-	path = normalizeRoutePath(path)
+	path = normalizeRouteTarget(path).String()
 	if r == nil || r.location == nil {
 		return "#" + path
 	}
@@ -145,18 +156,20 @@ func (r *Router) setPath(path string) {
 }
 
 func (r *Router) match(path string) RouteMatch {
-	path = normalizeRoutePath(path)
+	target := normalizeRouteTarget(path)
 	for _, route := range r.routes {
-		if params, ok := matchRouteSegments(route.segments, routeSegments(path)); ok {
+		if params, ok := matchRouteSegments(route.segments, routeSegments(target.Path)); ok {
 			return RouteMatch{
-				Path:    path,
-				Pattern: route.pattern,
-				Params:  params,
-				Found:   true,
+				Path:     target.Path,
+				Pattern:  route.pattern,
+				Params:   params,
+				RawQuery: target.RawQuery,
+				Query:    target.Query,
+				Found:    true,
 			}
 		}
 	}
-	return RouteMatch{Path: path}
+	return RouteMatch{Path: target.Path, RawQuery: target.RawQuery, Query: target.Query}
 }
 
 func (r *Router) routeForPattern(pattern string) *Route {
@@ -241,6 +254,48 @@ func normalizeRoutePath(path string) string {
 	return cleaned
 }
 
+type routeTarget struct {
+	Path     string
+	RawQuery string
+	Query    url.Values
+}
+
+func (t routeTarget) String() string {
+	if t.RawQuery == "" {
+		return t.Path
+	}
+	return t.Path + "?" + t.RawQuery
+}
+
+func normalizeRouteTarget(path string) routeTarget {
+	path = strings.TrimSpace(path)
+	path = strings.TrimPrefix(path, "#")
+	if path == "" {
+		return routeTarget{Path: "/"}
+	}
+
+	parsed, err := url.Parse(path)
+	if err != nil {
+		return routeTarget{Path: normalizeRoutePath(path)}
+	}
+	routePath := parsed.EscapedPath()
+	if routePath == "" {
+		routePath = parsed.Path
+	}
+
+	target := routeTarget{
+		Path:     normalizeRoutePath(routePath),
+		RawQuery: parsed.RawQuery,
+	}
+	if target.RawQuery != "" {
+		query, err := url.ParseQuery(target.RawQuery)
+		if err == nil {
+			target.Query = query
+		}
+	}
+	return target
+}
+
 func routeSegments(path string) []string {
 	path = strings.Trim(normalizeRoutePath(path), "/")
 	if path == "" {
@@ -259,6 +314,7 @@ func decodeRouteSegment(segment string) string {
 
 func cloneRouteMatch(match RouteMatch) RouteMatch {
 	match.Params = cloneRouteParams(match.Params)
+	match.Query = cloneRouteQuery(match.Query)
 	return match
 }
 
@@ -273,8 +329,19 @@ func cloneRouteParams(params map[string]string) map[string]string {
 	return cloned
 }
 
+func cloneRouteQuery(query url.Values) url.Values {
+	if len(query) == 0 {
+		return nil
+	}
+	cloned := make(url.Values, len(query))
+	for name, values := range query {
+		cloned[name] = append([]string(nil), values...)
+	}
+	return cloned
+}
+
 func sameRouteMatch(left RouteMatch, right RouteMatch) bool {
-	if left.Path != right.Path || left.Pattern != right.Pattern || left.Found != right.Found {
+	if left.Path != right.Path || left.Pattern != right.Pattern || left.RawQuery != right.RawQuery || left.Found != right.Found {
 		return false
 	}
 	if len(left.Params) != len(right.Params) {

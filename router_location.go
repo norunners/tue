@@ -14,18 +14,18 @@ func (l *memoryRouteLocation) Path() string {
 	if l == nil {
 		return "/"
 	}
-	return normalizeRoutePath(l.path)
+	return normalizeRouteTarget(l.path).String()
 }
 
 func (l *memoryRouteLocation) SetPath(path string) {
 	if l == nil {
 		return
 	}
-	l.path = normalizeRoutePath(path)
+	l.path = normalizeRouteTarget(path).String()
 }
 
 func (l *memoryRouteLocation) Href(path string) string {
-	return "#" + normalizeRoutePath(path)
+	return "#" + normalizeRouteTarget(path).String()
 }
 
 func (l *memoryRouteLocation) Watch(func(string)) func() {
