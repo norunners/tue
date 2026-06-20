@@ -1,6 +1,6 @@
 <template>
 <main>
-	<UserBadge v-if="showBadge" :name="name" active @select="selectUser" />
+	<UserBadge v-if="showBadge" :name="name" active @select="selectUser" @range="selectRange" @tags="selectTags" />
 </main>
 </template>
 
@@ -18,5 +18,9 @@ func (p *Parent) Init(tue.Context) {
 	p.name = tue.RefOf("Ada")
 }
 
-func (p *Parent) selectUser() {}
+func (p *Parent) selectUser(name string) {}
+
+func (p *Parent) selectRange(name string, count int) {}
+
+func (p *Parent) selectTags(tags ...string) {}
 </script>

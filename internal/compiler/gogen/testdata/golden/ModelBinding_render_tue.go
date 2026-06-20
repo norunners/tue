@@ -15,7 +15,7 @@ func NewApp() *tue.Comp {
 func renderApp(component *App) tue.VNode {
 	return tue.Element("main", nil, []tue.VNode{tue.ElementWithEvents("input", []tue.Attribute{tue.Attr("value", component.query)}, []tue.EventBinding{tue.OnValue("input", func(value string) {
 		component.query = value
-	}), tue.On("input", component.touch)}, nil), tue.ElementWithEvents("input", []tue.Attribute{tue.Attr("type", "checkbox"), tue.BoolStateAttr("checked", component.enabled.Get())}, []tue.EventBinding{tue.OnChecked("change", func(checked bool) {
+	}), tue.EventOf("input", component.touch)}, nil), tue.ElementWithEvents("input", []tue.Attribute{tue.Attr("type", "checkbox"), tue.BoolStateAttr("checked", component.enabled.Get())}, []tue.EventBinding{tue.OnChecked("change", func(checked bool) {
 		component.enabled.Set(checked)
 	})}, nil), tue.ElementWithEvents("select", []tue.Attribute{tue.Attr("value", component.choice)}, []tue.EventBinding{tue.OnValue("change", func(value string) {
 		component.choice = value

@@ -15,7 +15,7 @@ func renderParent(component *Parent) tue.VNode {
 			return tue.ComponentWithUpdate("UserBadge", func() *tue.Comp {
 				child := &UserBadge{name: tue.PropOfFunc(func() string {
 					return component.name.Get()
-				}), active: tue.PropOf(true), label: tue.PropOf(""), onSelect: component.selectUser}
+				}), active: tue.PropOf(true), label: tue.PropOf(""), onSelect: tue.OnOf(component.selectUser), onRange: tue.OnOf(component.selectRange), onTags: tue.OnOf(component.selectTags), onDismiss: tue.On[func(string)]{}}
 				childComp := tue.CompOf(child, renderUserBadge)
 				return childComp
 			}, func(childComp *tue.Comp) {
@@ -25,7 +25,10 @@ func renderParent(component *Parent) tue.VNode {
 				})
 				child.active = tue.PropOf(true)
 				child.label = tue.PropOf("")
-				child.onSelect = component.selectUser
+				child.onSelect = tue.OnOf(component.selectUser)
+				child.onRange = tue.OnOf(component.selectRange)
+				child.onTags = tue.OnOf(component.selectTags)
+				child.onDismiss = tue.On[func(string)]{}
 				childComp.DefaultSlot = nil
 			})
 		}

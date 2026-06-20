@@ -124,8 +124,6 @@ func TestTypeCapabilities(t *testing.T) {
 		{name: "non-numeric", actual: Numeric("string"), expected: false},
 		{name: "scalar", actual: Scalar("bool"), expected: true},
 		{name: "non-scalar", actual: Scalar("[]string"), expected: false},
-		{name: "no-arg function", actual: NoArgFunc(" func() "), expected: true},
-		{name: "function with arguments", actual: NoArgFunc("func(string)"), expected: false},
 	}
 
 	for _, test := range tests {

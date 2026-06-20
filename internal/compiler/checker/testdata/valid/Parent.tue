@@ -1,6 +1,6 @@
 <template>
 	<main>
-		<UserBadge :name="name" :isAdmin='role == "admin"' @select="selectUser" />
+		<UserBadge :name="name" :isAdmin='role == "admin"' @select="selectUser" @tags="selectTags" />
 			<ul>
 				<li v-for="todo in visibleTodos()" :key="todo.ID">{{ todo.Text }}</li>
 			</ul>
@@ -33,7 +33,9 @@ type Parent struct {
 
 func (p *Parent) increment() {}
 
-func (p *Parent) selectUser() {}
+func (p *Parent) selectUser(name string) {}
+
+func (p *Parent) selectTags(tags ...string) {}
 
 func (p *Parent) visibleTodos() []Todo {
 	return p.todos

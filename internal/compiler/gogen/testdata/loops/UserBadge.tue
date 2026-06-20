@@ -10,6 +10,6 @@ import tue "github.com/norunners/tue"
 type UserBadge struct {
 	name     tue.Prop[string] `prop:"name,required"`
 	active   tue.Prop[bool]
-	onSelect func()
+	onSelect tue.On[func()]
 }
 </script>

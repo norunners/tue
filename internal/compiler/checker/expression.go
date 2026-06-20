@@ -208,7 +208,7 @@ func (c *exprChecker) call(call *ast.CallExpr) value {
 		if !symbol.Method {
 			return value{Type: unknownType}
 		}
-		if len(call.Args) != 0 || symbol.Parameters != 0 || symbol.Results != 1 {
+		if len(call.Args) != 0 || len(symbol.Parameters) != 0 || len(symbol.Results) != 1 {
 			c.fileChecker.add(fmt.Sprintf("method call %q must have signature func() T", ident.Name), c.nodeSpan(call))
 			return value{Type: unknownType}
 		}

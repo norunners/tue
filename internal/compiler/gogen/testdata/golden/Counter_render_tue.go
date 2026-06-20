@@ -13,5 +13,5 @@ func NewCounter() *tue.Comp {
 }
 
 func renderCounter(component *Counter) tue.VNode {
-	return tue.Element("main", nil, []tue.VNode{tue.Element("p", nil, []tue.VNode{tue.Text("Count: "), tue.Text(fmt.Sprint(component.count.Get()))}), tue.ElementWithEvents("button", []tue.Attribute{tue.Attr("type", "button")}, []tue.EventBinding{tue.On("click", component.increment)}, []tue.VNode{tue.Text("Increment")})})
+	return tue.Element("main", nil, []tue.VNode{tue.Element("p", nil, []tue.VNode{tue.Text("Count: "), tue.Text(fmt.Sprint(component.count.Get()))}), tue.ElementWithEvents("button", []tue.Attribute{tue.Attr("type", "button")}, []tue.EventBinding{tue.EventOf("click", component.increment)}, []tue.VNode{tue.Text("Increment")})})
 }

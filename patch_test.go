@@ -100,7 +100,7 @@ func TestMountedUpdatePatchesTrustedHTMLContent(t *testing.T) {
 			return Element("main", nil, []VNode{Text("Back")})
 		default:
 			return Element("main", nil, []VNode{
-				ElementWithEvents("button", nil, []EventBinding{On("click", func() {})}, []VNode{Text("Save")}),
+				ElementWithEvents("button", nil, []EventBinding{EventOf("click", func() {})}, []VNode{Text("Save")}),
 			})
 		}
 	}), target)
@@ -442,7 +442,7 @@ func TestMountedUpdateReplacesSameKeyDifferentType(t *testing.T) {
 		if renderText {
 			child = VNode{Type: VNodeTypeText, Key: "a", Text: "Saved"}
 		} else {
-			child = ElementWithEvents("button", nil, []EventBinding{On("click", func() {
+			child = ElementWithEvents("button", nil, []EventBinding{EventOf("click", func() {
 				events = append(events, "click")
 			})}, []VNode{Text("Save")})
 			child.Key = "a"
@@ -691,7 +691,7 @@ func TestMountedEventHandlerRunsAndUpdatesInPlace(t *testing.T) {
 				events = append(events, "second")
 			}
 		}
-		return ElementWithEvents("button", nil, []EventBinding{On("click", handler)}, []VNode{Text("Save")})
+		return ElementWithEvents("button", nil, []EventBinding{EventOf("click", handler)}, []VNode{Text("Save")})
 	}), target)
 	if err != nil {
 		t.Fatalf("mountComponent returned error: %v", err)
@@ -735,7 +735,7 @@ func TestMountedDuplicateEventHandlersRunModelBeforeUserHandler(t *testing.T) {
 				query = value
 				events = append(events, "model:"+query)
 			}),
-			On("input", func() {
+			EventOf("input", func() {
 				events = append(events, "user:"+query)
 			}),
 		}, nil)
@@ -762,11 +762,11 @@ func TestMountedEventListenersCleanUpWhenNodeIsReplaced(t *testing.T) {
 	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
 		if replace {
-			return ElementWithEvents("a", nil, []EventBinding{On("click", func() {
+			return ElementWithEvents("a", nil, []EventBinding{EventOf("click", func() {
 				events = append(events, "link")
 			})}, []VNode{Text("Link")})
 		}
-		return ElementWithEvents("button", nil, []EventBinding{On("click", func() {
+		return ElementWithEvents("button", nil, []EventBinding{EventOf("click", func() {
 			events = append(events, "button")
 		})}, []VNode{Text("Save")})
 	}), target)
@@ -803,7 +803,7 @@ func TestMountedEventListenersCleanUpOnUnmount(t *testing.T) {
 	events := []string{}
 	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
-		return ElementWithEvents("button", nil, []EventBinding{On("click", func() {
+		return ElementWithEvents("button", nil, []EventBinding{EventOf("click", func() {
 			events = append(events, "click")
 		})}, []VNode{Text("Save")})
 	}), target)
