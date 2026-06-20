@@ -68,14 +68,14 @@ func runDev(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	if err := serveDev(ctx, options, stdout, stderr); err != nil {
+	if err := serveDev(ctx, *options, stdout, stderr); err != nil {
 		fmt.Fprintf(stderr, "tue dev: %v\n", err)
 		return exitError
 	}
 	return exitOK
 }
 
-func parseDevOptions(args []string, stdout, stderr io.Writer) (devOptions, int, bool) {
+func parseDevOptions(args []string, stdout, stderr io.Writer) (*devOptions, int, bool) {
 	flags := flag.NewFlagSet("tue dev", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	options := devOptions{
@@ -88,16 +88,16 @@ func parseDevOptions(args []string, stdout, stderr io.Writer) (devOptions, int, 
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			printCommandUsage("dev", stdout)
-			return devOptions{}, exitOK, false
+			return nil, exitOK, false
 		}
 		fmt.Fprintf(stderr, "tue dev: %v\n\n", err)
 		printCommandUsage("dev", stderr)
-		return devOptions{}, exitUsage, false
+		return nil, exitUsage, false
 	}
 	if flags.NArg() > 1 {
 		fmt.Fprint(stderr, "tue dev: expected at most one project root\n\n")
 		printCommandUsage("dev", stderr)
-		return devOptions{}, exitUsage, false
+		return nil, exitUsage, false
 	}
 	options.Root = "."
 	if flags.NArg() == 1 {
@@ -106,9 +106,9 @@ func parseDevOptions(args []string, stdout, stderr io.Writer) (devOptions, int, 
 	if options.PollInterval <= 0 {
 		fmt.Fprint(stderr, "tue dev: -poll must be greater than 0\n\n")
 		printCommandUsage("dev", stderr)
-		return devOptions{}, exitUsage, false
+		return nil, exitUsage, false
 	}
-	return options, exitOK, true
+	return &options, exitOK, true
 }
 
 func serveDev(ctx context.Context, options devOptions, stdout, stderr io.Writer) error {

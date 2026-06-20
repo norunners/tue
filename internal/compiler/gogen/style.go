@@ -16,15 +16,15 @@ import (
 const styleFilePath = "style.css"
 
 // StyleFromBlock converts a parsed SFC style block into generator input.
-func StyleFromBlock(block *sfc.Block) *Style {
+func StyleFromBlock(block *sfc.Block) (*Style, bool) {
 	if block == nil {
-		return nil
+		return nil, false
 	}
 	return &Style{
 		Source: block.Content,
 		Scoped: block.HasAttr("scoped"),
 		Span:   block.ContentSpan,
-	}
+	}, true
 }
 
 func generatedStyleSource(files []File) ([]byte, bool) {

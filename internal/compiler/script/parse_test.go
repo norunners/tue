@@ -3,6 +3,7 @@ package script
 import (
 	"bytes"
 	"embed"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,9 +16,13 @@ import (
 var testFixtures embed.FS
 
 func TestParseExtractsComponentContract(t *testing.T) {
-	file, diagnostics := Parse(testFixture(t, "testdata/contracts/dashboard.go"), "Dashboard")
+	source, err := testFixture("testdata/contracts/dashboard.go")
+	if err != nil {
+		t.Fatalf("read dashboard fixture: %v", err)
+	}
+	file, diagnostics := Parse(source, "Dashboard")
 	if len(diagnostics) != 0 {
-		t.Errorf("Parse diagnostics = %#v, want none", diagnosticMessages(diagnostics))
+		t.Errorf("Parse diagnostics actual = %#v, expected none", diagnosticMessages(diagnostics))
 	}
 
 	if diff := cmp.Diff("fixtures", file.PackageName); diff != "" {
@@ -56,27 +61,31 @@ func TestParseExtractsComponentContract(t *testing.T) {
 		t.Errorf("mismatch structs (-expected, +actual):\n%s", diff)
 	}
 
-	component := requireComponent(t, file)
+	component, err := requireComponent(file)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if diff := cmp.Diff("Dashboard", component.Name); diff != "" {
 		t.Errorf("mismatch component name (-expected, +actual):\n%s", diff)
 	}
 
-	props := requireProps(t, component, 1)
-	if len(props) == 1 {
-		prop := props[0]
-		if diff := cmp.Diff(propSummary{
-			FieldName:  "name",
-			Name:       "name",
-			Required:   true,
-			Exported:   false,
-			Type:       "tue.Prop[string]",
-			ValueType:  "string",
-			FieldKind:  FieldKindProp,
-			StructTag:  `prop:"name,required"`,
-			HasTagSpan: true,
-		}, summarizeProp(prop)); diff != "" {
-			t.Errorf("mismatch prop: %q (-expected, +actual):\n%s", prop.Field.Name, diff)
-		}
+	props, err := requireProps(component, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prop := props[0]
+	if diff := cmp.Diff(propSummary{
+		FieldName:  "name",
+		Name:       "name",
+		Required:   true,
+		Exported:   false,
+		Type:       "tue.Prop[string]",
+		ValueType:  "string",
+		FieldKind:  FieldKindProp,
+		StructTag:  `prop:"name,required"`,
+		HasTagSpan: true,
+	}, summarizeProp(prop)); diff != "" {
+		t.Errorf("mismatch prop: %q (-expected, +actual):\n%s", prop.Field.Name, diff)
 	}
 
 	assertField(t, component.Refs, "count", FieldKindRef, "tue.Ref[int]", "int")
@@ -85,7 +94,10 @@ func TestParseExtractsComponentContract(t *testing.T) {
 	assertField(t, component.Events, "onSave", FieldKindEvent, "func()", "")
 	assertField(t, component.State, "label", FieldKindState, "string", "")
 
-	init := requireInit(t, component)
+	init, err := requireInit(component)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if diff := cmp.Diff(methodSummary{
 		Name:            "Init",
 		ReceiverName:    "Dashboard",
@@ -126,12 +138,19 @@ func TestParseExtractsComponentContract(t *testing.T) {
 }
 
 func TestParseAcceptsDotImportedTueContracts(t *testing.T) {
-	file, diagnostics := Parse(testFixture(t, "testdata/contracts/dot_import.go"), "DotImport")
+	source, err := testFixture("testdata/contracts/dot_import.go")
+	if err != nil {
+		t.Fatalf("read dot-import fixture: %v", err)
+	}
+	file, diagnostics := Parse(source, "DotImport")
 	if len(diagnostics) != 0 {
-		t.Errorf("Parse diagnostics = %#v, want none", diagnosticMessages(diagnostics))
+		t.Errorf("Parse diagnostics actual = %#v, expected none", diagnosticMessages(diagnostics))
 	}
 
-	component := requireComponent(t, file)
+	component, err := requireComponent(file)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if diff := cmp.Diff([]propSummary{{
 		FieldName: "name",
 		Name:      "name",
@@ -147,21 +166,27 @@ func TestParseAcceptsDotImportedTueContracts(t *testing.T) {
 }
 
 func TestParseBlockUsesSFCSourceSpans(t *testing.T) {
-	source := testFixture(t, "testdata/sfc/user_badge.tue")
+	source, err := testFixture("testdata/sfc/user_badge.tue")
+	if err != nil {
+		t.Fatalf("read user badge fixture: %v", err)
+	}
 	sfcFile, sfcDiagnostics := sfc.Parse("UserBadge.tue", source)
 	if len(sfcDiagnostics) != 0 {
-		t.Fatalf("sfc.Parse diagnostics = %#v, want none", sfcDiagnostics)
+		t.Fatalf("sfc.Parse diagnostics actual = %#v, expected none", sfcDiagnostics)
 	}
 
 	file, diagnostics := ParseBlock(sfcFile.Script, "UserBadge")
 	if len(diagnostics) != 0 {
-		t.Errorf("ParseBlock diagnostics = %#v, want none", diagnosticMessages(diagnostics))
+		t.Errorf("ParseBlock diagnostics actual = %#v, expected none", diagnosticMessages(diagnostics))
 	}
 
-	component := requireComponent(t, file)
-	props := requireProps(t, component, 1)
-	if len(props) != 1 {
-		return
+	component, err := requireComponent(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	props, err := requireProps(component, 1)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	prop := props[0]
@@ -192,21 +217,11 @@ func TestParseSFCFixtures(t *testing.T) {
 		}
 
 		t.Run(filepath.ToSlash(path), func(t *testing.T) {
-			source, err := os.ReadFile(path)
+			component, err := parseSFCFixture(path)
 			if err != nil {
-				t.Fatalf("read fixture: %v", err)
+				t.Errorf("parse SFC fixture: %v", err)
+				return
 			}
-
-			sfcFile, sfcDiagnostics := sfc.Parse(path, source)
-			if len(sfcDiagnostics) != 0 {
-				t.Fatalf("sfc.Parse diagnostics = %#v, want none", sfcDiagnostics)
-			}
-
-			file, diagnostics := ParseSFC(sfcFile)
-			if len(diagnostics) != 0 {
-				t.Errorf("ParseSFC diagnostics = %#v, want none", diagnosticMessages(diagnostics))
-			}
-			component := requireComponent(t, file)
 			if diff := cmp.Diff(ComponentNameFromPath(path), component.Name); diff != "" {
 				t.Errorf("mismatch component name (-expected, +actual):\n%s", diff)
 			}
@@ -215,7 +230,7 @@ func TestParseSFCFixtures(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("walk fixtures: %v", err)
+		t.Errorf("walk fixtures: %v", err)
 	}
 }
 
@@ -224,50 +239,54 @@ func TestParseDiagnostics(t *testing.T) {
 		name      string
 		fixture   string
 		component string
-		want      []string
+		expected  []string
 	}{
 		{
 			name:      "missing component",
 			fixture:   "testdata/diagnostics/missing_component.go",
 			component: "Missing",
-			want:      []string{`component "Missing" struct not found`},
+			expected:  []string{`component "Missing" struct not found`},
 		},
 		{
 			name:      "component must be struct",
 			fixture:   "testdata/diagnostics/component_must_be_struct.go",
 			component: "App",
-			want:      []string{`component "App" must be a struct`},
+			expected:  []string{`component "App" must be a struct`},
 		},
 		{
 			name:      "prop without type argument",
 			fixture:   "testdata/diagnostics/prop_without_type_argument.go",
 			component: "App",
-			want:      []string{`field "name" must use tue.Prop[T] with exactly one type argument`},
+			expected:  []string{`field "name" must use tue.Prop[T] with exactly one type argument`},
 		},
 		{
 			name:      "prop with too many type arguments",
 			fixture:   "testdata/diagnostics/prop_with_too_many_type_arguments.go",
 			component: "App",
-			want:      []string{`field "name" must use tue.Prop[T] with exactly one type argument`},
+			expected:  []string{`field "name" must use tue.Prop[T] with exactly one type argument`},
 		},
 		{
 			name:      "invalid Init value receiver",
 			fixture:   "testdata/diagnostics/invalid_init_value_receiver.go",
 			component: "App",
-			want:      []string{`Init must have signature func (c *App) Init(tue.Context)`},
+			expected:  []string{`Init must have signature func (c *App) Init(tue.Context)`},
 		},
 		{
 			name:      "invalid Init params",
 			fixture:   "testdata/diagnostics/invalid_init_params.go",
 			component: "App",
-			want:      []string{`Init must have signature func (c *App) Init(tue.Context)`},
+			expected:  []string{`Init must have signature func (c *App) Init(tue.Context)`},
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, diagnostics := Parse(testFixture(t, tt.fixture), tt.component)
-			assertDiagnosticContains(t, diagnostics, tt.want)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			source, err := testFixture(test.fixture)
+			if err != nil {
+				t.Fatalf("read diagnostic fixture: %v", err)
+			}
+			_, diagnostics := Parse(source, test.component)
+			assertDiagnosticContains(t, diagnostics, test.expected)
 		})
 	}
 }
@@ -279,59 +298,76 @@ func TestParseBlockDiagnostics(t *testing.T) {
 
 func TestComponentNameFromPath(t *testing.T) {
 	tests := []struct {
-		path string
-		want string
+		path     string
+		expected string
 	}{
-		{path: "counter.tue", want: "Counter"},
-		{path: "static_hello.tue", want: "StaticHello"},
-		{path: "components/user-badge.tue", want: "UserBadge"},
-		{path: `windows\path\UserBadge.tue`, want: "UserBadge"},
+		{path: "counter.tue", expected: "Counter"},
+		{path: "static_hello.tue", expected: "StaticHello"},
+		{path: "components/user-badge.tue", expected: "UserBadge"},
+		{path: `windows\path\UserBadge.tue`, expected: "UserBadge"},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
-			if diff := cmp.Diff(tt.want, ComponentNameFromPath(tt.path)); diff != "" {
-				t.Errorf("mismatch component name from path: %q (-expected, +actual):\n%s", tt.path, diff)
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			if diff := cmp.Diff(test.expected, ComponentNameFromPath(test.path)); diff != "" {
+				t.Errorf("mismatch component name from path: %q (-expected, +actual):\n%s", test.path, diff)
 			}
 		})
 	}
 }
 
-func testFixture(t *testing.T, path string) []byte {
-	t.Helper()
+func parseSFCFixture(path string) (*Component, error) {
+	source, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read fixture: %w", err)
+	}
 
+	sfcFile, sfcDiagnostics := sfc.Parse(path, source)
+	if len(sfcDiagnostics) != 0 {
+		return nil, fmt.Errorf("sfc.Parse diagnostics actual = %#v, expected none", sfcDiagnostics)
+	}
+
+	file, diagnostics := ParseSFC(sfcFile)
+	if len(diagnostics) != 0 {
+		return nil, fmt.Errorf("ParseSFC diagnostics actual = %#v, expected none", diagnosticMessages(diagnostics))
+	}
+	component, err := requireComponent(file)
+	if err != nil {
+		return nil, err
+	}
+	return component, nil
+}
+
+func testFixture(path string) ([]byte, error) {
 	source, err := testFixtures.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read embedded fixture %s: %v", path, err)
+		return nil, fmt.Errorf("read embedded fixture %s: %w", path, err)
 	}
-	return source
+	return source, nil
 }
 
-func requireComponent(t *testing.T, file *File) *Component {
-	t.Helper()
-
-	if file.Component == nil {
-		t.Fatal("Component is nil")
+func requireComponent(file *File) (*Component, error) {
+	if file == nil || file.Component == nil {
+		return nil, fmt.Errorf("component is nil")
 	}
-	return file.Component
+	return file.Component, nil
 }
 
-func requireProps(t *testing.T, component *Component, want int) []Prop {
-	t.Helper()
-
-	if diff := cmp.Diff(want, len(component.Props)); diff != "" {
-		t.Errorf("mismatch props length (-expected, +actual):\n%s", diff)
+func requireProps(component *Component, expected int) ([]Prop, error) {
+	if component == nil {
+		return nil, fmt.Errorf("component is nil")
 	}
-	return component.Props
+	if len(component.Props) != expected {
+		return nil, fmt.Errorf("props length actual = %d, expected %d", len(component.Props), expected)
+	}
+	return component.Props, nil
 }
 
-func requireInit(t *testing.T, component *Component) *Method {
-	t.Helper()
-
-	if component.Init == nil {
-		t.Fatal("Init is nil")
+func requireInit(component *Component) (*Method, error) {
+	if component == nil || component.Init == nil {
+		return nil, fmt.Errorf("Init is nil")
 	}
-	return component.Init
+	return component.Init, nil
 }
 
 func assertField(t *testing.T, fields []Field, name string, kind FieldKind, fieldType string, valueType string) {
@@ -354,28 +390,28 @@ func assertField(t *testing.T, fields []Field, name string, kind FieldKind, fiel
 	t.Errorf("field %q not found in %#v", name, summarizeFields(fields))
 }
 
-func assertDiagnosticMessages(t *testing.T, diagnostics []Diagnostic, want []string) {
+func assertDiagnosticMessages(t *testing.T, diagnostics []Diagnostic, expected []string) {
 	t.Helper()
 
-	if diff := cmp.Diff(want, diagnosticMessages(diagnostics)); diff != "" {
+	if diff := cmp.Diff(expected, diagnosticMessages(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}
 }
 
-func assertDiagnosticContains(t *testing.T, diagnostics []Diagnostic, want []string) {
+func assertDiagnosticContains(t *testing.T, diagnostics []Diagnostic, expected []string) {
 	t.Helper()
 
-	got := diagnosticMessages(diagnostics)
-	for _, message := range want {
+	actual := diagnosticMessages(diagnostics)
+	for _, message := range expected {
 		found := false
-		for _, gotMessage := range got {
-			if gotMessage == message {
+		for _, actualMessage := range actual {
+			if actualMessage == message {
 				found = true
 				break
 			}
 		}
 		if !found {
-			t.Errorf("diagnostics = %#v, want message %q", got, message)
+			t.Errorf("diagnostics actual = %#v, expected message %q", actual, message)
 		}
 	}
 }

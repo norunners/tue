@@ -1,0 +1,22 @@
+<template>
+	<main>
+		<p v-else-if="ready">Orphan else-if</p>
+		<p v-else>Orphan else</p>
+
+		<p v-if="status">Wrong if type</p>
+		<p v-else-if="isReady(true)">Unsupported else-if</p>
+	</main>
+</template>
+
+<script lang="go">
+package app
+
+type ConditionalChain struct {
+	ready  bool
+	status string
+}
+
+func (c *ConditionalChain) isReady(enabled bool) bool {
+	return enabled
+}
+</script>

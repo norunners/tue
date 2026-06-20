@@ -198,10 +198,10 @@ type assetURL struct {
 	Suffix string
 }
 
-func splitAssetURL(rawURL string) (assetURL, bool) {
+func splitAssetURL(rawURL string) (*assetURL, bool) {
 	trimmed := strings.TrimSpace(rawURL)
 	if trimmed == "" {
-		return assetURL{}, false
+		return nil, false
 	}
 
 	cut := len(trimmed)
@@ -211,9 +211,9 @@ func splitAssetURL(rawURL string) (assetURL, bool) {
 		}
 	}
 	if cut == 0 {
-		return assetURL{}, false
+		return nil, false
 	}
-	return assetURL{
+	return &assetURL{
 		Path:   trimmed[:cut],
 		Suffix: trimmed[cut:],
 	}, true

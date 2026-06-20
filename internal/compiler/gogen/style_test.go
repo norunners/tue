@@ -4,7 +4,38 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/norunners/tue/internal/compiler/sfc"
 )
+
+func TestStyleFromBlock(t *testing.T) {
+	block := &sfc.Block{
+		Attrs:       []sfc.Attr{{Name: "scoped"}},
+		Content:     ".page { color: red; }",
+		ContentSpan: sfc.Span{Start: sfc.Position{Line: 2, Column: 1}},
+	}
+	expected := &Style{Source: block.Content, Scoped: true, Span: block.ContentSpan}
+	tests := []struct {
+		name     string
+		block    *sfc.Block
+		expected *Style
+		ok       bool
+	}{
+		{name: "style block", block: block, expected: expected, ok: true},
+		{name: "missing style block", block: nil, expected: nil, ok: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			actual, ok := StyleFromBlock(test.block)
+			if diff := cmp.Diff(test.ok, ok); diff != "" {
+				t.Errorf("mismatch style ok (-expected, +actual):\n%s", diff)
+			}
+			if diff := cmp.Diff(test.expected, actual); diff != "" {
+				t.Errorf("mismatch style (-expected, +actual):\n%s", diff)
+			}
+		})
+	}
+}
 
 func TestRewriteScopedCSSRewritesSelectorsAndNestedAtRules(t *testing.T) {
 	project, err := parseProjectFixture("testdata/scoped_css_rewrite/App.tue")

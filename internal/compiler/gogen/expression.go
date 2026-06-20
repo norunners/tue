@@ -9,6 +9,7 @@ import (
 
 	"github.com/dave/jennifer/jen"
 	"github.com/norunners/tue/internal/compiler/script"
+	"github.com/norunners/tue/internal/compiler/typecap"
 )
 
 type expressionGenerator struct {
@@ -104,11 +105,11 @@ func (g expressionGenerator) validSelector(selector *ast.SelectorExpr) bool {
 	if _, ok := structField(g.typeFields, baseType, selector.Sel.Name); ok {
 		return true
 	}
-	baseType = normalizeType(baseType)
+	baseType = typecap.Normalize(baseType)
 	if _, known := g.typeFields[baseType]; known {
 		return false
 	}
-	return !isScalarType(baseType) && !strings.HasPrefix(baseType, "[]") && !strings.HasPrefix(baseType, "map[")
+	return !typecap.Scalar(baseType) && !strings.HasPrefix(baseType, "[]") && !strings.HasPrefix(baseType, "map[")
 }
 
 func (g expressionGenerator) ident(ident *ast.Ident) jen.Code {
@@ -209,7 +210,7 @@ func (t expressionTyper) eval(expr ast.Expr) string {
 		return t.call(typed)
 	case *ast.IndexExpr:
 		base := t.eval(typed.X)
-		types, ok := iterableTypesFor(base)
+		types, ok := typecap.IterableFor(base)
 		if !ok {
 			return "unknown"
 		}
@@ -243,7 +244,7 @@ func (t expressionTyper) selector(selector *ast.SelectorExpr) string {
 	if !ok {
 		return "unknown"
 	}
-	return fieldValueType(field)
+	return fieldValueType(*field)
 }
 
 func (t expressionTyper) call(call *ast.CallExpr) string {
@@ -287,16 +288,16 @@ func (t expressionTyper) binary(binary *ast.BinaryExpr) string {
 		return "bool"
 	case token.ADD:
 		if left == "string" || right == "string" {
-			if assignableType("string", left) && assignableType("string", right) {
+			if typecap.Assignable("string", left) && typecap.Assignable("string", right) {
 				return "string"
 			}
 			return "unknown"
 		}
-		if isNumericType(left) && isNumericType(right) {
+		if typecap.Numeric(left) && typecap.Numeric(right) {
 			return left
 		}
 	case token.SUB, token.MUL, token.QUO, token.REM:
-		if isNumericType(left) && isNumericType(right) {
+		if typecap.Numeric(left) && typecap.Numeric(right) {
 			return left
 		}
 	}
@@ -309,7 +310,7 @@ func (t expressionTyper) unary(unary *ast.UnaryExpr) string {
 	case token.NOT:
 		return "bool"
 	case token.ADD, token.SUB:
-		if operand == "unknown" || isNumericType(operand) {
+		if operand == typecap.Unknown || typecap.Numeric(operand) {
 			return operand
 		}
 	}
@@ -326,82 +327,14 @@ func fieldValueType(field script.Field) string {
 	return "unknown"
 }
 
-type iterableTypes struct {
-	Item string
-	Key  string
-}
-
-func iterableTypesFor(typ string) (iterableTypes, bool) {
-	typ = normalizeType(typ)
-	if typ == "" || typ == "unknown" {
-		return iterableTypes{Item: "unknown", Key: "unknown"}, true
-	}
-	if strings.HasPrefix(typ, "[]") {
-		return iterableTypes{Item: strings.TrimSpace(strings.TrimPrefix(typ, "[]")), Key: "int"}, true
-	}
-	if strings.HasPrefix(typ, "[") {
-		close := closingTypeBracket(typ, 0)
-		if close != -1 && close+1 < len(typ) {
-			return iterableTypes{Item: strings.TrimSpace(typ[close+1:]), Key: "int"}, true
-		}
-	}
-	if strings.HasPrefix(typ, "map[") {
-		close := closingTypeBracket(typ, len("map"))
-		if close != -1 && close+1 < len(typ) {
-			return iterableTypes{
-				Item: strings.TrimSpace(typ[close+1:]),
-				Key:  strings.TrimSpace(typ[len("map["):close]),
-			}, true
-		}
-	}
-	if typ == "string" {
-		return iterableTypes{Item: "rune", Key: "int"}, true
-	}
-	return iterableTypes{}, false
-}
-
-func closingTypeBracket(typ string, open int) int {
-	if open < 0 || open >= len(typ) || typ[open] != '[' {
-		return -1
-	}
-	depth := 0
-	for i := open; i < len(typ); i++ {
-		switch typ[i] {
-		case '[':
-			depth++
-		case ']':
-			depth--
-			if depth == 0 {
-				return i
-			}
-		}
-	}
-	return -1
-}
-
-func isNumericType(typ string) bool {
-	switch normalizeType(typ) {
-	case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "float32", "float64", "rune", "byte":
-		return true
-	default:
-		return false
-	}
-}
-
-func isScalarType(typ string) bool {
-	switch normalizeType(typ) {
-	case "string", "bool":
-		return true
-	default:
-		return isNumericType(typ)
-	}
-}
-
-func structField(typeFields map[string]map[string]script.Field, typeName string, fieldName string) (script.Field, bool) {
-	fields, ok := typeFields[normalizeType(typeName)]
+func structField(typeFields map[string]map[string]script.Field, typeName string, fieldName string) (*script.Field, bool) {
+	fields, ok := typeFields[typecap.Normalize(typeName)]
 	if !ok {
-		return script.Field{}, false
+		return nil, false
 	}
 	field, ok := fields[fieldName]
-	return field, ok
+	if !ok {
+		return nil, false
+	}
+	return &field, true
 }

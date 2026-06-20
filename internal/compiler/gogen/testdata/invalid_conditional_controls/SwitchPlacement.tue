@@ -1,0 +1,18 @@
+<template>
+	<main>
+		<template v-switch="items"></template>
+		<div v-switch="status"></div>
+
+		<p v-case='"orphan"'>Orphan case</p>
+		<p v-default>Orphan default</p>
+	</main>
+</template>
+
+<script lang="go">
+package app
+
+type SwitchPlacement struct {
+	status string
+	items  []string
+}
+</script>

@@ -155,34 +155,66 @@ func TestGenerateProjectReportsUnsupportedConditionalExpressions(t *testing.T) {
 }
 
 func TestGenerateProjectReportsConditionalControlDiagnostics(t *testing.T) {
-	project, err := parseProjectFixture("testdata/invalid_conditional_controls/App.tue")
-	if err != nil {
-		t.Fatalf("parse project fixture: %v", err)
+	tests := []struct {
+		name     string
+		fixture  string
+		expected []diagnosticSummary
+	}{
+		{
+			name:    "conditional chains",
+			fixture: "testdata/invalid_conditional_controls/ConditionalChain.tue",
+			expected: []diagnosticSummary{
+				{Path: "ConditionalChain.tue", Message: `v-else-if must follow v-if or v-else-if`, Line: 3, Column: 6},
+				{Path: "ConditionalChain.tue", Message: `v-else must follow v-if or v-else-if`, Line: 4, Column: 6},
+				{Path: "ConditionalChain.tue", Message: `v-if expects bool, got string`, Line: 6, Column: 12},
+				{Path: "ConditionalChain.tue", Message: `v-else-if expression is not supported in the static render slice`, Line: 7, Column: 17},
+			},
+		},
+		{
+			name:    "switch placement",
+			fixture: "testdata/invalid_conditional_controls/SwitchPlacement.tue",
+			expected: []diagnosticSummary{
+				{Path: "SwitchPlacement.tue", Message: `v-switch expression type []string is not comparable`, Line: 3, Column: 23},
+				{Path: "SwitchPlacement.tue", Message: `v-switch requires at least one v-case or v-default child`, Line: 3, Column: 13},
+				{Path: "SwitchPlacement.tue", Message: `v-switch is only supported on <template>`, Line: 4, Column: 8},
+				{Path: "SwitchPlacement.tue", Message: `v-case must be a direct child of v-switch`, Line: 6, Column: 6},
+				{Path: "SwitchPlacement.tue", Message: `v-default must be a direct child of v-switch`, Line: 7, Column: 6},
+			},
+		},
+		{
+			name:    "switch branches",
+			fixture: "testdata/invalid_conditional_controls/SwitchBranches.tue",
+			expected: []diagnosticSummary{
+				{Path: "SwitchBranches.tue", Message: `v-switch children must use v-case or v-default`, Line: 3, Column: 3},
+				{Path: "SwitchBranches.tue", Message: `v-case expects string, got int`, Line: 4, Column: 14},
+				{Path: "SwitchBranches.tue", Message: `v-case must appear before v-default`, Line: 6, Column: 6},
+				{Path: "SwitchBranches.tue", Message: `v-switch may only have one v-default`, Line: 7, Column: 6},
+				{Path: "SwitchBranches.tue", Message: `v-switch branches cannot combine v-case or v-default with v-if, v-else-if, or v-else`, Line: 8, Column: 23},
+				{Path: "SwitchBranches.tue", Message: `v-case must appear before v-default`, Line: 8, Column: 6},
+			},
+		},
+		{
+			name:    "switch comparability",
+			fixture: "testdata/invalid_conditional_controls/SwitchComparability.tue",
+			expected: []diagnosticSummary{
+				{Path: "SwitchComparability.tue", Message: `v-switch expression type Filter is not comparable`, Line: 2, Column: 22},
+				{Path: "SwitchComparability.tue", Message: `v-switch expression type bytes.Buffer is not comparable`, Line: 5, Column: 22},
+			},
+		},
 	}
 
-	_, diagnostics := GenerateProject(*project)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			project, err := parseProjectFixture(test.fixture)
+			if err != nil {
+				t.Fatalf("parse project fixture: %v", err)
+			}
 
-	expected := []diagnosticSummary{
-		{Path: "App.tue", Message: `v-else-if must follow v-if or v-else-if`, Line: 3, Column: 6},
-		{Path: "App.tue", Message: `v-else must follow v-if or v-else-if`, Line: 4, Column: 6},
-		{Path: "App.tue", Message: `v-if expects bool, got string`, Line: 6, Column: 12},
-		{Path: "App.tue", Message: `v-else-if expression is not supported in the static render slice`, Line: 7, Column: 17},
-		{Path: "App.tue", Message: `v-switch expression type []string is not comparable`, Line: 9, Column: 23},
-		{Path: "App.tue", Message: `v-switch requires at least one v-case or v-default child`, Line: 9, Column: 13},
-		{Path: "App.tue", Message: `v-switch is only supported on <template>`, Line: 10, Column: 8},
-		{Path: "App.tue", Message: `v-switch children must use v-case or v-default`, Line: 12, Column: 4},
-		{Path: "App.tue", Message: `v-case expects string, got int`, Line: 13, Column: 15},
-		{Path: "App.tue", Message: `v-case must appear before v-default`, Line: 15, Column: 7},
-		{Path: "App.tue", Message: `v-switch may only have one v-default`, Line: 16, Column: 7},
-		{Path: "App.tue", Message: `v-switch branches cannot combine v-case or v-default with v-if, v-else-if, or v-else`, Line: 17, Column: 24},
-		{Path: "App.tue", Message: `v-case must appear before v-default`, Line: 17, Column: 7},
-		{Path: "App.tue", Message: `v-case must be a direct child of v-switch`, Line: 20, Column: 6},
-		{Path: "App.tue", Message: `v-default must be a direct child of v-switch`, Line: 21, Column: 6},
-		{Path: "App.tue", Message: `v-switch expression type Filter is not comparable`, Line: 22, Column: 23},
-		{Path: "App.tue", Message: `v-switch expression type bytes.Buffer is not comparable`, Line: 25, Column: 23},
-	}
-	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
-		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+			_, diagnostics := GenerateProject(*project)
+			if diff := cmp.Diff(test.expected, summarizeDiagnostics(diagnostics)); diff != "" {
+				t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+			}
+		})
 	}
 }
 
@@ -304,6 +336,7 @@ func TestGenerateProjectReportsUnsupportedLoopConstructs(t *testing.T) {
 		{Path: "App.tue", Message: `v-for source expression is not supported in the static render slice`, Line: 5, Column: 21},
 		{Path: "App.tue", Message: `v-for key expression is not supported in the static render slice`, Line: 6, Column: 34},
 		{Path: "App.tue", Message: `v-else cannot follow a conditional branch that also has v-for; use a <template v-for> wrapper`, Line: 8, Column: 6},
+		{Path: "App.tue", Message: `v-for source must be iterable, got bool`, Line: 9, Column: 21},
 	}, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}
@@ -1441,14 +1474,16 @@ func parseProjectFixtureFile(path string) (*File, error) {
 	if len(scriptDiagnostics) != 0 {
 		return nil, fmt.Errorf("script.ParseSFC diagnostics = %#v, expected none", scriptDiagnosticMessages(scriptDiagnostics))
 	}
-
-	return &File{
+	file := &File{
 		Path:         sfcFile.Path,
 		Template:     templateTree,
 		Script:       scriptFile,
 		ScriptSource: sfcFile.Script.Content,
-		Style:        StyleFromBlock(sfcFile.Style),
-	}, nil
+	}
+	if style, ok := StyleFromBlock(sfcFile.Style); ok {
+		file.Style = style
+	}
+	return file, nil
 }
 
 func parseProjectRoot(root string, paths []string) (*Project, error) {
@@ -1485,14 +1520,16 @@ func parseProjectRootFile(root string, path string) (*File, error) {
 	if len(scriptDiagnostics) != 0 {
 		return nil, fmt.Errorf("script.ParseSFC diagnostics = %#v, expected none", scriptDiagnosticMessages(scriptDiagnostics))
 	}
-
-	return &File{
+	file := &File{
 		Path:         sfcFile.Path,
 		Template:     templateTree,
 		Script:       scriptFile,
 		ScriptSource: sfcFile.Script.Content,
-		Style:        StyleFromBlock(sfcFile.Style),
-	}, nil
+	}
+	if style, ok := StyleFromBlock(sfcFile.Style); ok {
+		file.Style = style
+	}
+	return file, nil
 }
 
 func copyTestFixtureDir(root string, dir string) error {

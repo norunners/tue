@@ -553,7 +553,7 @@ func (e *extractor) extractMethods(component *Component, file *ast.File) {
 			continue
 		}
 
-		method := e.methodFromAST(function, receiverName, pointerReceiver, receiverSpan)
+		method := e.methodFromAST(function, receiverName, pointerReceiver, *receiverSpan)
 		if method.Name == "Init" {
 			if !e.validInit(function, component.Name, pointerReceiver) {
 				e.addDiagnostic(
@@ -569,9 +569,9 @@ func (e *extractor) extractMethods(component *Component, file *ast.File) {
 	}
 }
 
-func (e *extractor) receiver(function *ast.FuncDecl) (string, bool, sfc.Span, bool) {
+func (e *extractor) receiver(function *ast.FuncDecl) (string, bool, *sfc.Span, bool) {
 	if function.Recv == nil || len(function.Recv.List) != 1 {
-		return "", false, sfc.Span{}, false
+		return "", false, nil, false
 	}
 
 	receiverType := function.Recv.List[0].Type
@@ -583,9 +583,10 @@ func (e *extractor) receiver(function *ast.FuncDecl) (string, bool, sfc.Span, bo
 
 	ident, ok := receiverType.(*ast.Ident)
 	if !ok {
-		return "", false, sfc.Span{}, false
+		return "", false, nil, false
 	}
-	return ident.Name, pointerReceiver, e.nodeSpan(function.Recv.List[0].Type), true
+	span := e.nodeSpan(function.Recv.List[0].Type)
+	return ident.Name, pointerReceiver, &span, true
 }
 
 func (e *extractor) methodFromAST(function *ast.FuncDecl, receiverName string, pointerReceiver bool, receiverSpan sfc.Span) Method {

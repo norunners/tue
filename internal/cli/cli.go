@@ -280,16 +280,18 @@ func parseTueFile(root string, path string) (*parsedTueFile, []checker.Diagnosti
 	if len(diagnostics) != 0 {
 		return nil, diagnostics, nil
 	}
-
-	return &parsedTueFile{
+	parsed := &parsedTueFile{
 		CheckerFile: checker.File{
 			Path:     path,
 			Template: templateTree,
 			Script:   scriptFile,
 		},
 		ScriptSource: sfcFile.Script.Content,
-		Style:        gogen.StyleFromBlock(sfcFile.Style),
-	}, nil, nil
+	}
+	if style, ok := gogen.StyleFromBlock(sfcFile.Style); ok {
+		parsed.Style = style
+	}
+	return parsed, nil, nil
 }
 
 func sfcDiagnosticsFor(path string, diagnostics []sfc.Diagnostic) []checker.Diagnostic {
