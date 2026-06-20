@@ -163,7 +163,7 @@ func (p *parser) parseElement(start int) (*Node, int) {
 		return node, tag.contentFrom
 	}
 
-	children, close, found := p.parseElementChildren(tag)
+	children, close, found := p.parseElementChildren(*tag)
 	node.Children = children
 	if !found {
 		p.addDiagnostic(fmt.Sprintf("missing closing </%s> tag", tag.name), tag.span)
@@ -175,7 +175,7 @@ func (p *parser) parseElement(start int) (*Node, int) {
 	return node, p.relativeOffset(close.span.End)
 }
 
-func (p *parser) parseElementChildren(tag openTag) ([]*Node, closeTag, bool) {
+func (p *parser) parseElementChildren(tag openTag) ([]*Node, *closeTag, bool) {
 	var children []*Node
 	offset := tag.contentFrom
 
@@ -204,7 +204,7 @@ func (p *parser) parseElementChildren(tag openTag) ([]*Node, closeTag, bool) {
 		offset = next
 	}
 
-	return children, closeTag{}, false
+	return children, nil, false
 }
 
 func (p *parser) parseText(start int) (*Node, int) {
@@ -288,10 +288,10 @@ func (p *parser) parseComment(start int) (*Node, int) {
 	}, end
 }
 
-func (p *parser) parseOpenTag(start int) (openTag, Diagnostic, bool) {
+func (p *parser) parseOpenTag(start int) (*openTag, Diagnostic, bool) {
 	end, diagnostic, ok := p.findOpenTagEnd(start)
 	if !ok {
-		return openTag{}, diagnostic, false
+		return nil, diagnostic, false
 	}
 
 	bodyStart := start + 1
@@ -310,7 +310,7 @@ func (p *parser) parseOpenTag(start int) (openTag, Diagnostic, bool) {
 
 	nameStart := bodyStart
 	if nameStart >= bodyEnd || !isTagNameStart(rune(p.source[nameStart])) {
-		return openTag{}, Diagnostic{
+		return nil, Diagnostic{
 			Message: "malformed opening tag",
 			Span:    p.span(start, end),
 		}, false
@@ -324,7 +324,7 @@ func (p *parser) parseOpenTag(start int) (openTag, Diagnostic, bool) {
 	attrs, attrDiagnostics := p.parseAttrs(nameEnd, bodyEnd)
 	p.diagnostics = append(p.diagnostics, attrDiagnostics...)
 
-	return openTag{
+	return &openTag{
 		name:        p.source[nameStart:nameEnd],
 		attrs:       attrs,
 		span:        p.span(start, end),
@@ -334,11 +334,11 @@ func (p *parser) parseOpenTag(start int) (openTag, Diagnostic, bool) {
 	}, Diagnostic{}, true
 }
 
-func (p *parser) parseCloseTag(start int) (closeTag, int, bool) {
+func (p *parser) parseCloseTag(start int) (*closeTag, int, bool) {
 	end := p.advancePastTag(start)
 	if end == len(p.source) && (end == start || p.source[end-1] != '>') {
 		p.addDiagnostic("unterminated closing tag", p.span(start, end))
-		return closeTag{}, end, false
+		return nil, end, false
 	}
 
 	bodyStart := start + 2
@@ -347,7 +347,7 @@ func (p *parser) parseCloseTag(start int) (closeTag, int, bool) {
 	bodyEnd = trimRightSpaces(p.source, bodyStart, bodyEnd)
 	if bodyStart >= bodyEnd || !isTagNameStart(rune(p.source[bodyStart])) {
 		p.addDiagnostic("malformed closing tag", p.span(start, end))
-		return closeTag{}, end, false
+		return nil, end, false
 	}
 
 	nameEnd := bodyStart + 1
@@ -356,10 +356,10 @@ func (p *parser) parseCloseTag(start int) (closeTag, int, bool) {
 	}
 	if skipSpaces(p.source, nameEnd, bodyEnd) != bodyEnd {
 		p.addDiagnostic("malformed closing tag", p.span(start, end))
-		return closeTag{}, end, false
+		return nil, end, false
 	}
 
-	return closeTag{
+	return &closeTag{
 		name: p.source[bodyStart:nameEnd],
 		span: p.span(start, end),
 	}, end, true
@@ -406,7 +406,7 @@ func (p *parser) parseAttrs(start int, end int) ([]Attr, []Diagnostic) {
 			break
 		}
 
-		attr, attrDiagnostics := p.classifyAttr(syntax)
+		attr, attrDiagnostics := p.classifyAttr(*syntax)
 		diagnostics = append(diagnostics, attrDiagnostics...)
 		attrs = append(attrs, attr)
 		offset = next
@@ -415,9 +415,9 @@ func (p *parser) parseAttrs(start int, end int) ([]Attr, []Diagnostic) {
 	return attrs, diagnostics
 }
 
-func (p *parser) parseAttr(start int, end int) (attrSyntax, int, Diagnostic, bool) {
+func (p *parser) parseAttr(start int, end int) (*attrSyntax, int, Diagnostic, bool) {
 	if !isAttrNameStart(rune(p.source[start])) {
-		return attrSyntax{}, end, Diagnostic{
+		return nil, end, Diagnostic{
 			Message: "malformed attribute",
 			Span:    p.span(start, end),
 		}, false
@@ -436,13 +436,13 @@ func (p *parser) parseAttr(start int, end int) (attrSyntax, int, Diagnostic, boo
 
 	offset := skipSpaces(p.source, nameEnd, end)
 	if offset >= end || p.source[offset] != '=' {
-		return syntax, nameEnd, Diagnostic{}, true
+		return &syntax, nameEnd, Diagnostic{}, true
 	}
 
 	syntax.hasValue = true
 	valueStart := skipSpaces(p.source, offset+1, end)
 	if valueStart >= end {
-		return attrSyntax{}, end, Diagnostic{
+		return nil, end, Diagnostic{
 			Message: "missing attribute value",
 			Span:    p.span(start, end),
 		}, false
@@ -458,7 +458,7 @@ func (p *parser) parseAttr(start int, end int) (attrSyntax, int, Diagnostic, boo
 			valueEnd++
 		}
 		if valueEnd >= end {
-			return attrSyntax{}, end, Diagnostic{
+			return nil, end, Diagnostic{
 				Message: "unterminated quoted attribute",
 				Span:    p.span(start, end),
 			}, false
@@ -475,7 +475,7 @@ func (p *parser) parseAttr(start int, end int) (attrSyntax, int, Diagnostic, boo
 	syntax.value = p.source[valueStart:valueEnd]
 	syntax.valueSpan = p.span(valueStart, valueEnd)
 	syntax.span = p.span(start, spanEnd)
-	return syntax, spanEnd, Diagnostic{}, true
+	return &syntax, spanEnd, Diagnostic{}, true
 }
 
 func (p *parser) classifyAttr(syntax attrSyntax) (Attr, []Diagnostic) {

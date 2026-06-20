@@ -1,0 +1,21 @@
+<template>
+	<main>
+		<p v-else-if="ready">Orphan else-if</p>
+		<p v-else>Orphan else</p>
+
+		<p v-if="ready">Ready</p>
+		<p v-else-if="status">Wrong condition type</p>
+		<p v-else-if="ready" v-for="item in items" :key="item">Loop branch</p>
+		<p v-else>Done</p>
+	</main>
+</template>
+
+<script lang="go">
+package fixtures
+
+type Parent struct {
+	ready  bool
+	status string
+	items  []string
+}
+</script>

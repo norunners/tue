@@ -45,13 +45,16 @@ type Block struct {
 }
 
 // Attr returns the first attribute with name.
-func (b *Block) Attr(name string) (Attr, bool) {
-	for _, attr := range b.Attrs {
-		if attr.Name == name {
-			return attr, true
+func (b *Block) Attr(name string) (*Attr, bool) {
+	if b == nil {
+		return nil, false
+	}
+	for index := range b.Attrs {
+		if b.Attrs[index].Name == name {
+			return &b.Attrs[index], true
 		}
 	}
-	return Attr{}, false
+	return nil, false
 }
 
 // HasAttr reports whether the block has an attribute with name.

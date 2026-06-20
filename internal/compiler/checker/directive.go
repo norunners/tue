@@ -3,10 +3,10 @@ package checker
 import (
 	"fmt"
 	"go/ast"
-	"strings"
 
 	"github.com/norunners/tue/internal/compiler/sfc"
 	gotemplate "github.com/norunners/tue/internal/compiler/template"
+	"github.com/norunners/tue/internal/compiler/typecap"
 )
 
 func (c *fileChecker) checkCommonAttrs(node *gotemplate.Node, scope *scope, checkEvents bool) {
@@ -47,7 +47,7 @@ func (c *fileChecker) checkSwitch(node *gotemplate.Node, attr gotemplate.Attr, s
 	}
 
 	switchValue := c.checkExpression(attr.Expression, attr.ExpressionSpan, scope)
-	if !isSwitchComparableType(switchValue.Type, c.comparable) {
+	if !typecap.Comparable(switchValue.Type, c.comparable) {
 		c.add(fmt.Sprintf("v-switch expression type %s is not comparable", displayType(switchValue.Type)), attr.ExpressionSpan)
 	}
 	if !hostValid {
@@ -72,7 +72,7 @@ func (c *fileChecker) checkSwitch(node *gotemplate.Node, attr gotemplate.Attr, s
 				c.add("v-case must appear before v-default", caseAttr.DirectiveSpan)
 			}
 			caseValue := c.checkExpression(caseAttr.Expression, caseAttr.ExpressionSpan, scope)
-			if !switchTypesCompatible(switchValue.Type, caseValue.Type) {
+			if !typecap.SwitchCompatible(switchValue.Type, caseValue.Type) {
 				c.add(
 					fmt.Sprintf("v-case expects %s, got %s", displayType(switchValue.Type), displayType(caseValue.Type)),
 					caseAttr.ExpressionSpan,
@@ -106,7 +106,7 @@ func (c *fileChecker) checkSwitch(node *gotemplate.Node, attr gotemplate.Attr, s
 
 func (c *fileChecker) checkHTML(node *gotemplate.Node, attr gotemplate.Attr, scope *scope) {
 	value := c.checkExpression(attr.Expression, attr.ExpressionSpan, scope)
-	if !isTrustedHTMLType(value.Type) {
+	if !typecap.TrustedHTML(value.Type) {
 		c.add(fmt.Sprintf("v-html expects tue.TrustedHTML, got %s", displayType(value.Type)), attr.ExpressionSpan)
 	}
 	if node == nil || node.IsComponent || node.Tag == "template" || node.Tag == "slot" {
@@ -163,11 +163,10 @@ func (c *fileChecker) checkFor(node *gotemplate.Node, attr gotemplate.Attr, scop
 
 	sourceSpan := spanWithin(attr.ExpressionSpan, attr.Expression, clause.SourceStart, clause.SourceEnd)
 	source := c.checkExpression(clause.Source, sourceSpan, scope)
-	iterableTypes, iterable := iterableTypesFor(source.Type)
+	iterableTypes, iterable := typecap.IterableFor(source.Type)
 	if !iterable {
 		c.add(fmt.Sprintf("v-for source must be iterable, got %s", displayType(source.Type)), sourceSpan)
-		iterableTypes.Item = unknownType
-		iterableTypes.Key = unknownType
+		iterableTypes = &typecap.Iterable{Item: unknownType, Key: unknownType}
 	}
 
 	if !hasBoundKey(node) {
@@ -193,8 +192,8 @@ func (c *fileChecker) checkModel(node *gotemplate.Node, attr gotemplate.Attr, sc
 		return
 	}
 
-	target := modelTarget(expr, scope)
-	if target == nil || !target.Writable {
+	target, ok := modelTarget(expr, scope)
+	if !ok || !target.Writable {
 		c.add(fmt.Sprintf("v-model target %q is not writable", attr.Expression), attr.ExpressionSpan)
 	}
 
@@ -206,29 +205,25 @@ func (c *fileChecker) checkModel(node *gotemplate.Node, attr gotemplate.Attr, sc
 	c.expectType(binding.ValueType, value.Type, "v-model", attr.ExpressionSpan)
 }
 
-func (c *fileChecker) expectEventMethod(name string, span sfc.Span, scope *scope, requireFuncSignature bool) (symbol, bool) {
+func (c *fileChecker) expectEventMethod(name string, span sfc.Span, scope *scope, requireFuncSignature bool) (*symbol, bool) {
 	method, ok := scope.lookup(name)
 	if !ok || !method.Method {
 		c.add(fmt.Sprintf("event handler %q is not a method on %s", name, c.component.Name), span)
-		return symbol{}, false
+		return nil, false
 	}
 	if requireFuncSignature && (method.Parameters != 0 || method.Results != 0) {
 		c.add(fmt.Sprintf("event handler %q must have signature func()", name), span)
-		return method, false
+		return nil, false
 	}
 	return method, true
 }
 
-func modelTarget(expr ast.Expr, scope *scope) *symbol {
+func modelTarget(expr ast.Expr, scope *scope) (*symbol, bool) {
 	switch typed := expr.(type) {
 	case *ast.Ident:
-		symbol, ok := scope.lookup(typed.Name)
-		if !ok {
-			return nil
-		}
-		return &symbol
+		return scope.lookup(typed.Name)
 	default:
-		return nil
+		return nil, false
 	}
 }
 
@@ -236,27 +231,27 @@ type nativeModel struct {
 	ValueType string
 }
 
-func nativeModelBinding(node *gotemplate.Node) (nativeModel, bool) {
+func nativeModelBinding(node *gotemplate.Node) (*nativeModel, bool) {
 	if node == nil || node.IsComponent {
-		return nativeModel{}, false
+		return nil, false
 	}
 
 	switch node.Tag {
 	case "input":
 		inputType, _ := staticAttrValue(node, "type")
 		if isTextInputType(inputType) {
-			return nativeModel{ValueType: "string"}, true
+			return &nativeModel{ValueType: "string"}, true
 		}
 		if inputType == "checkbox" {
-			return nativeModel{ValueType: "bool"}, true
+			return &nativeModel{ValueType: "bool"}, true
 		}
-		return nativeModel{}, false
+		return nil, false
 	case "select":
-		return nativeModel{ValueType: "string"}, true
+		return &nativeModel{ValueType: "string"}, true
 	case "textarea":
-		return nativeModel{ValueType: "string"}, true
+		return &nativeModel{ValueType: "string"}, true
 	default:
-		return nativeModel{}, false
+		return nil, false
 	}
 }
 
@@ -281,13 +276,16 @@ func modelUnsupportedMessage(node *gotemplate.Node) string {
 	return "v-model is only supported on text inputs, textareas, checkboxes, and selects"
 }
 
-func directiveAttr(node *gotemplate.Node, kind gotemplate.DirectiveKind) (gotemplate.Attr, bool) {
-	for _, attr := range node.Attrs {
-		if attr.Kind == gotemplate.AttrDirective && attr.Directive == kind {
-			return attr, true
+func directiveAttr(node *gotemplate.Node, kind gotemplate.DirectiveKind) (*gotemplate.Attr, bool) {
+	if node == nil {
+		return nil, false
+	}
+	for index := range node.Attrs {
+		if node.Attrs[index].Kind == gotemplate.AttrDirective && node.Attrs[index].Directive == kind {
+			return &node.Attrs[index], true
 		}
 	}
-	return gotemplate.Attr{}, false
+	return nil, false
 }
 
 func hasDirective(node *gotemplate.Node, kind gotemplate.DirectiveKind) bool {
@@ -310,7 +308,7 @@ func isControlDirective(kind gotemplate.DirectiveKind) bool {
 	}
 }
 
-func firstConditionalDirective(node *gotemplate.Node) (gotemplate.Attr, bool) {
+func firstConditionalDirective(node *gotemplate.Node) (*gotemplate.Attr, bool) {
 	for _, kind := range []gotemplate.DirectiveKind{
 		gotemplate.DirectiveIf,
 		gotemplate.DirectiveElseIf,
@@ -320,29 +318,7 @@ func firstConditionalDirective(node *gotemplate.Node) (gotemplate.Attr, bool) {
 			return attr, true
 		}
 	}
-	return gotemplate.Attr{}, false
-}
-
-func switchTypesCompatible(switchType string, caseType string) bool {
-	return assignable(switchType, caseType) || assignable(caseType, switchType)
-}
-
-func isSwitchComparableType(typ string, comparable map[string]bool) bool {
-	typ = strings.TrimSpace(typ)
-	if strings.HasPrefix(typ, "*") {
-		return true
-	}
-	typ = normalizeType(typ)
-	if typ == "" || typ == unknownType {
-		return true
-	}
-	if declared, ok := comparable[typ]; ok {
-		return declared
-	}
-	return typ != "any" && typ != "interface{}" &&
-		!strings.HasPrefix(typ, "[]") &&
-		!strings.HasPrefix(typ, "map[") &&
-		!strings.HasPrefix(typ, "func(")
+	return nil, false
 }
 
 func hasBoundKey(node *gotemplate.Node) bool {
@@ -366,13 +342,4 @@ func staticAttrValue(node *gotemplate.Node, name string) (string, bool) {
 func isNamedSlotAttr(attr gotemplate.Attr) bool {
 	return (attr.Kind == gotemplate.AttrStatic && attr.Name == "name") ||
 		(attr.Kind == gotemplate.AttrBind && attr.Argument == "name")
-}
-
-func isTrustedHTMLType(typ string) bool {
-	switch normalizeType(typ) {
-	case "tue.TrustedHTML", "TrustedHTML":
-		return true
-	default:
-		return false
-	}
 }

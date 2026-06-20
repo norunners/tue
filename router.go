@@ -131,8 +131,8 @@ func (r *Router) View() VNode {
 	}
 	match := r.Current()
 	if match.Found {
-		route := r.routeForPattern(match.Pattern)
-		if route != nil && route.Render != nil {
+		route, ok := r.routeForPattern(match.Pattern)
+		if ok && route.Render != nil {
 			return route.Render(match)
 		}
 		return Fragment(nil)
@@ -172,13 +172,13 @@ func (r *Router) match(path string) RouteMatch {
 	return RouteMatch{Path: target.Path, RawQuery: target.RawQuery, Query: target.Query}
 }
 
-func (r *Router) routeForPattern(pattern string) *Route {
+func (r *Router) routeForPattern(pattern string) (*Route, bool) {
 	for i := range r.routes {
 		if r.routes[i].pattern == pattern {
-			return &r.routes[i].route
+			return &r.routes[i].route, true
 		}
 	}
-	return nil
+	return nil, false
 }
 
 func compileRoutes(routes []Route) []compiledRoute {

@@ -415,15 +415,15 @@ func withComponentScope(component *Comp, fn func()) {
 	fn()
 }
 
-func currentComponentScope() *Comp {
+func currentComponentScope() (*Comp, bool) {
 	if len(componentScopeStack) == 0 {
-		return nil
+		return nil, false
 	}
-	return componentScopeStack[len(componentScopeStack)-1]
+	return componentScopeStack[len(componentScopeStack)-1], true
 }
 
 func registerEffectCleanup(cleanup func()) {
-	if component := currentComponentScope(); component != nil {
+	if component, ok := currentComponentScope(); ok {
 		component.addEffectCleanup(cleanup)
 	}
 }

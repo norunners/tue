@@ -16,6 +16,7 @@ import (
 	"github.com/norunners/tue/internal/compiler/script"
 	"github.com/norunners/tue/internal/compiler/sfc"
 	gotemplate "github.com/norunners/tue/internal/compiler/template"
+	"github.com/norunners/tue/internal/compiler/typecap"
 )
 
 const tueImportPath = "github.com/norunners/tue"
@@ -312,23 +313,23 @@ func (g *fileGenerator) renderNodeList(nodes []*gotemplate.Node) []jen.Code {
 		if g.ignorableControlSibling(node) {
 			continue
 		}
-		if attr := nodeDirectiveAttr(node, gotemplate.DirectiveCase); attr != nil {
+		if attr, ok := nodeDirectiveAttr(node, gotemplate.DirectiveCase); ok {
 			g.add("v-case must be a direct child of v-switch", attr.DirectiveSpan)
 			continue
 		}
-		if attr := nodeDirectiveAttr(node, gotemplate.DirectiveDefault); attr != nil {
+		if attr, ok := nodeDirectiveAttr(node, gotemplate.DirectiveDefault); ok {
 			g.add("v-default must be a direct child of v-switch", attr.DirectiveSpan)
 			continue
 		}
-		if attr := nodeDirectiveAttr(node, gotemplate.DirectiveElseIf); attr != nil {
+		if attr, ok := nodeDirectiveAttr(node, gotemplate.DirectiveElseIf); ok {
 			g.add("v-else-if must follow v-if or v-else-if", attr.DirectiveSpan)
 			continue
 		}
-		if attr := nodeDirectiveAttr(node, gotemplate.DirectiveElse); attr != nil {
+		if attr, ok := nodeDirectiveAttr(node, gotemplate.DirectiveElse); ok {
 			g.add("v-else must follow v-if or v-else-if", attr.DirectiveSpan)
 			continue
 		}
-		if attr := nodeDirectiveAttr(node, gotemplate.DirectiveIf); attr != nil {
+		if attr, ok := nodeDirectiveAttr(node, gotemplate.DirectiveIf); ok {
 			branches, end := g.conditionalChain(nodes, index, *attr)
 			if len(branches) > 1 {
 				if code, ok := g.renderConditionalChain(branches); ok {
@@ -358,12 +359,12 @@ func (g *fileGenerator) conditionalChain(nodes []*gotemplate.Node, start int, if
 		if g.ignorableControlSibling(node) {
 			continue
 		}
-		if attr := nodeDirectiveAttr(node, gotemplate.DirectiveElseIf); attr != nil {
+		if attr, ok := nodeDirectiveAttr(node, gotemplate.DirectiveElseIf); ok {
 			branches = append(branches, conditionalBranch{node: node, attr: *attr})
 			end = index
 			continue
 		}
-		if attr := nodeDirectiveAttr(node, gotemplate.DirectiveElse); attr != nil {
+		if attr, ok := nodeDirectiveAttr(node, gotemplate.DirectiveElse); ok {
 			branches = append(branches, conditionalBranch{node: node, attr: *attr})
 			end = index
 		}
@@ -390,8 +391,8 @@ func (g *fileGenerator) renderNode(node *gotemplate.Node) (jen.Code, bool) {
 	if node == nil {
 		return nil, false
 	}
-	attr := nodeDirectiveAttr(node, gotemplate.DirectiveFor)
-	if attr != nil {
+	attr, hasFor := nodeDirectiveAttr(node, gotemplate.DirectiveFor)
+	if hasFor {
 		return g.renderFor(node, *attr)
 	}
 
@@ -399,11 +400,11 @@ func (g *fileGenerator) renderNode(node *gotemplate.Node) (jen.Code, bool) {
 }
 
 func (g *fileGenerator) renderNodeAfterFor(node *gotemplate.Node) (jen.Code, bool) {
-	if attr := nodeDirectiveAttr(node, gotemplate.DirectiveSwitch); attr != nil {
+	if attr, ok := nodeDirectiveAttr(node, gotemplate.DirectiveSwitch); ok {
 		return g.renderSwitch(node, *attr)
 	}
-	attr := nodeDirectiveAttr(node, gotemplate.DirectiveIf)
-	if attr != nil {
+	attr, hasIf := nodeDirectiveAttr(node, gotemplate.DirectiveIf)
+	if hasIf {
 		return g.renderIf(node, *attr)
 	}
 
@@ -417,8 +418,8 @@ func (g *fileGenerator) renderFor(node *gotemplate.Node, attr gotemplate.Attr) (
 		return nil, false
 	}
 
-	keyAttr := nodeBindAttr(node, "key")
-	if keyAttr == nil {
+	keyAttr, hasKey := nodeBindAttr(node, "key")
+	if !hasKey {
 		g.add("v-for requires a :key attribute", attr.DirectiveSpan)
 		return nil, false
 	}
@@ -429,9 +430,13 @@ func (g *fileGenerator) renderFor(node *gotemplate.Node, attr gotemplate.Attr) (
 		return nil, false
 	}
 
-	names := g.freshForNames(clause)
+	names := g.freshForNames(*clause)
 	sourceType := g.expressionType(clause.Source)
-	types, _ := iterableTypesFor(sourceType)
+	types, iterable := typecap.IterableFor(sourceType)
+	if !iterable {
+		g.add(fmt.Sprintf("v-for source must be iterable, got %s", displayType(sourceType)), sourceSpan)
+		return nil, false
+	}
 
 	locals := map[string]string{clause.Item: names.item}
 	localTypes := map[string]string{clause.Item: types.Item}
@@ -510,19 +515,19 @@ func (g *fileGenerator) renderConditionalChain(branches []conditionalBranch) (je
 	ok := true
 	statements := make([]jen.Code, 0, len(branches)+1)
 	for index, branch := range branches {
-		if switchAttr := nodeDirectiveAttr(branch.node, gotemplate.DirectiveSwitch); switchAttr != nil {
+		if switchAttr, ok := nodeDirectiveAttr(branch.node, gotemplate.DirectiveSwitch); ok {
 			g.add("v-switch cannot be combined with v-if, v-else-if, or v-else", switchAttr.DirectiveSpan)
 			ok = false
 		}
-		if caseAttr := nodeDirectiveAttr(branch.node, gotemplate.DirectiveCase); caseAttr != nil {
+		if caseAttr, ok := nodeDirectiveAttr(branch.node, gotemplate.DirectiveCase); ok {
 			g.add("v-case must be a direct child of v-switch", caseAttr.DirectiveSpan)
 			ok = false
 		}
-		if defaultAttr := nodeDirectiveAttr(branch.node, gotemplate.DirectiveDefault); defaultAttr != nil {
+		if defaultAttr, ok := nodeDirectiveAttr(branch.node, gotemplate.DirectiveDefault); ok {
 			g.add("v-default must be a direct child of v-switch", defaultAttr.DirectiveSpan)
 			ok = false
 		}
-		if nodeDirectiveAttr(branch.node, gotemplate.DirectiveFor) != nil {
+		if _, ok := nodeDirectiveAttr(branch.node, gotemplate.DirectiveFor); ok {
 			switch {
 			case index == 0 && len(branches) > 1:
 				next := branches[1].attr
@@ -571,7 +576,7 @@ func (g *fileGenerator) renderConditionalExpression(attr gotemplate.Attr) (jen.C
 		return nil, false
 	}
 	conditionType := g.expressionType(attr.Expression)
-	if !assignableType("bool", conditionType) {
+	if !typecap.Assignable("bool", conditionType) {
 		g.add(fmt.Sprintf("%s expects bool, got %s", attr.RawName, displayType(conditionType)), attr.ExpressionSpan)
 		return nil, false
 	}
@@ -585,22 +590,22 @@ func (g *fileGenerator) renderSwitch(node *gotemplate.Node, attr gotemplate.Attr
 		g.add("v-switch is only supported on <template>", attr.DirectiveSpan)
 		ok = false
 	}
-	if conditionalAttr := nodeConditionalAttr(node); conditionalAttr != nil {
+	if conditionalAttr, ok := nodeConditionalAttr(node); ok {
 		g.add("v-switch cannot be combined with v-if, v-else-if, or v-else", conditionalAttr.DirectiveSpan)
 		ok = false
 	}
-	if caseAttr := nodeDirectiveAttr(node, gotemplate.DirectiveCase); caseAttr != nil {
+	if caseAttr, ok := nodeDirectiveAttr(node, gotemplate.DirectiveCase); ok {
 		g.add("v-switch cannot be combined with v-case on the same element", caseAttr.DirectiveSpan)
 		ok = false
 	}
-	if defaultAttr := nodeDirectiveAttr(node, gotemplate.DirectiveDefault); defaultAttr != nil {
+	if defaultAttr, ok := nodeDirectiveAttr(node, gotemplate.DirectiveDefault); ok {
 		g.add("v-switch cannot be combined with v-default on the same element", defaultAttr.DirectiveSpan)
 		ok = false
 	}
 
 	switchValue, valueOK := g.renderExpressionFor("v-switch", attr.Expression, attr.ExpressionSpan)
 	switchType := g.expressionType(attr.Expression)
-	if !isSwitchComparableType(switchType, g.comparable) {
+	if !typecap.Comparable(switchType, g.comparable) {
 		g.add(fmt.Sprintf("v-switch expression type %s is not comparable", displayType(switchType)), attr.ExpressionSpan)
 		ok = false
 	}
@@ -622,31 +627,31 @@ func (g *fileGenerator) renderSwitch(node *gotemplate.Node, attr gotemplate.Attr
 		}
 		branchCount++
 
-		caseAttr := nodeDirectiveAttr(branch, gotemplate.DirectiveCase)
-		defaultAttr := nodeDirectiveAttr(branch, gotemplate.DirectiveDefault)
+		caseAttr, hasCase := nodeDirectiveAttr(branch, gotemplate.DirectiveCase)
+		defaultAttr, hasDefault := nodeDirectiveAttr(branch, gotemplate.DirectiveDefault)
 		branchRenderable := true
-		if conditionalAttr := nodeConditionalAttr(branch); conditionalAttr != nil {
+		if conditionalAttr, ok := nodeConditionalAttr(branch); ok {
 			g.add("v-switch branches cannot combine v-case or v-default with v-if, v-else-if, or v-else", conditionalAttr.DirectiveSpan)
 			branchRenderable = false
 			ok = false
 		}
-		if nestedSwitch := nodeDirectiveAttr(branch, gotemplate.DirectiveSwitch); nestedSwitch != nil {
+		if nestedSwitch, ok := nodeDirectiveAttr(branch, gotemplate.DirectiveSwitch); ok {
 			g.add("a v-switch branch must nest another v-switch inside its content", nestedSwitch.DirectiveSpan)
 			branchRenderable = false
 			ok = false
 		}
 		switch {
-		case caseAttr != nil && defaultAttr != nil:
+		case hasCase && hasDefault:
 			g.add("v-switch branch cannot use both v-case and v-default", defaultAttr.DirectiveSpan)
 			ok = false
-		case caseAttr != nil:
+		case hasCase:
 			if defaultSeen {
 				g.add("v-case must appear before v-default", caseAttr.DirectiveSpan)
 				ok = false
 			}
 			caseValue, caseOK := g.renderExpressionFor("v-case", caseAttr.Expression, caseAttr.ExpressionSpan)
 			caseType := g.expressionType(caseAttr.Expression)
-			if !switchTypesCompatible(switchType, caseType) {
+			if !typecap.SwitchCompatible(switchType, caseType) {
 				g.add(fmt.Sprintf("v-case expects %s, got %s", displayType(switchType), displayType(caseType)), caseAttr.ExpressionSpan)
 				caseOK = false
 			}
@@ -660,7 +665,7 @@ func (g *fileGenerator) renderSwitch(node *gotemplate.Node, attr gotemplate.Attr
 			} else {
 				ok = false
 			}
-		case defaultAttr != nil:
+		case hasDefault:
 			if defaultSeen {
 				g.add("v-switch may only have one v-default", defaultAttr.DirectiveSpan)
 				ok = false
@@ -709,14 +714,14 @@ func (g *fileGenerator) renderElement(node *gotemplate.Node) (jen.Code, bool) {
 		return g.renderComponent(node)
 	}
 
-	htmlAttr := nodeDirectiveAttr(node, gotemplate.DirectiveHTML)
+	htmlAttr, hasHTML := nodeDirectiveAttr(node, gotemplate.DirectiveHTML)
 	attrs, events, ok := g.renderAttrsAndEvents(node)
 	if !ok {
 		return nil, false
 	}
 	attrs = g.withScopeAttr(attrs)
 
-	if htmlAttr != nil {
+	if hasHTML {
 		innerHTML, htmlOK := g.renderHTMLBinding(*htmlAttr)
 		if !htmlOK {
 			return nil, false
@@ -950,37 +955,37 @@ type componentEventField struct {
 	Value jen.Code
 }
 
-func (g *fileGenerator) renderComponentEventField(node *gotemplate.Node, child componentBinding, attr gotemplate.Attr) (componentEventField, bool) {
+func (g *fileGenerator) renderComponentEventField(node *gotemplate.Node, child componentBinding, attr gotemplate.Attr) (*componentEventField, bool) {
 	event, found := child.events[attr.Argument]
 	if !found {
 		g.add(fmt.Sprintf("component %q has no event %q", node.Tag, attr.Argument), attr.ArgumentSpan)
-		return componentEventField{}, false
+		return nil, false
 	}
-	if !isNoArgFunc(event.Type) {
+	if !typecap.NoArgFunc(event.Type) {
 		g.add(fmt.Sprintf("component %q event %q must have signature func()", node.Tag, attr.Argument), attr.ArgumentSpan)
-		return componentEventField{}, false
+		return nil, false
 	}
 
 	methodName, callWithArgs, ok := g.eventHandlerMethod(attr)
 	if !ok {
-		return componentEventField{}, false
+		return nil, false
 	}
 	if callWithArgs {
 		g.add(fmt.Sprintf("event handler %q does not accept arguments", methodName), attr.ExpressionSpan)
-		return componentEventField{}, false
+		return nil, false
 	}
 
 	method, ok := g.methods[methodName]
 	if !ok {
 		g.add(fmt.Sprintf("event handler %q is not a method on %s", methodName, g.component.Name), attr.ExpressionSpan)
-		return componentEventField{}, false
+		return nil, false
 	}
 	if len(method.Parameters) != 0 || len(method.Results) != 0 {
 		g.add(fmt.Sprintf("event handler %q must have signature func()", methodName), attr.ExpressionSpan)
-		return componentEventField{}, false
+		return nil, false
 	}
 
-	return componentEventField{
+	return &componentEventField{
 		Name:  event.Name,
 		Value: jen.Id("component").Dot(methodName),
 	}, true
@@ -994,7 +999,7 @@ func (g *fileGenerator) renderStaticComponentProp(componentName string, prop scr
 		actual = "bool"
 		span = attr.NameSpan
 	}
-	if !assignableType(expected, actual) {
+	if !typecap.Assignable(expected, actual) {
 		g.add(
 			fmt.Sprintf("component %q prop %q expects %s, got %s", componentName, prop.Name, displayType(expected), displayType(actual)),
 			span,
@@ -1025,11 +1030,11 @@ func (g *fileGenerator) renderBoundComponentProp(prop script.Prop, attr gotempla
 func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code, []jen.Code, bool) {
 	attrs := make([]jen.Code, 0, len(node.Attrs))
 	events := make([]jen.Code, 0, len(node.Attrs))
-	hasClassBinding := nodeBindAttr(node, "class") != nil
-	hasStyleBinding := nodeBindAttr(node, "style") != nil
-	modelAttr := nodeDirectiveAttr(node, gotemplate.DirectiveModel)
+	_, hasClassBinding := nodeBindAttr(node, "class")
+	_, hasStyleBinding := nodeBindAttr(node, "style")
+	modelAttr, hasModel := nodeDirectiveAttr(node, gotemplate.DirectiveModel)
 	modelControlledAttr := ""
-	if modelAttr != nil {
+	if hasModel {
 		if binding, ok := nativeModelBinding(node); ok {
 			modelControlledAttr = "value"
 			if binding.Checked {
@@ -1156,7 +1161,7 @@ func (g *fileGenerator) renderAttrsAndEvents(node *gotemplate.Node) ([]jen.Code,
 		})
 	}
 	attrs = insertMergedAttrs(attrs, mergedAttrs)
-	if modelAttr != nil {
+	if hasModel {
 		modelAttrs, modelEvent, modelOK := g.renderModelBinding(node, *modelAttr)
 		if !modelOK {
 			ok = false
@@ -1175,7 +1180,7 @@ func (g *fileGenerator) renderHTMLBinding(attr gotemplate.Attr) (jen.Code, bool)
 	}
 
 	valueType := g.expressionType(attr.Expression)
-	if !isTrustedHTMLType(valueType) {
+	if !typecap.TrustedHTML(valueType) {
 		g.add(fmt.Sprintf("v-html expects tue.TrustedHTML, got %s", displayType(valueType)), attr.ExpressionSpan)
 		return nil, false
 	}
@@ -1189,7 +1194,7 @@ func (g *fileGenerator) renderClassBinding(attr gotemplate.Attr) (jen.Code, bool
 	}
 
 	valueType := g.expressionType(attr.Expression)
-	if !assignableType("string", valueType) {
+	if !typecap.Assignable("string", valueType) {
 		g.add(fmt.Sprintf("class binding expects string, got %s", displayType(valueType)), attr.ExpressionSpan)
 		return nil, false
 	}
@@ -1203,7 +1208,7 @@ func (g *fileGenerator) renderStyleBinding(attr gotemplate.Attr) (jen.Code, bool
 	}
 
 	valueType := g.expressionType(attr.Expression)
-	if !assignableType("string", valueType) {
+	if !typecap.Assignable("string", valueType) {
 		g.add(fmt.Sprintf("style binding expects string, got %s", displayType(valueType)), attr.ExpressionSpan)
 		return nil, false
 	}
@@ -1218,7 +1223,7 @@ func (g *fileGenerator) renderNativeAttrBinding(attr gotemplate.Attr) (jen.Code,
 	}
 
 	valueType := g.expressionType(attr.Expression)
-	if !assignableType("string", valueType) {
+	if !typecap.Assignable("string", valueType) {
 		g.add(fmt.Sprintf("%s expects string, got %s", subject, displayType(valueType)), attr.ExpressionSpan)
 		return nil, false
 	}
@@ -1255,7 +1260,7 @@ func (g *fileGenerator) renderModelBinding(node *gotemplate.Node, attr gotemplat
 	}
 
 	actualType := g.expressionType(attr.Expression)
-	if !assignableType(binding.ValueType, actualType) {
+	if !typecap.Assignable(binding.ValueType, actualType) {
 		g.add(fmt.Sprintf("v-model expects %s, got %s", displayType(binding.ValueType), displayType(actualType)), attr.ExpressionSpan)
 		return nil, nil, false
 	}
@@ -1483,43 +1488,43 @@ func (g *projectGenerator) add(path string, message string, span sfc.Span) {
 	})
 }
 
-func nodeDirectiveAttr(node *gotemplate.Node, kind gotemplate.DirectiveKind) *gotemplate.Attr {
+func nodeDirectiveAttr(node *gotemplate.Node, kind gotemplate.DirectiveKind) (*gotemplate.Attr, bool) {
 	if node == nil || node.Kind != gotemplate.NodeElement {
-		return nil
+		return nil, false
 	}
 	for i := range node.Attrs {
 		attr := &node.Attrs[i]
 		if attr.Kind == gotemplate.AttrDirective && attr.Directive == kind {
-			return attr
+			return attr, true
 		}
 	}
-	return nil
+	return nil, false
 }
 
-func nodeConditionalAttr(node *gotemplate.Node) *gotemplate.Attr {
+func nodeConditionalAttr(node *gotemplate.Node) (*gotemplate.Attr, bool) {
 	for _, kind := range []gotemplate.DirectiveKind{
 		gotemplate.DirectiveIf,
 		gotemplate.DirectiveElseIf,
 		gotemplate.DirectiveElse,
 	} {
-		if attr := nodeDirectiveAttr(node, kind); attr != nil {
-			return attr
+		if attr, ok := nodeDirectiveAttr(node, kind); ok {
+			return attr, true
 		}
 	}
-	return nil
+	return nil, false
 }
 
-func nodeBindAttr(node *gotemplate.Node, argument string) *gotemplate.Attr {
+func nodeBindAttr(node *gotemplate.Node, argument string) (*gotemplate.Attr, bool) {
 	if node == nil || node.Kind != gotemplate.NodeElement {
-		return nil
+		return nil, false
 	}
 	for i := range node.Attrs {
 		attr := &node.Attrs[i]
 		if attr.Kind == gotemplate.AttrBind && attr.Argument == argument {
-			return attr
+			return attr, true
 		}
 	}
-	return nil
+	return nil, false
 }
 
 func isControlDirective(kind gotemplate.DirectiveKind) bool {
@@ -1549,27 +1554,27 @@ type nativeModel struct {
 	Checked   bool
 }
 
-func nativeModelBinding(node *gotemplate.Node) (nativeModel, bool) {
+func nativeModelBinding(node *gotemplate.Node) (*nativeModel, bool) {
 	if node == nil || node.IsComponent {
-		return nativeModel{}, false
+		return nil, false
 	}
 
 	switch node.Tag {
 	case "input":
 		inputType, _ := nodeStaticAttrValue(node, "type")
 		if isTextInputType(inputType) {
-			return nativeModel{ValueType: "string", ValueName: "value", EventName: "input"}, true
+			return &nativeModel{ValueType: "string", ValueName: "value", EventName: "input"}, true
 		}
 		if inputType == "checkbox" {
-			return nativeModel{ValueType: "bool", ValueName: "checked", EventName: "change", Checked: true}, true
+			return &nativeModel{ValueType: "bool", ValueName: "checked", EventName: "change", Checked: true}, true
 		}
-		return nativeModel{}, false
+		return nil, false
 	case "select":
-		return nativeModel{ValueType: "string", ValueName: "value", EventName: "change"}, true
+		return &nativeModel{ValueType: "string", ValueName: "value", EventName: "change"}, true
 	case "textarea":
-		return nativeModel{ValueType: "string", ValueName: "value", EventName: "input"}, true
+		return &nativeModel{ValueType: "string", ValueName: "value", EventName: "input"}, true
 	default:
-		return nativeModel{}, false
+		return nil, false
 	}
 }
 
@@ -1625,15 +1630,6 @@ func isStaticAssetAttr(node *gotemplate.Node, attr gotemplate.Attr) bool {
 		return attr.Name == "href" || attr.Name == "xlink:href"
 	case "video":
 		return attr.Name == "src" || attr.Name == "poster"
-	default:
-		return false
-	}
-}
-
-func isTrustedHTMLType(typ string) bool {
-	switch normalizeType(typ) {
-	case "tue.TrustedHTML", "TrustedHTML":
-		return true
 	default:
 		return false
 	}
@@ -1822,7 +1818,7 @@ func propValueType(prop script.Prop) string {
 
 func zeroPropValue(prop script.Prop) (jen.Code, bool) {
 	valueType := propValueType(prop)
-	switch normalizeType(valueType) {
+	switch typecap.Normalize(valueType) {
 	case "string":
 		return jen.Qual(tueImportPath, "PropOf").Call(jen.Lit("")), true
 	case "bool":
@@ -1887,54 +1883,11 @@ func renderType(expr ast.Expr) (jen.Code, bool) {
 	}
 }
 
-func assignableType(expected string, actual string) bool {
-	expected = normalizeType(expected)
-	actual = normalizeType(actual)
-	if expected == "" || actual == "" || expected == "unknown" || actual == "unknown" {
-		return true
-	}
-	return expected == actual
-}
-
-func switchTypesCompatible(switchType string, caseType string) bool {
-	return assignableType(switchType, caseType) || assignableType(caseType, switchType)
-}
-
-func isSwitchComparableType(typ string, comparable map[string]bool) bool {
-	typ = strings.TrimSpace(typ)
-	if strings.HasPrefix(typ, "*") {
-		return true
-	}
-	typ = normalizeType(typ)
-	if typ == "" || typ == "unknown" {
-		return true
-	}
-	if declared, ok := comparable[typ]; ok {
-		return declared
-	}
-	return typ != "any" && typ != "interface{}" &&
-		!strings.HasPrefix(typ, "[]") &&
-		!strings.HasPrefix(typ, "map[") &&
-		!strings.HasPrefix(typ, "func(")
-}
-
-func normalizeType(typ string) string {
-	typ = strings.TrimSpace(typ)
-	for strings.HasPrefix(typ, "*") {
-		typ = strings.TrimSpace(strings.TrimPrefix(typ, "*"))
-	}
-	return typ
-}
-
 func displayType(typ string) string {
 	if typ == "" {
 		return "unknown"
 	}
 	return typ
-}
-
-func isNoArgFunc(typ string) bool {
-	return strings.TrimSpace(typ) == "func()"
 }
 
 func hasRenderableComponentChildren(children []*gotemplate.Node) bool {

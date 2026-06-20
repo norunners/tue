@@ -322,12 +322,12 @@ func patchKeyedChildren(dom domBoundary, parent domNode, before domNode, old []*
 
 	children := make([]*mountedVNode, 0, len(next))
 	for index, nextVNode := range next {
-		oldChild := nextOldChild(index, nextVNode, old, oldByKey, used)
+		oldChild, found := nextOldChild(index, nextVNode, old, oldByKey, used)
 		child, err := patchOrMountChild(dom, parent, before, oldChild, nextVNode)
 		if err != nil {
 			return nil, err
 		}
-		if oldChild != nil {
+		if found {
 			used[oldChild] = struct{}{}
 		}
 		children = append(children, child)
@@ -376,29 +376,29 @@ func groupOldChildrenByKey(old []*mountedVNode) map[string]*mountedVNode {
 	return byKey
 }
 
-func nextOldChild(index int, next VNode, old []*mountedVNode, oldByKey map[string]*mountedVNode, used map[*mountedVNode]struct{}) *mountedVNode {
+func nextOldChild(index int, next VNode, old []*mountedVNode, oldByKey map[string]*mountedVNode, used map[*mountedVNode]struct{}) (*mountedVNode, bool) {
 	if next.Key != "" {
 		child := oldByKey[next.Key]
 		if child == nil {
-			return nil
+			return nil, false
 		}
 		if _, ok := used[child]; ok {
-			return nil
+			return nil, false
 		}
-		return child
+		return child, true
 	}
 
 	if index >= len(old) {
-		return nil
+		return nil, false
 	}
 	child := old[index]
 	if child == nil || child.vnode.Key != "" {
-		return nil
+		return nil, false
 	}
 	if _, ok := used[child]; ok {
-		return nil
+		return nil, false
 	}
-	return child
+	return child, true
 }
 
 func patchOrMountChild(dom domBoundary, parent domNode, before domNode, old *mountedVNode, next VNode) (*mountedVNode, error) {

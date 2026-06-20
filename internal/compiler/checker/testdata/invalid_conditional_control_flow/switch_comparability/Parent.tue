@@ -1,0 +1,25 @@
+<template>
+	<template v-switch="selected">
+		<p v-case="candidate">Struct case</p>
+	</template>
+	<template v-switch="buffer">
+		<p v-case="candidateBuffer">Imported struct case</p>
+	</template>
+</template>
+
+<script lang="go">
+package fixtures
+
+import "bytes"
+
+type Filter struct {
+	Tags []string
+}
+
+type Parent struct {
+	selected        Filter
+	candidate       Filter
+	buffer          bytes.Buffer
+	candidateBuffer bytes.Buffer
+}
+</script>

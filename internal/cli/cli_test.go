@@ -113,6 +113,71 @@ func TestRunDevPrintsHelp(t *testing.T) {
 	}
 }
 
+func TestParseDevOptions(t *testing.T) {
+	tests := []struct {
+		name           string
+		args           []string
+		expected       *devOptions
+		expectedCode   int
+		expectedOK     bool
+		stdoutContains string
+		stderrContains string
+	}{
+		{
+			name:         "defaults",
+			expected:     &devOptions{Root: ".", Addr: defaultDevAddr, PollInterval: 500 * time.Millisecond},
+			expectedCode: exitOK,
+			expectedOK:   true,
+		},
+		{
+			name:         "custom",
+			args:         []string{"-addr", "localhost:8080", "-poll", "250ms", "project"},
+			expected:     &devOptions{Root: "project", Addr: "localhost:8080", PollInterval: 250 * time.Millisecond},
+			expectedCode: exitOK,
+			expectedOK:   true,
+		},
+		{
+			name:           "help",
+			args:           []string{"--help"},
+			expectedCode:   exitOK,
+			expectedOK:     false,
+			stdoutContains: "tue dev [flags] [project-root]",
+		},
+		{
+			name:           "invalid poll interval",
+			args:           []string{"-poll", "0s"},
+			expectedCode:   exitUsage,
+			expectedOK:     false,
+			stderrContains: "-poll must be greater than 0",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+
+			actual, code, ok := parseDevOptions(test.args, &stdout, &stderr)
+
+			if diff := cmp.Diff(test.expected, actual); diff != "" {
+				t.Errorf("mismatch dev options (-expected, +actual):\n%s", diff)
+			}
+			if diff := cmp.Diff(test.expectedCode, code); diff != "" {
+				t.Errorf("mismatch exit code (-expected, +actual):\n%s", diff)
+			}
+			if diff := cmp.Diff(test.expectedOK, ok); diff != "" {
+				t.Errorf("mismatch options ok (-expected, +actual):\n%s", diff)
+			}
+			if test.stdoutContains != "" && !strings.Contains(stdout.String(), test.stdoutContains) {
+				t.Errorf("stdout actual = %q, expected to contain %q", stdout.String(), test.stdoutContains)
+			}
+			if test.stderrContains != "" && !strings.Contains(stderr.String(), test.stderrContains) {
+				t.Errorf("stderr actual = %q, expected to contain %q", stderr.String(), test.stderrContains)
+			}
+		})
+	}
+}
+
 func TestRunFmtPrintsHelp(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

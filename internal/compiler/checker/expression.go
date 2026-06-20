@@ -10,6 +10,7 @@ import (
 
 	"github.com/norunners/tue/internal/compiler/script"
 	"github.com/norunners/tue/internal/compiler/sfc"
+	"github.com/norunners/tue/internal/compiler/typecap"
 )
 
 func (c *fileChecker) checkExpression(expression string, span sfc.Span, scope *scope) value {
@@ -98,7 +99,7 @@ func (c *exprChecker) ident(ident *ast.Ident) value {
 		c.fileChecker.add(fmt.Sprintf("unknown identifier %q", ident.Name), c.nodeSpan(ident))
 		return value{Type: unknownType}
 	}
-	return value{Type: symbol.Type, Symbol: &symbol}
+	return value{Type: symbol.Type, Symbol: symbol}
 }
 
 func (c *exprChecker) basicLit(lit *ast.BasicLit) value {
@@ -129,7 +130,7 @@ func (c *exprChecker) binary(binary *ast.BinaryExpr) value {
 		c.expectOperand("bool", right, binary.Y)
 		return value{Type: "bool"}
 	case token.EQL, token.NEQ, token.LSS, token.LEQ, token.GTR, token.GEQ:
-		if !assignable(left.Type, right.Type) && !assignable(right.Type, left.Type) {
+		if !typecap.Assignable(left.Type, right.Type) && !typecap.Assignable(right.Type, left.Type) {
 			c.fileChecker.add(
 				fmt.Sprintf("cannot compare %s and %s", displayType(left.Type), displayType(right.Type)),
 				c.nodeSpan(binary),
@@ -138,17 +139,17 @@ func (c *exprChecker) binary(binary *ast.BinaryExpr) value {
 		return value{Type: "bool"}
 	case token.ADD:
 		if left.Type == "string" || right.Type == "string" {
-			if !assignable("string", left.Type) || !assignable("string", right.Type) {
+			if !typecap.Assignable("string", left.Type) || !typecap.Assignable("string", right.Type) {
 				c.fileChecker.add("operator + requires both operands to be strings or numbers", c.nodeSpan(binary))
 				return value{Type: unknownType}
 			}
 			return value{Type: "string"}
 		}
-		if isNumeric(left.Type) && isNumeric(right.Type) {
+		if typecap.Numeric(left.Type) && typecap.Numeric(right.Type) {
 			return value{Type: left.Type}
 		}
 	case token.SUB, token.MUL, token.QUO, token.REM:
-		if isNumeric(left.Type) && isNumeric(right.Type) {
+		if typecap.Numeric(left.Type) && typecap.Numeric(right.Type) {
 			return value{Type: left.Type}
 		}
 	}
@@ -167,7 +168,7 @@ func (c *exprChecker) unary(unary *ast.UnaryExpr) value {
 		c.expectOperand("bool", operand, unary.X)
 		return value{Type: "bool"}
 	case token.ADD, token.SUB:
-		if operand.Type == unknownType || isNumeric(operand.Type) {
+		if operand.Type == unknownType || typecap.Numeric(operand.Type) {
 			return operand
 		}
 		c.fileChecker.add(fmt.Sprintf("operator %s is not defined for %s", unary.Op, displayType(operand.Type)), c.nodeSpan(unary))
@@ -181,13 +182,13 @@ func (c *exprChecker) selector(selector *ast.SelectorExpr) value {
 		return value{Type: unknownType}
 	}
 	if field, ok := c.fileChecker.structField(base.Type, selector.Sel.Name); ok {
-		return value{Type: fieldType(field)}
+		return value{Type: fieldType(*field)}
 	}
-	if _, ok := c.fileChecker.structs[normalizeType(base.Type)]; ok {
+	if _, ok := c.fileChecker.structs[typecap.Normalize(base.Type)]; ok {
 		c.fileChecker.add(fmt.Sprintf("type %s has no field %q", displayType(base.Type), selector.Sel.Name), c.nodeSpan(selector.Sel))
 		return value{Type: unknownType}
 	}
-	if isScalar(base.Type) || strings.HasPrefix(normalizeType(base.Type), "[]") || strings.HasPrefix(normalizeType(base.Type), "map[") {
+	if typecap.Scalar(base.Type) || strings.HasPrefix(typecap.Normalize(base.Type), "[]") || strings.HasPrefix(typecap.Normalize(base.Type), "map[") {
 		c.fileChecker.add(fmt.Sprintf("type %s has no field %q", displayType(base.Type), selector.Sel.Name), c.nodeSpan(selector.Sel))
 	}
 	return value{Type: unknownType}
@@ -221,26 +222,29 @@ func (c *exprChecker) call(call *ast.CallExpr) value {
 func (c *exprChecker) index(index *ast.IndexExpr) value {
 	base := c.eval(index.X)
 	c.eval(index.Index)
-	if types, ok := iterableTypesFor(base.Type); ok {
+	if types, ok := typecap.IterableFor(base.Type); ok {
 		return value{Type: types.Item}
 	}
 	return value{Type: unknownType}
 }
 
 func (c *exprChecker) expectOperand(expected string, actual value, expr ast.Expr) {
-	if assignable(expected, actual.Type) {
+	if typecap.Assignable(expected, actual.Type) {
 		return
 	}
 	c.fileChecker.add(fmt.Sprintf("operand expects %s, got %s", displayType(expected), displayType(actual.Type)), c.nodeSpan(expr))
 }
 
-func (c *fileChecker) structField(typeName string, fieldName string) (script.Field, bool) {
-	fields, ok := c.structs[normalizeType(typeName)]
+func (c *fileChecker) structField(typeName string, fieldName string) (*script.Field, bool) {
+	fields, ok := c.structs[typecap.Normalize(typeName)]
 	if !ok {
-		return script.Field{}, false
+		return nil, false
 	}
 	field, ok := fields[fieldName]
-	return field, ok
+	if !ok {
+		return nil, false
+	}
+	return &field, true
 }
 
 func (c *exprChecker) nodeSpan(node ast.Node) sfc.Span {

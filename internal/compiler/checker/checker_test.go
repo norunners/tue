@@ -219,33 +219,66 @@ func TestCheckProjectReportsControlFlowDiagnostics(t *testing.T) {
 }
 
 func TestCheckProjectReportsConditionalControlFlowDiagnostics(t *testing.T) {
-	project, err := parseProjectFixture("testdata/invalid_conditional_control_flow")
-	if err != nil {
-		t.Fatalf("parse project fixture: %v", err)
+	tests := []struct {
+		name     string
+		fixture  string
+		expected []diagnosticSummary
+	}{
+		{
+			name:    "conditional chains",
+			fixture: "testdata/invalid_conditional_control_flow/conditional_chains",
+			expected: []diagnosticSummary{
+				{Path: "testdata/invalid_conditional_control_flow/conditional_chains/Parent.tue", Message: `v-else-if must follow v-if or v-else-if`, Line: 3, Column: 6},
+				{Path: "testdata/invalid_conditional_control_flow/conditional_chains/Parent.tue", Message: `v-else must follow v-if or v-else-if`, Line: 4, Column: 6},
+				{Path: "testdata/invalid_conditional_control_flow/conditional_chains/Parent.tue", Message: `v-else-if expects bool, got string`, Line: 7, Column: 17},
+				{Path: "testdata/invalid_conditional_control_flow/conditional_chains/Parent.tue", Message: `v-else-if cannot be combined with v-for; use a <template v-for> wrapper`, Line: 8, Column: 6},
+			},
+		},
+		{
+			name:    "switch placement",
+			fixture: "testdata/invalid_conditional_control_flow/switch_placement",
+			expected: []diagnosticSummary{
+				{Path: "testdata/invalid_conditional_control_flow/switch_placement/Parent.tue", Message: `v-switch expression type []string is not comparable`, Line: 3, Column: 23},
+				{Path: "testdata/invalid_conditional_control_flow/switch_placement/Parent.tue", Message: `v-switch requires at least one v-case or v-default child`, Line: 3, Column: 13},
+				{Path: "testdata/invalid_conditional_control_flow/switch_placement/Parent.tue", Message: `v-switch is only supported on <template>`, Line: 4, Column: 8},
+				{Path: "testdata/invalid_conditional_control_flow/switch_placement/Parent.tue", Message: `v-case must be a direct child of v-switch`, Line: 6, Column: 6},
+				{Path: "testdata/invalid_conditional_control_flow/switch_placement/Parent.tue", Message: `v-default must be a direct child of v-switch`, Line: 7, Column: 6},
+			},
+		},
+		{
+			name:    "switch branches",
+			fixture: "testdata/invalid_conditional_control_flow/switch_branches",
+			expected: []diagnosticSummary{
+				{Path: "testdata/invalid_conditional_control_flow/switch_branches/Parent.tue", Message: `v-switch children must use v-case or v-default`, Line: 3, Column: 3},
+				{Path: "testdata/invalid_conditional_control_flow/switch_branches/Parent.tue", Message: `v-case expects string, got int`, Line: 4, Column: 14},
+				{Path: "testdata/invalid_conditional_control_flow/switch_branches/Parent.tue", Message: `v-case must appear before v-default`, Line: 6, Column: 6},
+				{Path: "testdata/invalid_conditional_control_flow/switch_branches/Parent.tue", Message: `v-switch may only have one v-default`, Line: 7, Column: 6},
+				{Path: "testdata/invalid_conditional_control_flow/switch_branches/Parent.tue", Message: `v-case must appear before v-default`, Line: 8, Column: 6},
+				{Path: "testdata/invalid_conditional_control_flow/switch_branches/Parent.tue", Message: `v-switch branches cannot combine v-case or v-default with v-if, v-else-if, or v-else`, Line: 8, Column: 23},
+			},
+		},
+		{
+			name:    "switch comparability",
+			fixture: "testdata/invalid_conditional_control_flow/switch_comparability",
+			expected: []diagnosticSummary{
+				{Path: "testdata/invalid_conditional_control_flow/switch_comparability/Parent.tue", Message: `v-switch expression type Filter is not comparable`, Line: 2, Column: 22},
+				{Path: "testdata/invalid_conditional_control_flow/switch_comparability/Parent.tue", Message: `v-switch expression type bytes.Buffer is not comparable`, Line: 5, Column: 22},
+			},
+		},
 	}
 
-	diagnostics := CheckProject(project)
-	expected := []diagnosticSummary{
-		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-else-if must follow v-if or v-else-if`, Line: 3, Column: 6},
-		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-else must follow v-if or v-else-if`, Line: 4, Column: 6},
-		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-else-if expects bool, got string`, Line: 7, Column: 17},
-		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-else-if cannot be combined with v-for; use a <template v-for> wrapper`, Line: 8, Column: 6},
-		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-switch children must use v-case or v-default`, Line: 12, Column: 4},
-		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-case expects string, got int`, Line: 13, Column: 15},
-		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-case must appear before v-default`, Line: 15, Column: 7},
-		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-switch may only have one v-default`, Line: 16, Column: 7},
-		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-case must appear before v-default`, Line: 17, Column: 7},
-		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-switch branches cannot combine v-case or v-default with v-if, v-else-if, or v-else`, Line: 17, Column: 24},
-		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-switch is only supported on <template>`, Line: 20, Column: 8},
-		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-case must be a direct child of v-switch`, Line: 21, Column: 6},
-		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-default must be a direct child of v-switch`, Line: 22, Column: 6},
-		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-switch expression type []string is not comparable`, Line: 23, Column: 23},
-		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-switch requires at least one v-case or v-default child`, Line: 23, Column: 13},
-		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-switch expression type Filter is not comparable`, Line: 24, Column: 23},
-		{Path: "testdata/invalid_conditional_control_flow/Parent.tue", Message: `v-switch expression type bytes.Buffer is not comparable`, Line: 27, Column: 23},
-	}
-	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
-		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			project, err := parseProjectFixture(test.fixture)
+			if err != nil {
+				t.Fatalf("parse project fixture: %v", err)
+			}
+
+			diagnostics := CheckProject(project)
+			if diff := cmp.Diff(test.expected, summarizeDiagnostics(diagnostics)); diff != "" {
+				t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
+			}
+		})
 	}
 }
 
@@ -330,17 +363,17 @@ func parseProjectFixture(dir string) (Project, error) {
 		}
 		sfcFile, sfcDiagnostics := sfc.Parse(path, source)
 		if len(sfcDiagnostics) != 0 {
-			return Project{}, fmt.Errorf("sfc.Parse(%s) diagnostics = %#v, want none", path, sfcDiagnosticMessages(sfcDiagnostics))
+			return Project{}, fmt.Errorf("sfc.Parse(%s) diagnostics actual = %#v, expected none", path, sfcDiagnosticMessages(sfcDiagnostics))
 		}
 
 		templateTree, templateDiagnostics := gotemplate.ParseBlock(sfcFile.Template)
 		if len(templateDiagnostics) != 0 {
-			return Project{}, fmt.Errorf("template.ParseBlock(%s) diagnostics = %#v, want none", path, templateDiagnosticMessages(templateDiagnostics))
+			return Project{}, fmt.Errorf("template.ParseBlock(%s) diagnostics actual = %#v, expected none", path, templateDiagnosticMessages(templateDiagnostics))
 		}
 
 		scriptFile, scriptDiagnostics := script.ParseSFC(sfcFile)
 		if len(scriptDiagnostics) != 0 {
-			return Project{}, fmt.Errorf("script.ParseSFC(%s) diagnostics = %#v, want none", path, scriptDiagnosticMessages(scriptDiagnostics))
+			return Project{}, fmt.Errorf("script.ParseSFC(%s) diagnostics actual = %#v, expected none", path, scriptDiagnosticMessages(scriptDiagnostics))
 		}
 
 		project.Files = append(project.Files, File{

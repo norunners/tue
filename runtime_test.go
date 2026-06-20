@@ -656,11 +656,11 @@ func TestMountValidatesInputBeforePlatformBoundary(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := Mount(tt.target, tt.component)
-			if err == nil || err.Error() != tt.expected {
-				t.Errorf("mismatch Mount error (-expected, +actual):\n%s", cmp.Diff(tt.expected, errorString(err)))
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := Mount(test.target, test.component)
+			if err == nil || err.Error() != test.expected {
+				t.Errorf("mismatch Mount error (-expected, +actual):\n%s", cmp.Diff(test.expected, errorString(err)))
 			}
 		})
 	}

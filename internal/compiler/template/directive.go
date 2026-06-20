@@ -15,10 +15,10 @@ type ForClause struct {
 }
 
 // ParseForClause parses '<item> in <items>' and '(item, index) in <items>'.
-func ParseForClause(expression string) (ForClause, bool) {
+func ParseForClause(expression string) (*ForClause, bool) {
 	in := strings.Index(expression, " in ")
 	if in == -1 {
-		return ForClause{}, false
+		return nil, false
 	}
 
 	target := strings.TrimSpace(expression[:in])
@@ -38,7 +38,7 @@ func ParseForClause(expression string) (ForClause, bool) {
 	source := expression[sourceStart:sourceEnd]
 	parts := strings.Split(target, ",")
 	if len(parts) == 0 || len(parts) > 2 || source == "" {
-		return ForClause{}, false
+		return nil, false
 	}
 
 	clause := ForClause{
@@ -51,9 +51,9 @@ func ParseForClause(expression string) (ForClause, bool) {
 		clause.Index = strings.TrimSpace(parts[1])
 	}
 	if !isDirectiveIdentifier(clause.Item) || (clause.Index != "" && !isDirectiveIdentifier(clause.Index)) {
-		return ForClause{}, false
+		return nil, false
 	}
-	return clause, true
+	return &clause, true
 }
 
 func isDirectiveIdentifier(name string) bool {

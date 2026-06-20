@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/norunners/tue/internal/compiler/sfc"
 )
 
@@ -15,10 +16,10 @@ func TestParseElementsAttributesInterpolationAndComponents(t *testing.T) {
 
 	tree, diagnostics := Parse([]byte(source))
 	if len(diagnostics) != 0 {
-		t.Fatalf("Parse diagnostics = %#v, want none", diagnosticMessages(diagnostics))
+		t.Fatalf("Parse diagnostics actual = %#v, expected none", diagnosticMessages(diagnostics))
 	}
 
-	want := strings.TrimSpace(`
+	expected := strings.TrimSpace(`
 element main component=false selfClosing=false
   attr static class value="page"
   element p component=false selfClosing=false
@@ -35,34 +36,50 @@ element main component=false selfClosing=false
     attr bind isAdmin expr="role == \"admin\""
 `)
 
-	if got := dumpNodes(tree.Nodes); got != want {
-		t.Fatalf("AST dump mismatch\ngot:\n%s\nwant:\n%s", got, want)
+	actual := dumpNodes(tree.Nodes)
+	if diff := cmp.Diff(expected, actual); diff != "" {
+		t.Errorf("mismatch AST dump (-expected, +actual):\n%s", diff)
 	}
 
-	main := tree.Nodes[0]
+	main, err := firstElement(tree.Nodes, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if main.TagSpan.Start.Offset != 1 || main.TagSpan.End.Offset != 5 {
-		t.Fatalf("main tag span = %#v, want offsets 1..5", main.TagSpan)
+		t.Errorf("main tag span actual = %#v, expected offsets 1..5", main.TagSpan)
 	}
 
-	userBadge := main.Children[2]
-	isAdmin := attrByRawName(t, userBadge, ":isAdmin")
+	userBadge, err := childElement(main, "UserBadge", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	isAdmin, err := attrByRawName(userBadge, ":isAdmin")
+	if err != nil {
+		t.Fatal(err)
+	}
 	exprOffset := strings.Index(source, `role == "admin"`)
 	if isAdmin.ExpressionSpan.Start.Offset != exprOffset {
-		t.Fatalf(":isAdmin expression offset = %d, want %d", isAdmin.ExpressionSpan.Start.Offset, exprOffset)
+		t.Errorf(":isAdmin expression offset actual = %d, expected %d", isAdmin.ExpressionSpan.Start.Offset, exprOffset)
 	}
 	if isAdmin.Expression != `role == "admin"` {
-		t.Fatalf(":isAdmin expression = %q", isAdmin.Expression)
+		t.Errorf(":isAdmin expression actual = %q, expected %q", isAdmin.Expression, `role == "admin"`)
 	}
 
-	button := main.Children[1]
-	click := attrByRawName(t, button, "@click")
+	button, err := childElement(main, "button", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	click, err := attrByRawName(button, "@click")
+	if err != nil {
+		t.Fatal(err)
+	}
 	clickOffset := strings.Index(source, "click")
 	if click.ArgumentSpan.Start.Offset != clickOffset {
-		t.Fatalf("@click argument offset = %d, want %d", click.ArgumentSpan.Start.Offset, clickOffset)
+		t.Errorf("@click argument offset actual = %d, expected %d", click.ArgumentSpan.Start.Offset, clickOffset)
 	}
 	incrementOffset := strings.Index(source, "increment")
 	if click.ExpressionSpan.Start.Offset != incrementOffset {
-		t.Fatalf("@click expression offset = %d, want %d", click.ExpressionSpan.Start.Offset, incrementOffset)
+		t.Errorf("@click expression offset actual = %d, expected %d", click.ExpressionSpan.Start.Offset, incrementOffset)
 	}
 }
 
@@ -71,10 +88,10 @@ func TestParseDirectivesAndComments(t *testing.T) {
 
 	tree, diagnostics := Parse([]byte(source))
 	if len(diagnostics) != 0 {
-		t.Fatalf("Parse diagnostics = %#v, want none", diagnosticMessages(diagnostics))
+		t.Fatalf("Parse diagnostics actual = %#v, expected none", diagnosticMessages(diagnostics))
 	}
 
-	want := strings.TrimSpace(`
+	expected := strings.TrimSpace(`
 element section component=false selfClosing=false
   comment " note "
   element p component=false selfClosing=false
@@ -94,16 +111,26 @@ element section component=false selfClosing=false
     directive html expr="trusted"
 `)
 
-	if got := dumpNodes(tree.Nodes); got != want {
-		t.Fatalf("AST dump mismatch\ngot:\n%s\nwant:\n%s", got, want)
+	actual := dumpNodes(tree.Nodes)
+	if diff := cmp.Diff(expected, actual); diff != "" {
+		t.Errorf("mismatch AST dump (-expected, +actual):\n%s", diff)
 	}
 
-	section := tree.Nodes[0]
-	admin := childElement(t, section, "p", 0)
-	vif := attrByRawName(t, admin, "v-if")
+	section, err := firstElement(tree.Nodes, "section")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := childElement(section, "p", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vif, err := attrByRawName(admin, "v-if")
+	if err != nil {
+		t.Fatal(err)
+	}
 	vifOffset := strings.Index(source, "v-if")
 	if vif.DirectiveSpan.Start.Offset != vifOffset || vif.DirectiveSpan.End.Offset != vifOffset+len("v-if") {
-		t.Fatalf("v-if directive span = %#v, want offsets %d..%d", vif.DirectiveSpan, vifOffset, vifOffset+len("v-if"))
+		t.Errorf("v-if directive span actual = %#v, expected offsets %d..%d", vif.DirectiveSpan, vifOffset, vifOffset+len("v-if"))
 	}
 }
 
@@ -112,7 +139,7 @@ func TestParseConditionalControlDirectives(t *testing.T) {
 
 	tree, diagnostics := Parse([]byte(source))
 	if len(diagnostics) != 0 {
-		t.Fatalf("Parse diagnostics = %#v, expected none", diagnosticMessages(diagnostics))
+		t.Fatalf("Parse diagnostics actual = %#v, expected none", diagnosticMessages(diagnostics))
 	}
 
 	expected := strings.TrimSpace(`
@@ -135,8 +162,9 @@ element main component=false selfClosing=false
       directive default
       text "Done"
 `)
-	if actual := dumpNodes(tree.Nodes); actual != expected {
-		t.Errorf("mismatch AST dump (-expected, +actual):\nexpected:\n%s\nactual:\n%s", expected, actual)
+	actual := dumpNodes(tree.Nodes)
+	if diff := cmp.Diff(expected, actual); diff != "" {
+		t.Errorf("mismatch AST dump (-expected, +actual):\n%s", diff)
 	}
 }
 
@@ -149,22 +177,25 @@ func TestParseBlockUsesSFCSourceSpans(t *testing.T) {
 
 	file, sfcDiagnostics := sfc.Parse("component.tue", []byte(source))
 	if len(sfcDiagnostics) != 0 {
-		t.Fatalf("sfc.Parse diagnostics = %#v, want none", sfcDiagnostics)
+		t.Fatalf("sfc.Parse diagnostics actual = %#v, expected none", sfcDiagnostics)
 	}
 
 	tree, diagnostics := ParseBlock(file.Template)
 	if len(diagnostics) != 0 {
-		t.Fatalf("ParseBlock diagnostics = %#v, want none", diagnosticMessages(diagnostics))
+		t.Fatalf("ParseBlock diagnostics actual = %#v, expected none", diagnosticMessages(diagnostics))
 	}
 
-	paragraph := firstElement(t, tree.Nodes, "p")
+	paragraph, err := firstElement(tree.Nodes, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
 	interpolation := paragraph.Children[0]
 	nameOffset := strings.Index(source, "name")
 	if interpolation.ExpressionSpan.Start.Offset != nameOffset {
-		t.Fatalf("expression offset = %d, want %d", interpolation.ExpressionSpan.Start.Offset, nameOffset)
+		t.Errorf("expression offset actual = %d, expected %d", interpolation.ExpressionSpan.Start.Offset, nameOffset)
 	}
 	if interpolation.ExpressionSpan.Start.Line != 2 || interpolation.ExpressionSpan.Start.Column != 7 {
-		t.Fatalf("expression position = %#v, want line 2 column 7", interpolation.ExpressionSpan.Start)
+		t.Errorf("expression position actual = %#v, expected line 2 column 7", interpolation.ExpressionSpan.Start)
 	}
 }
 
@@ -179,166 +210,159 @@ func TestParseFixtures(t *testing.T) {
 		}
 
 		t.Run(filepath.ToSlash(path), func(t *testing.T) {
-			source, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatalf("read fixture: %v", err)
-			}
-
-			file, sfcDiagnostics := sfc.Parse(path, source)
-			if len(sfcDiagnostics) != 0 {
-				t.Fatalf("sfc.Parse diagnostics = %#v, want none", sfcDiagnostics)
-			}
-
-			_, diagnostics := ParseBlock(file.Template)
-			if len(diagnostics) != 0 {
-				t.Fatalf("ParseBlock diagnostics = %#v, want none", diagnosticMessages(diagnostics))
+			if err := parseFixture(path); err != nil {
+				t.Errorf("parse fixture: %v", err)
 			}
 		})
 
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("walk fixtures: %v", err)
+		t.Errorf("walk fixtures: %v", err)
 	}
 }
 
 func TestParseDiagnostics(t *testing.T) {
 	tests := []struct {
-		name string
-		src  string
-		want []string
+		name     string
+		source   string
+		expected []string
 	}{
 		{
-			name: "empty interpolation",
-			src:  `<p>{{ }}</p>`,
-			want: []string{"empty interpolation expression"},
+			name:     "empty interpolation",
+			source:   `<p>{{ }}</p>`,
+			expected: []string{"empty interpolation expression"},
 		},
 		{
-			name: "unterminated interpolation",
-			src:  `<p>{{ name</p>`,
-			want: []string{"unterminated interpolation"},
+			name:     "unterminated interpolation",
+			source:   `<p>{{ name</p>`,
+			expected: []string{"unterminated interpolation"},
 		},
 		{
-			name: "unexpected interpolation close",
-			src:  `<p>name }}</p>`,
-			want: []string{"unexpected interpolation closing braces"},
+			name:     "unexpected interpolation close",
+			source:   `<p>name }}</p>`,
+			expected: []string{"unexpected interpolation closing braces"},
 		},
 		{
-			name: "empty bound attr",
-			src:  `<p :="name"></p>`,
-			want: []string{"bound attribute name cannot be empty"},
+			name:     "empty bound attr",
+			source:   `<p :="name"></p>`,
+			expected: []string{"bound attribute name cannot be empty"},
 		},
 		{
-			name: "empty event",
-			src:  `<p @="click"></p>`,
-			want: []string{"event name cannot be empty"},
+			name:     "empty event",
+			source:   `<p @="click"></p>`,
+			expected: []string{"event name cannot be empty"},
 		},
 		{
-			name: "v-if without expression",
-			src:  `<p v-if></p>`,
-			want: []string{"v-if requires an expression"},
+			name:     "v-if without expression",
+			source:   `<p v-if></p>`,
+			expected: []string{"v-if requires an expression"},
 		},
 		{
-			name: "v-else-if without expression",
-			src:  `<p v-else-if></p>`,
-			want: []string{"v-else-if requires an expression"},
+			name:     "v-else-if without expression",
+			source:   `<p v-else-if></p>`,
+			expected: []string{"v-else-if requires an expression"},
 		},
 		{
-			name: "v-else with value",
-			src:  `<p v-else="ok"></p>`,
-			want: []string{"v-else must not have a value"},
+			name:     "v-else with value",
+			source:   `<p v-else="ok"></p>`,
+			expected: []string{"v-else must not have a value"},
 		},
 		{
-			name: "v-switch without expression",
-			src:  `<template v-switch></template>`,
-			want: []string{"v-switch requires an expression"},
+			name:     "v-switch without expression",
+			source:   `<template v-switch></template>`,
+			expected: []string{"v-switch requires an expression"},
 		},
 		{
-			name: "v-case without expression",
-			src:  `<p v-case></p>`,
-			want: []string{"v-case requires an expression"},
+			name:     "v-case without expression",
+			source:   `<p v-case></p>`,
+			expected: []string{"v-case requires an expression"},
 		},
 		{
-			name: "v-default with value",
-			src:  `<p v-default="ok"></p>`,
-			want: []string{"v-default must not have a value"},
+			name:     "v-default with value",
+			source:   `<p v-default="ok"></p>`,
+			expected: []string{"v-default must not have a value"},
 		},
 		{
-			name: "unsupported directive",
-			src:  `<p v-show="ok"></p>`,
-			want: []string{`unsupported directive "v-show"`},
+			name:     "unsupported directive",
+			source:   `<p v-show="ok"></p>`,
+			expected: []string{`unsupported directive "v-show"`},
 		},
 		{
-			name: "mismatched close",
-			src:  `<p></div>`,
-			want: []string{"unexpected closing </div> tag; expected </p>", "missing closing </p> tag"},
+			name:     "mismatched close",
+			source:   `<p></div>`,
+			expected: []string{"unexpected closing </div> tag; expected </p>", "missing closing </p> tag"},
 		},
 		{
-			name: "unterminated comment",
-			src:  `<p><!-- broken</p>`,
-			want: []string{"unterminated comment", "missing closing </p> tag"},
+			name:     "unterminated comment",
+			source:   `<p><!-- broken</p>`,
+			expected: []string{"unterminated comment", "missing closing </p> tag"},
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, diagnostics := Parse([]byte(tt.src))
-			assertDiagnosticMessages(t, diagnostics, tt.want)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, diagnostics := Parse([]byte(test.source))
+			assertDiagnosticMessages(t, diagnostics, test.expected)
 		})
 	}
 }
 
-func attrByRawName(t *testing.T, node *Node, rawName string) Attr {
-	t.Helper()
-
-	for _, attr := range node.Attrs {
-		if attr.RawName == rawName {
-			return attr
-		}
+func parseFixture(path string) error {
+	source, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read fixture: %w", err)
 	}
-	t.Fatalf("attribute %q not found on <%s>", rawName, node.Tag)
-	return Attr{}
-}
 
-func firstElement(t *testing.T, nodes []*Node, tag string) *Node {
-	t.Helper()
-
-	for _, node := range nodes {
-		if node.Kind == NodeElement && node.Tag == tag {
-			return node
-		}
+	file, sfcDiagnostics := sfc.Parse(path, source)
+	if len(sfcDiagnostics) != 0 {
+		return fmt.Errorf("sfc.Parse diagnostics actual = %#v, expected none", sfcDiagnostics)
 	}
-	t.Fatalf("element <%s> not found", tag)
+
+	_, diagnostics := ParseBlock(file.Template)
+	if len(diagnostics) != 0 {
+		return fmt.Errorf("ParseBlock diagnostics actual = %#v, expected none", diagnosticMessages(diagnostics))
+	}
 	return nil
 }
 
-func childElement(t *testing.T, parent *Node, tag string, index int) *Node {
-	t.Helper()
+func attrByRawName(node *Node, rawName string) (*Attr, error) {
+	for index := range node.Attrs {
+		if node.Attrs[index].RawName == rawName {
+			return &node.Attrs[index], nil
+		}
+	}
+	return nil, fmt.Errorf("attribute %q not found on <%s>", rawName, node.Tag)
+}
 
+func firstElement(nodes []*Node, tag string) (*Node, error) {
+	for _, node := range nodes {
+		if node.Kind == NodeElement && node.Tag == tag {
+			return node, nil
+		}
+	}
+	return nil, fmt.Errorf("element <%s> not found", tag)
+}
+
+func childElement(parent *Node, tag string, index int) (*Node, error) {
 	seen := 0
 	for _, child := range parent.Children {
 		if child.Kind == NodeElement && child.Tag == tag {
 			if seen == index {
-				return child
+				return child, nil
 			}
 			seen++
 		}
 	}
-	t.Fatalf("child element <%s> index %d not found under <%s>", tag, index, parent.Tag)
-	return nil
+	return nil, fmt.Errorf("child element <%s> index %d not found under <%s>", tag, index, parent.Tag)
 }
 
-func assertDiagnosticMessages(t *testing.T, diagnostics []Diagnostic, want []string) {
+func assertDiagnosticMessages(t *testing.T, diagnostics []Diagnostic, expected []string) {
 	t.Helper()
 
-	got := diagnosticMessages(diagnostics)
-	if len(got) != len(want) {
-		t.Fatalf("diagnostics = %#v, want %#v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("diagnostic %d = %q, want %q; all = %#v", i, got[i], want[i], got)
-		}
+	actual := diagnosticMessages(diagnostics)
+	if diff := cmp.Diff(expected, actual); diff != "" {
+		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"github.com/norunners/tue/internal/compiler/script"
 	"github.com/norunners/tue/internal/compiler/sfc"
 	gotemplate "github.com/norunners/tue/internal/compiler/template"
+	"github.com/norunners/tue/internal/compiler/typecap"
 )
 
 type fileChecker struct {
@@ -86,10 +87,10 @@ func (c *fileChecker) checkNode(node *gotemplate.Node, scope *scope) {
 func (c *fileChecker) checkElement(node *gotemplate.Node, scope *scope) {
 	elementScope := scope
 	if attr, ok := directiveAttr(node, gotemplate.DirectiveFor); ok {
-		elementScope = c.checkFor(node, attr, scope)
+		elementScope = c.checkFor(node, *attr, scope)
 	}
 	if attr, ok := directiveAttr(node, gotemplate.DirectiveSwitch); ok {
-		c.checkSwitch(node, attr, elementScope)
+		c.checkSwitch(node, *attr, elementScope)
 		return
 	}
 
@@ -202,7 +203,7 @@ func (c *fileChecker) checkComponentEvent(node *gotemplate.Node, child component
 		return
 	}
 
-	if !isNoArgFunc(event.Type) {
+	if !typecap.NoArgFunc(event.Type) {
 		c.add(fmt.Sprintf("component %q event %q must have signature func()", node.Tag, attr.Argument), attr.ArgumentSpan)
 		return
 	}
@@ -210,7 +211,7 @@ func (c *fileChecker) checkComponentEvent(node *gotemplate.Node, child component
 }
 
 func (c *fileChecker) expectType(expected string, actual string, subject string, span sfc.Span) {
-	if assignable(expected, actual) {
+	if typecap.Assignable(expected, actual) {
 		return
 	}
 	c.add(fmt.Sprintf("%s expects %s, got %s", subject, displayType(expected), displayType(actual)), span)
@@ -218,7 +219,7 @@ func (c *fileChecker) expectType(expected string, actual string, subject string,
 
 func (c *fileChecker) expectComponentPropType(componentName string, prop script.Prop, actual string, span sfc.Span) {
 	expected := propType(prop)
-	if assignable(expected, actual) {
+	if typecap.Assignable(expected, actual) {
 		return
 	}
 	c.add(

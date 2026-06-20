@@ -6,6 +6,7 @@
 	<li v-for="todo in todos" :key="key(todo)">Bad key</li>
 	<li v-for="todo in todos" v-if="todo.Done" :key="todo.ID">Done</li>
 	<li v-else>Open</li>
+	<li v-for="item in enabled" :key="item">Non-iterable source</li>
 </ul>
 </template>
 
@@ -19,6 +20,7 @@ type Todo struct {
 }
 
 type App struct {
-	todos []Todo
+	todos   []Todo
+	enabled bool
 }
 </script>

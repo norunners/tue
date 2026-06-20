@@ -82,7 +82,7 @@ func (p *parser) parse() (*File, []Diagnostic) {
 				Message: fmt.Sprintf("unsupported top-level block <%s>", tag.name),
 				Span:    tag.nameSpan,
 			})
-			offset = p.skipUnsupportedBlock(tag)
+			offset = p.skipUnsupportedBlock(*tag)
 			continue
 		}
 
@@ -200,10 +200,10 @@ func blockKind(name string) (BlockKind, bool) {
 	}
 }
 
-func (p *parser) parseOpenTag(start int) (openTag, Diagnostic, bool) {
+func (p *parser) parseOpenTag(start int) (*openTag, Diagnostic, bool) {
 	end, diagnostic, ok := p.findOpenTagEnd(start)
 	if !ok {
-		return openTag{}, diagnostic, false
+		return nil, diagnostic, false
 	}
 
 	bodyStart := start + 1
@@ -222,7 +222,7 @@ func (p *parser) parseOpenTag(start int) (openTag, Diagnostic, bool) {
 
 	nameStart := bodyStart
 	if nameStart >= bodyEnd || !isNameStart(rune(p.source[nameStart])) {
-		return openTag{}, Diagnostic{
+		return nil, Diagnostic{
 			Message: "malformed opening tag",
 			Span:    p.span(start, end),
 		}, false
@@ -235,10 +235,10 @@ func (p *parser) parseOpenTag(start int) (openTag, Diagnostic, bool) {
 
 	attrs, attrDiagnostic, ok := p.parseAttrs(nameEnd, bodyEnd)
 	if !ok {
-		return openTag{}, attrDiagnostic, false
+		return nil, attrDiagnostic, false
 	}
 
-	return openTag{
+	return &openTag{
 		name:        p.source[nameStart:nameEnd],
 		attrs:       attrs,
 		span:        p.span(start, end),

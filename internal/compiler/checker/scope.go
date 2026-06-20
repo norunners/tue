@@ -1,13 +1,12 @@
 package checker
 
 import (
-	"strings"
-
 	"github.com/norunners/tue/internal/compiler/script"
+	"github.com/norunners/tue/internal/compiler/typecap"
 )
 
 const (
-	unknownType = "unknown"
+	unknownType = typecap.Unknown
 	funcType    = "func"
 )
 
@@ -24,11 +23,6 @@ type symbol struct {
 	Method     bool
 	Parameters int
 	Results    int
-}
-
-type iterableTypes struct {
-	Item string
-	Key  string
 }
 
 func componentScope(component *script.Component) *scope {
@@ -73,13 +67,13 @@ func (s *scope) add(symbol symbol) {
 	s.symbols[symbol.Name] = symbol
 }
 
-func (s *scope) lookup(name string) (symbol, bool) {
+func (s *scope) lookup(name string) (*symbol, bool) {
 	for current := s; current != nil; current = current.parent {
 		if symbol, ok := current.symbols[name]; ok {
-			return symbol, true
+			return &symbol, true
 		}
 	}
-	return symbol{}, false
+	return nil, false
 }
 
 func propType(prop script.Prop) string {
@@ -123,96 +117,9 @@ func comparableTypeMap(types []script.TypeInfo) map[string]bool {
 	return comparable
 }
 
-func iterableTypesFor(typ string) (iterableTypes, bool) {
-	typ = normalizeType(typ)
-	if typ == unknownType || typ == "" {
-		return iterableTypes{Item: unknownType, Key: unknownType}, true
-	}
-	if strings.HasPrefix(typ, "[]") {
-		return iterableTypes{Item: strings.TrimSpace(strings.TrimPrefix(typ, "[]")), Key: "int"}, true
-	}
-	if strings.HasPrefix(typ, "[") {
-		close := closingTypeBracket(typ, 0)
-		if close != -1 && close+1 < len(typ) {
-			return iterableTypes{Item: strings.TrimSpace(typ[close+1:]), Key: "int"}, true
-		}
-	}
-	if strings.HasPrefix(typ, "map[") {
-		close := closingTypeBracket(typ, len("map"))
-		if close != -1 && close+1 < len(typ) {
-			return iterableTypes{
-				Item: strings.TrimSpace(typ[close+1:]),
-				Key:  strings.TrimSpace(typ[len("map["):close]),
-			}, true
-		}
-	}
-	if typ == "string" {
-		return iterableTypes{Item: "rune", Key: "int"}, true
-	}
-	return iterableTypes{}, false
-}
-
-func closingTypeBracket(typ string, open int) int {
-	if open < 0 || open >= len(typ) || typ[open] != '[' {
-		return -1
-	}
-	depth := 0
-	for i := open; i < len(typ); i++ {
-		switch typ[i] {
-		case '[':
-			depth++
-		case ']':
-			depth--
-			if depth == 0 {
-				return i
-			}
-		}
-	}
-	return -1
-}
-
-func assignable(expected string, actual string) bool {
-	expected = normalizeType(expected)
-	actual = normalizeType(actual)
-	if expected == "" || actual == "" || expected == unknownType || actual == unknownType {
-		return true
-	}
-	return expected == actual
-}
-
-func normalizeType(typ string) string {
-	typ = strings.TrimSpace(typ)
-	for strings.HasPrefix(typ, "*") {
-		typ = strings.TrimSpace(strings.TrimPrefix(typ, "*"))
-	}
-	return typ
-}
-
 func displayType(typ string) string {
 	if typ == "" {
 		return unknownType
 	}
 	return typ
-}
-
-func isNoArgFunc(typ string) bool {
-	return strings.TrimSpace(typ) == "func()"
-}
-
-func isNumeric(typ string) bool {
-	switch normalizeType(typ) {
-	case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "float32", "float64", "rune", "byte":
-		return true
-	default:
-		return false
-	}
-}
-
-func isScalar(typ string) bool {
-	switch normalizeType(typ) {
-	case "string", "bool":
-		return true
-	default:
-		return isNumeric(typ)
-	}
 }

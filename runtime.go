@@ -200,8 +200,8 @@ func (c *Comp) renderVNode() VNode {
 
 // Slot renders the current component's default slot or the supplied fallback.
 func Slot(fallback VNode) VNode {
-	component := currentComponentScope()
-	if component == nil || component.DefaultSlot == nil {
+	component, ok := currentComponentScope()
+	if !ok || component.DefaultSlot == nil {
 		return fallback
 	}
 	return component.DefaultSlot()
