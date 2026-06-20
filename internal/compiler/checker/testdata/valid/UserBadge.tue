@@ -11,8 +11,9 @@ package fixtures
 import tue "github.com/norunners/tue"
 
 type UserBadge struct {
-	name    tue.Prop[string] `prop:"name,required"`
-	isAdmin tue.Prop[bool]   `prop:"isAdmin"`
-	onSelect func()
+	name     tue.Prop[string]       `prop:"name,required"`
+	isAdmin  tue.Prop[bool]         `prop:"isAdmin"`
+	onSelect tue.On[func(string)]
+	onTags   tue.On[func(...string)]
 }
 </script>

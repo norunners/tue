@@ -8,15 +8,27 @@ package fixtures
 import tue "github.com/norunners/tue"
 
 type UserBadge struct {
-	name   tue.Prop[string] `prop:"name,required"`
-	active tue.Prop[bool]   `prop:"active"`
-	label  tue.Prop[string] `prop:"label"`
-	onSelect func()
+	name     tue.Prop[string] `prop:"name,required"`
+	active   tue.Prop[bool]   `prop:"active"`
+	label    tue.Prop[string] `prop:"label"`
+	onSelect tue.On[func(string)]
+	onRange  tue.On[func(string, int)]
+	onTags   tue.On[func(...string)]
+	onDismiss tue.On[func(reason string)]
 }
 
 func (u *UserBadge) choose() {
-	if u.onSelect != nil {
-		u.onSelect()
+	if onSelect, ok := u.onSelect.FuncOk(); ok {
+		onSelect(u.name.Get())
+	}
+	if onRange, ok := u.onRange.FuncOk(); ok {
+		onRange(u.name.Get(), 1)
+	}
+	if onTags, ok := u.onTags.FuncOk(); ok {
+		onTags("featured", "active")
+	}
+	if onDismiss, ok := u.onDismiss.FuncOk(); ok {
+		onDismiss("dismissed")
 	}
 }
 </script>

@@ -943,7 +943,13 @@ func (g *fileGenerator) renderComponentFields(node *gotemplate.Node, child compo
 	for _, event := range child.component.Events {
 		value, found := events[event.Name]
 		if !found {
-			value = jen.Nil()
+			var valueOK bool
+			value, valueOK = zeroComponentEventValue(event)
+			if !valueOK {
+				g.add(fmt.Sprintf("component %q event %q has unsupported function type %q", node.Tag, event.Name, event.ValueType), event.TypeSpan)
+				ok = false
+				continue
+			}
 		}
 		fields = append(fields, componentField{Name: event.Name, Value: value})
 	}
@@ -961,8 +967,13 @@ func (g *fileGenerator) renderComponentEventField(node *gotemplate.Node, child c
 		g.add(fmt.Sprintf("component %q has no event %q", node.Tag, attr.Argument), attr.ArgumentSpan)
 		return nil, false
 	}
-	if !typecap.NoArgFunc(event.Type) {
-		g.add(fmt.Sprintf("component %q event %q must have signature func()", node.Tag, attr.Argument), attr.ArgumentSpan)
+	signature, ok := typecap.ParseFunction(event.ValueType)
+	if !ok {
+		g.add(fmt.Sprintf("component %q event %q has invalid function type %q", node.Tag, attr.Argument, event.ValueType), attr.ArgumentSpan)
+		return nil, false
+	}
+	if len(signature.Results) != 0 {
+		g.add(fmt.Sprintf("component %q event %q must not return values", node.Tag, attr.Argument), attr.ArgumentSpan)
 		return nil, false
 	}
 
@@ -980,14 +991,14 @@ func (g *fileGenerator) renderComponentEventField(node *gotemplate.Node, child c
 		g.add(fmt.Sprintf("event handler %q is not a method on %s", methodName, g.component.Name), attr.ExpressionSpan)
 		return nil, false
 	}
-	if len(method.Parameters) != 0 || len(method.Results) != 0 {
-		g.add(fmt.Sprintf("event handler %q must have signature func()", methodName), attr.ExpressionSpan)
+	if !signature.Matches(method.ParameterTypes(), method.ResultTypes()) {
+		g.add(fmt.Sprintf("event handler %q must have signature %s", methodName, signature.String()), attr.ExpressionSpan)
 		return nil, false
 	}
 
 	return &componentEventField{
 		Name:  event.Name,
-		Value: jen.Id("component").Dot(methodName),
+		Value: jen.Qual(tueImportPath, "OnOf").Call(jen.Id("component").Dot(methodName)),
 	}, true
 }
 
@@ -1374,7 +1385,7 @@ func (g *fileGenerator) renderEvent(attr gotemplate.Attr) (jen.Code, bool) {
 		return nil, false
 	}
 
-	return jen.Qual(tueImportPath, "On").Call(
+	return jen.Qual(tueImportPath, "EventOf").Call(
 		jen.Lit(attr.Argument),
 		jen.Id("component").Dot(methodName),
 	), true
@@ -1842,6 +1853,14 @@ func renderTypeExpression(typ string) (jen.Code, bool) {
 	return renderType(expr)
 }
 
+func zeroComponentEventValue(event script.Field) (jen.Code, bool) {
+	callbackType, ok := renderTypeExpression(event.ValueType)
+	if !ok {
+		return nil, false
+	}
+	return jen.Qual(tueImportPath, "On").Types(callbackType).Values(), true
+}
+
 func renderType(expr ast.Expr) (jen.Code, bool) {
 	switch typed := expr.(type) {
 	case *ast.Ident:
@@ -1878,9 +1897,55 @@ func renderType(expr ast.Expr) (jen.Code, bool) {
 			return nil, false
 		}
 		return jen.Map(key).Add(value), true
+	case *ast.Ellipsis:
+		element, ok := renderType(typed.Elt)
+		if !ok {
+			return nil, false
+		}
+		return jen.Op("...").Add(element), true
+	case *ast.FuncType:
+		parameters, ok := renderFunctionFields(typed.Params)
+		if !ok {
+			return nil, false
+		}
+		results, ok := renderFunctionFields(typed.Results)
+		if !ok {
+			return nil, false
+		}
+		function := jen.Func().Params(parameters...)
+		switch len(results) {
+		case 0:
+			return function, true
+		case 1:
+			return function.Add(results[0]), true
+		default:
+			return function.Params(results...), true
+		}
 	default:
 		return nil, false
 	}
+}
+
+func renderFunctionFields(fields *ast.FieldList) ([]jen.Code, bool) {
+	if fields == nil {
+		return nil, true
+	}
+
+	var rendered []jen.Code
+	for _, field := range fields.List {
+		fieldType, ok := renderType(field.Type)
+		if !ok {
+			return nil, false
+		}
+		count := len(field.Names)
+		if count == 0 {
+			count = 1
+		}
+		for range count {
+			rendered = append(rendered, fieldType)
+		}
+	}
+	return rendered, true
 }
 
 func displayType(typ string) string {

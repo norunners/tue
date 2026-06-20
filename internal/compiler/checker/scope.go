@@ -21,8 +21,8 @@ type symbol struct {
 	ResultType string
 	Writable   bool
 	Method     bool
-	Parameters int
-	Results    int
+	Parameters []string
+	Results    []string
 }
 
 func componentScope(component *script.Component) *scope {
@@ -49,8 +49,8 @@ func componentScope(component *script.Component) *scope {
 			Type:       funcType,
 			ResultType: methodResultType(method),
 			Method:     true,
-			Parameters: len(method.Parameters),
-			Results:    len(method.Results),
+			Parameters: method.ParameterTypes(),
+			Results:    method.ResultTypes(),
 		})
 	}
 	return scope

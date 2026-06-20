@@ -9,8 +9,8 @@ type Dashboard struct {
 	count tue.Ref[int]
 	total tue.Computed[int]
 	user  tue.Resource[User]
-	onSave func()
-	label string
+	onSave tue.On[func()]
+	label  string
 }
 
 func (d *Dashboard) Init(ctx tue.Context) {}

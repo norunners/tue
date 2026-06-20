@@ -12,8 +12,38 @@ type EventBinding struct {
 	Handler func(Event)
 }
 
-// On returns a native DOM event binding.
-func On(name string, handler func()) EventBinding {
+// On is an optional component event callback.
+//
+// F must be a function type. Go does not provide a constraint that accepts
+// every function signature, so the compiler validates this requirement for
+// component fields.
+type On[F any] struct {
+	fn F
+	ok bool
+}
+
+// OnOf returns a component event callback backed by fn.
+func OnOf[F any](fn F) On[F] {
+	return On[F]{fn: fn, ok: true}
+}
+
+// Func returns the wrapped component event callback.
+func (on On[F]) Func() F {
+	return on.fn
+}
+
+// Ok reports whether the component event callback was initialized by OnOf.
+func (on On[F]) Ok() bool {
+	return on.ok
+}
+
+// FuncOk returns the wrapped callback and whether it was initialized by OnOf.
+func (on On[F]) FuncOk() (F, bool) {
+	return on.Func(), on.Ok()
+}
+
+// EventOf returns a native DOM event binding.
+func EventOf(name string, handler func()) EventBinding {
 	return EventBinding{Name: name, Handler: func(Event) {
 		if handler != nil {
 			handler()

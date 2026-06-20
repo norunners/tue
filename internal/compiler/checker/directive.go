@@ -133,6 +133,47 @@ func (c *fileChecker) checkEvent(attr gotemplate.Attr, scope *scope) {
 	}
 }
 
+func (c *fileChecker) checkComponentEventHandler(attr gotemplate.Attr, scope *scope, signature *typecap.FunctionSignature) {
+	expr, exprChecker, ok := c.parseExpression(attr.Expression, attr.ExpressionSpan, scope)
+	if !ok {
+		return
+	}
+
+	var name string
+	var span sfc.Span
+	switch typed := expr.(type) {
+	case *ast.Ident:
+		name = typed.Name
+		span = exprChecker.nodeSpan(typed)
+	case *ast.CallExpr:
+		for _, argument := range typed.Args {
+			exprChecker.eval(argument)
+		}
+		ident, ok := typed.Fun.(*ast.Ident)
+		if !ok {
+			exprChecker.eval(typed.Fun)
+			return
+		}
+		if len(typed.Args) != 0 {
+			c.add(fmt.Sprintf("event handler %q does not accept arguments", ident.Name), exprChecker.nodeSpan(typed))
+			return
+		}
+		name = ident.Name
+		span = exprChecker.nodeSpan(ident)
+	default:
+		value := exprChecker.eval(expr)
+		if value.Type != unknownType && value.Type != funcType {
+			c.add(fmt.Sprintf("event handler must be a method, got %s", displayType(value.Type)), exprChecker.nodeSpan(expr))
+		}
+		return
+	}
+
+	method, ok := c.expectEventMethod(name, span, scope, false)
+	if ok && !signature.Matches(method.Parameters, method.Results) {
+		c.add(fmt.Sprintf("event handler %q must have signature %s", name, signature.String()), span)
+	}
+}
+
 func (c *fileChecker) checkCallEvent(call *ast.CallExpr, exprChecker *exprChecker, scope *scope) {
 	for _, arg := range call.Args {
 		exprChecker.eval(arg)
@@ -211,7 +252,7 @@ func (c *fileChecker) expectEventMethod(name string, span sfc.Span, scope *scope
 		c.add(fmt.Sprintf("event handler %q is not a method on %s", name, c.component.Name), span)
 		return nil, false
 	}
-	if requireFuncSignature && (method.Parameters != 0 || method.Results != 0) {
+	if requireFuncSignature && (len(method.Parameters) != 0 || len(method.Results) != 0) {
 		c.add(fmt.Sprintf("event handler %q must have signature func()", name), span)
 		return nil, false
 	}

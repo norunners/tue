@@ -413,8 +413,11 @@ func (e *extractor) fieldFromAST(name *ast.Ident, astField *ast.Field) Field {
 
 func (e *extractor) classifyField(fieldName string, expr ast.Expr) (FieldKind, string) {
 	if _, ok := expr.(*ast.FuncType); ok {
-		if _, ok := eventNameFromFieldName(fieldName); ok {
-			return FieldKindEvent, ""
+		if _, eventNameOK := eventNameFromFieldName(fieldName); eventNameOK {
+			e.addDiagnostic(
+				fmt.Sprintf("component event field %q must use tue.On[func(...)]", fieldName),
+				e.nodeSpan(expr),
+			)
 		}
 		return FieldKindState, ""
 	}
@@ -428,12 +431,32 @@ func (e *extractor) classifyField(fieldName string, expr ast.Expr) (FieldKind, s
 	if !ok {
 		return FieldKindState, ""
 	}
+	if kind == FieldKindEvent {
+		if _, eventNameOK := eventNameFromFieldName(fieldName); !eventNameOK {
+			e.addDiagnostic(
+				fmt.Sprintf("component event field %q must start with on followed by an uppercase event name", fieldName),
+				e.nodeSpan(expr),
+			)
+		}
+	}
 	if len(args) != 1 {
+		typeParameter := "T"
+		if kind == FieldKindEvent {
+			typeParameter = "F"
+		}
 		e.addDiagnostic(
-			fmt.Sprintf("field %q must use tue.%s[T] with exactly one type argument", fieldName, typeName),
+			fmt.Sprintf("field %q must use tue.%s[%s] with exactly one type argument", fieldName, typeName, typeParameter),
 			e.nodeSpan(expr),
 		)
 		return kind, ""
+	}
+	if kind == FieldKindEvent {
+		if _, ok := args[0].(*ast.FuncType); !ok {
+			e.addDiagnostic(
+				fmt.Sprintf("field %q must use tue.On[F] with a function type", fieldName),
+				e.nodeSpan(args[0]),
+			)
+		}
 	}
 	return kind, e.nodeString(args[0])
 }
@@ -478,6 +501,8 @@ func (e *extractor) tueTypeName(expr ast.Expr) (string, bool) {
 
 func fieldKindForTueType(name string) (FieldKind, bool) {
 	switch name {
+	case "On":
+		return FieldKindEvent, true
 	case "Prop":
 		return FieldKindProp, true
 	case "Ref":

@@ -935,9 +935,11 @@ func TestGenerateProjectReportsUnsupportedComponentEvents(t *testing.T) {
 
 	if diff := cmp.Diff([]diagnosticSummary{
 		{Path: "Parent.tue", Message: `component "UserBadge" has no event "missing"`, Line: 5, Column: 4},
-		{Path: "Parent.tue", Message: `component "UserBadge" event "payload" must have signature func()`, Line: 6, Column: 4},
+		{Path: "Parent.tue", Message: `event handler "selectUser" must have signature func(string)`, Line: 6, Column: 13},
 		{Path: "Parent.tue", Message: `event handler "selectUser" does not accept arguments`, Line: 7, Column: 19},
 		{Path: "Parent.tue", Message: `event handler "needsValue" must have signature func()`, Line: 8, Column: 15},
+		{Path: "Parent.tue", Message: `event handler "needsValue" must have signature func(int)`, Line: 9, Column: 18},
+		{Path: "Parent.tue", Message: `component "UserBadge" event "result" must not return values`, Line: 10, Column: 4},
 	}, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}

@@ -116,11 +116,6 @@ func Scalar(typ string) bool {
 	}
 }
 
-// NoArgFunc reports whether typ is exactly a no-argument function.
-func NoArgFunc(typ string) bool {
-	return strings.TrimSpace(typ) == "func()"
-}
-
 func closingBracket(typ string, open int) int {
 	if open < 0 || open >= len(typ) || typ[open] != '[' {
 		return -1

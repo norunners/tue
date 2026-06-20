@@ -90,6 +90,24 @@ type Method struct {
 	ReceiverSpan    sfc.Span
 }
 
+// ParameterTypes returns the method parameter types in declaration order.
+func (m Method) ParameterTypes() []string {
+	return parameterTypes(m.Parameters)
+}
+
+// ResultTypes returns the method result types in declaration order.
+func (m Method) ResultTypes() []string {
+	return parameterTypes(m.Results)
+}
+
+func parameterTypes(parameters []Parameter) []string {
+	types := make([]string, len(parameters))
+	for index, parameter := range parameters {
+		types[index] = parameter.Type
+	}
+	return types
+}
+
 // Parameter is a method parameter or result.
 type Parameter struct {
 	Name     string

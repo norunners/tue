@@ -54,6 +54,16 @@ func stubTuePackage() *types.Package {
 		scope.Insert(typeName)
 	}
 
+	onTypeName := types.NewTypeName(token.NoPos, pkg, "On", nil)
+	onTypeParamName := types.NewTypeName(token.NoPos, pkg, "F", nil)
+	onTypeParam := types.NewTypeParam(onTypeParamName, anyType)
+	onStruct := types.NewStruct([]*types.Var{
+		types.NewField(token.NoPos, pkg, "fn", onTypeParam, false),
+	}, nil)
+	onType := types.NewNamed(onTypeName, onStruct, nil)
+	onType.SetTypeParams([]*types.TypeParam{onTypeParam})
+	scope.Insert(onTypeName)
+
 	for _, name := range []string{"Context", "Route", "RouteMatch", "Router", "TrustedHTML", "VNode"} {
 		typeName := types.NewTypeName(token.NoPos, pkg, name, nil)
 		types.NewNamed(typeName, emptyInterface, nil)

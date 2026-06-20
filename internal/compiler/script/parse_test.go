@@ -54,7 +54,7 @@ func TestParseExtractsComponentContract(t *testing.T) {
 			{Kind: FieldKindState, Name: "count", Type: "tue.Ref[int]"},
 			{Kind: FieldKindState, Name: "total", Type: "tue.Computed[int]"},
 			{Kind: FieldKindState, Name: "user", Type: "tue.Resource[User]"},
-			{Kind: FieldKindState, Name: "onSave", Type: "func()"},
+			{Kind: FieldKindState, Name: "onSave", Type: "tue.On[func()]"},
 			{Kind: FieldKindState, Name: "label", Type: "string"},
 		}},
 	}, summarizeStructs(file.Structs)); diff != "" {
@@ -91,7 +91,7 @@ func TestParseExtractsComponentContract(t *testing.T) {
 	assertField(t, component.Refs, "count", FieldKindRef, "tue.Ref[int]", "int")
 	assertField(t, component.Computed, "total", FieldKindComputed, "tue.Computed[int]", "int")
 	assertField(t, component.Resources, "user", FieldKindResource, "tue.Resource[User]", "User")
-	assertField(t, component.Events, "onSave", FieldKindEvent, "func()", "")
+	assertField(t, component.Events, "onSave", FieldKindEvent, "tue.On[func()]", "func()")
 	assertField(t, component.State, "label", FieldKindState, "string", "")
 
 	init, err := requireInit(component)
@@ -264,6 +264,24 @@ func TestParseDiagnostics(t *testing.T) {
 			fixture:   "testdata/diagnostics/prop_with_too_many_type_arguments.go",
 			component: "App",
 			expected:  []string{`field "name" must use tue.Prop[T] with exactly one type argument`},
+		},
+		{
+			name:      "legacy component event",
+			fixture:   "testdata/diagnostics/legacy_component_event.go",
+			component: "App",
+			expected:  []string{`component event field "onSave" must use tue.On[func(...)]`},
+		},
+		{
+			name:      "component event requires function type",
+			fixture:   "testdata/diagnostics/component_event_non_function.go",
+			component: "App",
+			expected:  []string{`field "onSave" must use tue.On[F] with a function type`},
+		},
+		{
+			name:      "component event requires event field name",
+			fixture:   "testdata/diagnostics/component_event_invalid_name.go",
+			component: "App",
+			expected:  []string{`component event field "save" must start with on followed by an uppercase event name`},
 		},
 		{
 			name:      "invalid Init value receiver",

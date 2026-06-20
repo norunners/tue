@@ -6,6 +6,8 @@
 		@payload="selectUser"
 		@selectWithArg="selectUser(1)"
 		@selectBad="needsValue"
+		@wrongPayload="needsValue"
+		@result="returnsValue"
 	/>
 </main>
 </template>
@@ -16,6 +18,8 @@ package fixtures
 func (p *Parent) selectUser() {}
 
 func (p *Parent) needsValue(value string) {}
+
+func (p *Parent) returnsValue() string { return "result" }
 
 type Parent struct{}
 </script>

@@ -203,11 +203,16 @@ func (c *fileChecker) checkComponentEvent(node *gotemplate.Node, child component
 		return
 	}
 
-	if !typecap.NoArgFunc(event.Type) {
-		c.add(fmt.Sprintf("component %q event %q must have signature func()", node.Tag, attr.Argument), attr.ArgumentSpan)
+	signature, ok := typecap.ParseFunction(event.ValueType)
+	if !ok {
+		c.add(fmt.Sprintf("component %q event %q has invalid function type %q", node.Tag, attr.Argument, event.ValueType), attr.ArgumentSpan)
 		return
 	}
-	c.checkEvent(attr, scope)
+	if len(signature.Results) != 0 {
+		c.add(fmt.Sprintf("component %q event %q must not return values", node.Tag, attr.Argument), attr.ArgumentSpan)
+		return
+	}
+	c.checkComponentEventHandler(attr, scope, signature)
 }
 
 func (c *fileChecker) expectType(expected string, actual string, subject string, span sfc.Span) {
