@@ -12,15 +12,18 @@ import tue "github.com/norunners/tue"
 type Parent struct {
 	name      tue.Ref[string]
 	showBadge bool
+	selected  string
 }
 
 func (p *Parent) Init(tue.Context) {
 	p.name = tue.RefOf("Ada")
 }
 
-func (p *Parent) selectUser(name string) {}
+func (p *Parent) selectUser(name string) {
+	p.selected = name
+}
 
 func (p *Parent) selectRange(name string, count int) {}
 
-func (p *Parent) selectTags(tags ...string) {}
+func (p *Parent) selectTags(tags []string) {}
 </script>

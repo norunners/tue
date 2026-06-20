@@ -141,25 +141,6 @@ func TestComputedInvalidatesWatchers(t *testing.T) {
 	}
 }
 
-func TestPropWatchTracksReactiveGetter(t *testing.T) {
-	name := RefOf("Ada")
-	prop := PropOfFunc(func() string {
-		return name.Get()
-	})
-	values := []string{}
-
-	stop := prop.Watch(func(value string) {
-		values = append(values, value)
-	})
-	name.Set("Lin")
-	stop()
-	name.Set("Grace")
-
-	if diff := cmp.Diff([]string{"Ada", "Lin"}, values); diff != "" {
-		t.Errorf("mismatch prop watch values (-expected, +actual):\n%s", diff)
-	}
-}
-
 func TestComponentScopedEffectsStopBeforeUserCleanup(t *testing.T) {
 	events := []string{}
 	component := &reactiveCleanupFixture{events: &events}

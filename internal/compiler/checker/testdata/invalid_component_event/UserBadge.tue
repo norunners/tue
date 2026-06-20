@@ -1,5 +1,5 @@
 <template>
-	<span>{{ name }}</span>
+	<span>{{ Name }}</span>
 </template>
 
 <script lang="go">
@@ -8,11 +8,12 @@ package fixtures
 import tue "github.com/norunners/tue"
 
 type UserBadge struct {
-	name            tue.Prop[string]       `prop:"name,required"`
-	onPayload       tue.On[func(string)]
-	onSelectWithArg tue.On[func()]
-	onSelectBad     tue.On[func()]
-	onWrongPayload  tue.On[func(int)]
-	onResult        tue.On[func() string]
+	tue.Comp[struct {
+		Name          string       `prop:",required"`
+		Payload       func(string) `event:""`
+		SelectWithArg func()       `event:""`
+		SelectBad     func()       `event:""`
+		WrongPayload  func(int)    `event:""`
+	}]
 }
 </script>

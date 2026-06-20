@@ -1,5 +1,5 @@
 <template>
-<button type="button" @click="choose">{{ name }} {{ active }} {{ label }}</button>
+	<button type="button" @click="choose">{{ Name }} {{ Active }} {{ Label }} {{ Expanded }}</button>
 </template>
 
 <script lang="go">
@@ -8,27 +8,29 @@ package fixtures
 import tue "github.com/norunners/tue"
 
 type UserBadge struct {
-	name     tue.Prop[string] `prop:"name,required"`
-	active   tue.Prop[bool]   `prop:"active"`
-	label    tue.Prop[string] `prop:"label"`
-	onSelect tue.On[func(string)]
-	onRange  tue.On[func(string, int)]
-	onTags   tue.On[func(...string)]
-	onDismiss tue.On[func(reason string)]
+	tue.Comp[struct {
+		Name     string            `prop:",required"`
+		Active   bool              `prop:"active"`
+		Label    string            `prop:""`
+		Expanded bool              `state:""`
+		Select   func(string)      `event:""`
+		Range    func(string, int) `event:""`
+		Tags     func([]string)    `event:""`
+		Dismiss  func(string)      `event:""`
+	}]
+}
+
+func (u *UserBadge) Init(tue.Context) {
+	u.ExpandedSet(true)
 }
 
 func (u *UserBadge) choose() {
-	if onSelect, ok := u.onSelect.FuncOk(); ok {
-		onSelect(u.name.Get())
-	}
-	if onRange, ok := u.onRange.FuncOk(); ok {
-		onRange(u.name.Get(), 1)
-	}
-	if onTags, ok := u.onTags.FuncOk(); ok {
-		onTags("featured", "active")
-	}
-	if onDismiss, ok := u.onDismiss.FuncOk(); ok {
-		onDismiss("dismissed")
+	u.ExpandedSet(!u.Expanded())
+	u.Select(u.Name())
+	u.Range(u.Name(), 1)
+	u.Tags([]string{"featured", "active"})
+	if _, ok := u.LabelOk(); !ok {
+		u.Dismiss("dismissed")
 	}
 }
 </script>

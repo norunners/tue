@@ -23,7 +23,8 @@ type expressionGenerator struct {
 func (g expressionGenerator) render(expr ast.Expr) (jen.Code, bool) {
 	switch typed := expr.(type) {
 	case *ast.Ident:
-		return g.ident(typed), true
+		code := g.ident(typed)
+		return code, code != nil
 	case *ast.BasicLit:
 		return basicLiteral(typed)
 	case *ast.BinaryExpr:
@@ -125,6 +126,12 @@ func (g expressionGenerator) ident(ident *ast.Ident) jen.Code {
 	if local, ok := g.locals[ident.Name]; ok {
 		return jen.Id(local)
 	}
+	if method, ok := g.methods[ident.Name]; ok && method.ImplicitGetter {
+		return jen.Id("component").Dot(method.Name).Call()
+	}
+	if _, ok := g.methods[ident.Name]; ok {
+		return nil
+	}
 
 	field, ok := g.fields[ident.Name]
 	if !ok {
@@ -133,7 +140,7 @@ func (g expressionGenerator) ident(ident *ast.Ident) jen.Code {
 
 	access := jen.Id("component").Dot(field.Name)
 	switch field.Kind {
-	case script.FieldKindProp, script.FieldKindRef, script.FieldKindComputed, script.FieldKindResource:
+	case script.FieldKindRef, script.FieldKindComputed, script.FieldKindResource:
 		return access.Dot("Get").Call()
 	default:
 		return access
@@ -231,6 +238,9 @@ func (t expressionTyper) ident(ident *ast.Ident) string {
 	}
 	if typ, ok := t.localTypes[ident.Name]; ok {
 		return typ
+	}
+	if method, ok := t.methods[ident.Name]; ok && method.ImplicitGetter && len(method.Results) == 1 {
+		return method.Results[0].Type
 	}
 	if field, ok := t.fields[ident.Name]; ok {
 		return fieldValueType(field)

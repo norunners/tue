@@ -305,14 +305,14 @@ func TestMountedComponentVNodeRunsChildLifecycleAndUpdates(t *testing.T) {
 	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
 		return Element("main", nil, []VNode{
-			Component("Child", func() *Comp {
+			Component("Child", func() *ComponentInstance {
 				child := &componentVNodeFixture{
 					events: &events,
-					value:  PropOfFunc(func() string { return value }),
+					value:  func() string { return value },
 				}
 				return CompOf(child, func(child *componentVNodeFixture) VNode {
-					*child.events = append(*child.events, "render:"+child.value.Get())
-					return Text(child.value.Get())
+					*child.events = append(*child.events, "render:"+child.value())
+					return Text(child.value())
 				})
 			}),
 		})
@@ -357,7 +357,7 @@ func TestMountedComponentVNodeAppliesInheritedScopeAttrsToRoot(t *testing.T) {
 	childTag := "section"
 	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
-		child := Component("Child", func() *Comp {
+		child := Component("Child", func() *ComponentInstance {
 			return CompOf(&patchFixture{}, func(*patchFixture) VNode {
 				return Element(childTag, []Attribute{Attr("class", "banner")}, []VNode{
 					Element("p", nil, []VNode{Text("Child")}),
@@ -394,9 +394,9 @@ func TestMountedComponentVNodeAppliesInheritedScopeAttrsToRoot(t *testing.T) {
 func TestMountedComponentVNodeAppendsNestedInheritedScopeAttrsToRoot(t *testing.T) {
 	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
-		parent := Component("Parent", func() *Comp {
+		parent := Component("Parent", func() *ComponentInstance {
 			return CompOf(&patchFixture{}, func(*patchFixture) VNode {
-				child := Component("Child", func() *Comp {
+				child := Component("Child", func() *ComponentInstance {
 					return CompOf(&patchFixture{}, func(*patchFixture) VNode {
 						return Element("section", []Attribute{
 							Attr("class", "child-root"),
@@ -427,7 +427,7 @@ func TestMountedComponentVNodeTracksChildReactiveReads(t *testing.T) {
 	count := RefOf(0)
 	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
-		return Component("Child", func() *Comp {
+		return Component("Child", func() *ComponentInstance {
 			return CompOf(&patchFixture{}, func(*patchFixture) VNode {
 				return Text(fmt.Sprint(count.Get()))
 			})
@@ -452,7 +452,7 @@ func TestMountedComponentVNodeRendersDefaultSlot(t *testing.T) {
 	value := RefOf("first")
 	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
-		return Component("Child", func() *Comp {
+		return Component("Child", func() *ComponentInstance {
 			child := CompOf(&patchFixture{}, func(*patchFixture) VNode {
 				return Element("section", nil, []VNode{Slot(Text("fallback"))})
 			})
@@ -501,21 +501,21 @@ func TestMountedComponentVNodeRefreshesDefaultSlotOnPatch(t *testing.T) {
 			return nil
 		}
 	}
-	updateChild := func(childComp *Comp) {
+	updateChild := func(childComp *ComponentInstance) {
 		child := childComp.Component.(*componentSlotPatchFixture)
-		child.label = PropOf(label)
+		child.label = func() string { return label }
 		childComp.DefaultSlot = defaultSlot()
 	}
 	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
-		return ComponentWithUpdate("Child", func() *Comp {
+		return ComponentWithUpdate("Child", func() *ComponentInstance {
 			child := &componentSlotPatchFixture{
-				label:     PropOf(label),
+				label:     func() string { return label },
 				initCount: &initCount,
 			}
 			childComp := CompOf(child, func(fixture *componentSlotPatchFixture) VNode {
 				return Element("section", nil, []VNode{
-					Element("h2", nil, []VNode{Text(fixture.label.Get())}),
+					Element("h2", nil, []VNode{Text(fixture.label())}),
 					Slot(Text("fallback")),
 				})
 			})
@@ -565,7 +565,7 @@ func TestMountedComponentVNodeRefreshesDefaultSlotOnPatch(t *testing.T) {
 func TestMountedComponentVNodeRendersSlotFallback(t *testing.T) {
 	target := newStubDOMTarget()
 	_, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
-		return Component("Child", func() *Comp {
+		return Component("Child", func() *ComponentInstance {
 			return CompOf(&patchFixture{}, func(*patchFixture) VNode {
 				return Element("section", nil, []VNode{Slot(Text("fallback"))})
 			})
@@ -589,13 +589,13 @@ func TestMountedComponentVNodeUnmountsWhenReplaced(t *testing.T) {
 		if !showChild {
 			return Text("gone")
 		}
-		return Component("Child", func() *Comp {
+		return Component("Child", func() *ComponentInstance {
 			child := &componentVNodeFixture{
 				events: &events,
-				value:  PropOf("shown"),
+				value:  func() string { return "shown" },
 			}
 			return CompOf(child, func(child *componentVNodeFixture) VNode {
-				return Text(child.value.Get())
+				return Text(child.value())
 			})
 		})
 	}), target)
@@ -641,7 +641,7 @@ func TestMountValidatesInputBeforePlatformBoundary(t *testing.T) {
 	tests := []struct {
 		name      string
 		target    string
-		component *Comp
+		component *ComponentInstance
 		expected  string
 	}{
 		{
@@ -717,11 +717,11 @@ func (f *reactiveUpdatedHookFixture) OnUpdated() {
 
 type componentVNodeFixture struct {
 	events *[]string
-	value  Prop[string]
+	value  func() string
 }
 
 func (f *componentVNodeFixture) Init(ctx Context) {
-	*f.events = append(*f.events, "init:"+f.value.Get())
+	*f.events = append(*f.events, "init:"+f.value())
 	ctx.OnCleanup(func() {
 		*f.events = append(*f.events, "cleanup")
 	})
@@ -740,7 +740,7 @@ func (f *componentVNodeFixture) OnUnmounted() {
 }
 
 type componentSlotPatchFixture struct {
-	label     Prop[string]
+	label     func() string
 	initCount *int
 }
 

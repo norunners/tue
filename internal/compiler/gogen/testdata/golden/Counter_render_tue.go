@@ -7,7 +7,7 @@ import (
 	"github.com/norunners/tue"
 )
 
-func NewCounter() *tue.Comp {
+func NewCounter() *tue.ComponentInstance {
 	component := &Counter{}
 	return tue.CompOf(component, renderCounter)
 }

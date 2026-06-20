@@ -1,7 +1,7 @@
 <template>
-	<article class="activity-item" :class="tone">
-		<span>{{ time }}</span>
-		<p>{{ message }}</p>
+	<article class="activity-item" :class="Tone">
+		<span>{{ Time }}</span>
+		<p>{{ Message }}</p>
 	</article>
 </template>
 
@@ -11,9 +11,11 @@ package app
 import tue "github.com/norunners/tue"
 
 type ActivityItem struct {
-	message tue.Prop[string] `prop:"message,required"`
-	time    tue.Prop[string] `prop:"time,required"`
-	tone    tue.Prop[string] `prop:"tone"`
+	tue.Comp[struct {
+		Message string `prop:",required"`
+		Time    string `prop:",required"`
+		Tone    string `prop:"tone"`
+	}]
 }
 </script>
 

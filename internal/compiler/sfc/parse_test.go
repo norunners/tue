@@ -43,7 +43,6 @@ p { color: red; }
 	if diff := cmp.Diff("\n  <p>{{ greeting }}</p>\n", file.Template.Content); diff != "" {
 		t.Errorf("mismatch template content (-expected, +actual):\n%s", diff)
 	}
-
 	if file.Script == nil {
 		t.Fatal("file.Script is nil")
 	}
@@ -251,6 +250,18 @@ func TestParseRejectsUnsupportedAndUnexpectedTopLevelSyntax(t *testing.T) {
 			t.Errorf("mismatch diagnostic positions (-expected, +actual):\n%s", diff)
 		}
 	}
+}
+
+func TestParseRejectsUnsupportedContractBlock(t *testing.T) {
+	source := `<template></template>
+<contract></contract>
+<script lang="go"></script>
+`
+
+	_, diagnostics := Parse("unsupported-contract.tue", []byte(source))
+	assertDiagnosticMessages(t, diagnostics, []string{
+		"unsupported top-level block <contract>",
+	})
 }
 
 func TestParseRejectsDuplicateBlocks(t *testing.T) {

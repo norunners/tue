@@ -1,7 +1,0 @@
-package fixtures
-
-import tue "github.com/norunners/tue"
-
-type App struct {
-	name tue.Prop[string, int]
-}

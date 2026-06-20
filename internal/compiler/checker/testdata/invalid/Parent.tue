@@ -3,7 +3,7 @@
 		<UserBadge :name="missing" :isAdmin='"yes"' :extra="name" />
 		<UnknownCard />
 		<button type="button" @click="missingHandler">Save</button>
-		<input v-model="title" />
+		<input v-model="Title" />
 		<ul>
 			<li v-for="todo in todos">{{ todo.Text }}</li>
 		</ul>
@@ -23,7 +23,9 @@ type Todo struct {
 }
 
 type Parent struct {
-	title tue.Prop[string]
+	tue.Comp[struct {
+		Title string `prop:""`
+	}]
 	name  string
 	todos []Todo
 }

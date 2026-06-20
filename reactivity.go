@@ -1,49 +1,5 @@
 package tue
 
-// Prop is the read interface exposed to component code.
-type Prop[T any] interface {
-	Get() T
-	Watch(func(T)) func()
-}
-
-// PropValue is the concrete runtime storage for a prop.
-type PropValue[T any] struct {
-	get func() T
-	dep dependency
-}
-
-// PropOf returns a prop with a fixed value.
-func PropOf[T any](value T) *PropValue[T] {
-	return PropOfFunc(func() T {
-		return value
-	})
-}
-
-// PropOfFunc returns a prop backed by a getter function.
-func PropOfFunc[T any](get func() T) *PropValue[T] {
-	return &PropValue[T]{get: get}
-}
-
-// Get returns the current prop value.
-func (p *PropValue[T]) Get() T {
-	if p == nil || p.get == nil {
-		var zero T
-		return zero
-	}
-	p.dep.track()
-	return p.get()
-}
-
-// Watch observes prop changes and returns a stop function.
-func (p *PropValue[T]) Watch(effect func(T)) func() {
-	if effect == nil {
-		return func() {}
-	}
-	return Watch(func() {
-		effect(p.Get())
-	})
-}
-
 // Ref is the read/write interface exposed to component code.
 type Ref[T any] interface {
 	Get() T
@@ -405,9 +361,9 @@ func flushSubscribers() {
 	}
 }
 
-var componentScopeStack []*Comp
+var componentScopeStack []*ComponentInstance
 
-func withComponentScope(component *Comp, fn func()) {
+func withComponentScope(component *ComponentInstance, fn func()) {
 	componentScopeStack = append(componentScopeStack, component)
 	defer func() {
 		componentScopeStack = componentScopeStack[:len(componentScopeStack)-1]
@@ -415,7 +371,7 @@ func withComponentScope(component *Comp, fn func()) {
 	fn()
 }
 
-func currentComponentScope() (*Comp, bool) {
+func currentComponentScope() (*ComponentInstance, bool) {
 	if len(componentScopeStack) == 0 {
 		return nil, false
 	}

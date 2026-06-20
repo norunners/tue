@@ -35,7 +35,7 @@ func (p *Parent) increment() {}
 
 func (p *Parent) selectUser(name string) {}
 
-func (p *Parent) selectTags(tags ...string) {}
+func (p *Parent) selectTags(tags []string) {}
 
 func (p *Parent) visibleTodos() []Todo {
 	return p.todos

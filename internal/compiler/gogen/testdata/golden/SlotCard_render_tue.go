@@ -7,11 +7,11 @@ import (
 	"github.com/norunners/tue"
 )
 
-func NewCard() *tue.Comp {
-	component := &Card{}
+func NewCard() *tue.ComponentInstance {
+	component := &Card{__tue: newTueCardContract()}
 	return tue.CompOf(component, renderCard)
 }
 
 func renderCard(component *Card) tue.VNode {
-	return tue.Element("section", []tue.Attribute{tue.Attr("class", "card")}, []tue.VNode{tue.Element("h2", nil, []tue.VNode{tue.Text(fmt.Sprint(component.title.Get()))}), tue.Slot(tue.Element("p", nil, []tue.VNode{tue.Text("Fallback")}))})
+	return tue.Element("section", []tue.Attribute{tue.Attr("class", "card")}, []tue.VNode{tue.Element("h2", nil, []tue.VNode{tue.Text(fmt.Sprint(component.Title()))}), tue.Slot(tue.Element("p", nil, []tue.VNode{tue.Text("Fallback")}))})
 }

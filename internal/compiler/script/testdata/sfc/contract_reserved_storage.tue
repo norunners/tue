@@ -1,0 +1,14 @@
+<template></template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type ContractReservedStorage struct {
+	tue.Comp[struct {
+		Name string `prop:""`
+	}]
+	__tue int
+}
+</script>

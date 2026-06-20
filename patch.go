@@ -15,7 +15,7 @@ type domBoundary interface {
 	setInnerHTML(node domNode, html string) error
 	setAttr(node domNode, attr Attribute) error
 	removeAttr(node domNode, name string) error
-	addEventListener(node domNode, name string, handler func(Event)) (func(), error)
+	addEventListener(node domNode, name string, handler func(DOMEvent)) (func(), error)
 }
 
 type mountedVNode struct {
@@ -27,11 +27,11 @@ type mountedVNode struct {
 }
 
 type mountedEvent struct {
-	handler func(Event)
+	handler func(DOMEvent)
 	cleanup func()
 }
 
-func (e *mountedEvent) handle(event Event) {
+func (e *mountedEvent) handle(event DOMEvent) {
 	if e == nil || e.handler == nil {
 		return
 	}
@@ -565,8 +565,8 @@ func eventsByName(events []EventBinding) map[string]EventBinding {
 	return byName
 }
 
-func combinedEventHandler(first func(Event), second func(Event)) func(Event) {
-	return func(event Event) {
+func combinedEventHandler(first func(DOMEvent), second func(DOMEvent)) func(DOMEvent) {
+	return func(event DOMEvent) {
 		if first != nil {
 			first(event)
 		}

@@ -1,6 +1,6 @@
 <template>
 	<section class="card">
-		<h2>{{ title }}</h2>
+		<h2>{{ Title }}</h2>
 		<slot>
 			<p>Fallback</p>
 		</slot>
@@ -13,6 +13,8 @@ package app
 import tue "github.com/norunners/tue"
 
 type Card struct {
-	title tue.Prop[string] `prop:"title,required"`
+	tue.Comp[struct {
+		Title string `prop:",required"`
+	}]
 }
 </script>

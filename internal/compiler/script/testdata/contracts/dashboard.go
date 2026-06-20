@@ -5,12 +5,21 @@ import tue "github.com/norunners/tue"
 type User struct{}
 
 type Dashboard struct {
-	name  tue.Prop[string] `prop:"name,required"`
+	tue.Comp[struct {
+		Name      string              `prop:",required"`
+		Active    bool                `prop:"active"`
+		UserID    string              `prop:"user-id"`
+		Expanded  bool                `state:""`
+		Close     func()              `event:""`
+		Select    func(name string)   `event:""`
+		Range     func(name string, count int) `event:""`
+		Pointer   func(*User)         `event:""`
+		Variadic  func(values ...string) `event:""`
+	}]
 	count tue.Ref[int]
 	total tue.Computed[int]
 	user  tue.Resource[User]
-	onSave tue.On[func()]
-	label  string
+	label string
 }
 
 func (d *Dashboard) Init(ctx tue.Context) {}

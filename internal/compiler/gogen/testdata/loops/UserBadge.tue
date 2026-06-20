@@ -1,5 +1,5 @@
 <template>
-<span>{{ name }}</span>
+	<span>{{ Name }}</span>
 </template>
 
 <script lang="go">
@@ -8,8 +8,10 @@ package app
 import tue "github.com/norunners/tue"
 
 type UserBadge struct {
-	name     tue.Prop[string] `prop:"name,required"`
-	active   tue.Prop[bool]
-	onSelect tue.On[func()]
+	tue.Comp[struct {
+		Name   string `prop:",required"`
+		Active bool   `prop:""`
+		Select func() `event:""`
+	}]
 }
 </script>

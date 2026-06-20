@@ -7,7 +7,7 @@ import (
 	"github.com/norunners/tue"
 )
 
-func NewApp() *tue.Comp {
+func NewApp() *tue.ComponentInstance {
 	component := &App{}
 	return tue.CompOf(component, renderApp)
 }
@@ -56,19 +56,26 @@ func renderApp(component *App) tue.VNode {
 		__tueNodes := make([]tue.VNode, 0, len(__tueItems))
 		for _, __tueItem := range __tueItems {
 			__tueNodes = append(__tueNodes, func() tue.VNode {
-				__tueVNode := tue.ComponentWithUpdate("UserBadge", func() *tue.Comp {
-					child := &UserBadge{name: tue.PropOfFunc(func() string {
-						return __tueItem.Text
-					}), active: tue.PropOf(true), onSelect: tue.OnOf(component.selectUser)}
+				__tueVNode := tue.ComponentWithUpdate("UserBadge", func() *tue.ComponentInstance {
+					child := &UserBadge{__tue: newTueUserBadgeContract()}
+					child.__tue.__propName = func() (string, bool) {
+						return __tueItem.Text, true
+					}
+					child.__tue.__propActive = func() (bool, bool) {
+						return true, true
+					}
+					child.__tue.__eventSelect = component.selectUser
 					childComp := tue.CompOf(child, renderUserBadge)
 					return childComp
-				}, func(childComp *tue.Comp) {
+				}, func(childComp *tue.ComponentInstance) {
 					child := childComp.Component.(*UserBadge)
-					child.name = tue.PropOfFunc(func() string {
-						return __tueItem.Text
-					})
-					child.active = tue.PropOf(true)
-					child.onSelect = tue.OnOf(component.selectUser)
+					child.__tue.__propName = func() (string, bool) {
+						return __tueItem.Text, true
+					}
+					child.__tue.__propActive = func() (bool, bool) {
+						return true, true
+					}
+					child.__tue.__eventSelect = component.selectUser
 					childComp.DefaultSlot = nil
 				})
 				__tueVNode.Key = fmt.Sprint(__tueItem.ID)

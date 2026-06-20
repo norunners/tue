@@ -5,6 +5,9 @@ package app
 import tue "github.com/norunners/tue"
 
 type App struct {
-	name  tue.Prop[string] `prop:"name"`
+	__tue tueAppContract
+	tue.Comp[struct {
+		Name string `prop:"name"`
+	}]
 	count tue.Ref[int]
 }

@@ -1,0 +1,11 @@
+<template></template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type ContractMustBeStruct struct {
+	tue.Comp[string]
+}
+</script>

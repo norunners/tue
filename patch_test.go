@@ -595,7 +595,7 @@ func TestMountedUpdateReordersKeyedComponentChildren(t *testing.T) {
 	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
 		children := make([]VNode, 0, len(items))
 		for _, item := range items {
-			vnode := Component("PatchChild", func() *Comp {
+			vnode := Component("PatchChild", func() *ComponentInstance {
 				return CompOf(&patchChildFixture{label: item.Text, renderAsElement: &renderAsElement}, renderPatchChildFixture)
 			})
 			vnode.Key = item.Key
@@ -990,7 +990,7 @@ func (t *stubDOMTarget) removeAttr(node domNode, name string) error {
 	return nil
 }
 
-func (t *stubDOMTarget) addEventListener(node domNode, name string, handler func(Event)) (func(), error) {
+func (t *stubDOMTarget) addEventListener(node domNode, name string, handler func(DOMEvent)) (func(), error) {
 	stubNode, ok := node.(*stubDOMNode)
 	if !ok {
 		return nil, fmt.Errorf("expected stub element node, got %T", node)
@@ -1053,7 +1053,7 @@ type stubDOMNode struct {
 }
 
 type stubEventListener struct {
-	handler func(Event)
+	handler func(DOMEvent)
 	removed bool
 }
 
@@ -1092,7 +1092,7 @@ func (n *stubDOMNode) dispatch(name string) {
 	n.dispatchEvent(name, stubEvent{})
 }
 
-func (n *stubDOMNode) dispatchEvent(name string, event Event) {
+func (n *stubDOMNode) dispatchEvent(name string, event DOMEvent) {
 	for _, listener := range append([]*stubEventListener(nil), n.listeners[name]...) {
 		if listener.removed || listener.handler == nil {
 			continue

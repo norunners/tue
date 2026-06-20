@@ -45,26 +45,11 @@ func stubTuePackage() *types.Package {
 	emptyInterface := types.NewInterfaceType(nil, nil).Complete()
 	anyType := types.Universe.Lookup("any").Type()
 
-	for _, name := range []string{"Prop", "Ref", "Computed", "Resource"} {
-		typeName := types.NewTypeName(token.NoPos, pkg, name, nil)
-		named := types.NewNamed(typeName, emptyInterface, nil)
-		typeParamName := types.NewTypeName(token.NoPos, pkg, "T", nil)
-		typeParam := types.NewTypeParam(typeParamName, anyType)
-		named.SetTypeParams([]*types.TypeParam{typeParam})
-		scope.Insert(typeName)
+	for _, name := range []string{"Ref", "Computed", "Resource", "Comp"} {
+		insertGenericStubType(scope, pkg, name, emptyInterface, anyType, 1)
 	}
 
-	onTypeName := types.NewTypeName(token.NoPos, pkg, "On", nil)
-	onTypeParamName := types.NewTypeName(token.NoPos, pkg, "F", nil)
-	onTypeParam := types.NewTypeParam(onTypeParamName, anyType)
-	onStruct := types.NewStruct([]*types.Var{
-		types.NewField(token.NoPos, pkg, "fn", onTypeParam, false),
-	}, nil)
-	onType := types.NewNamed(onTypeName, onStruct, nil)
-	onType.SetTypeParams([]*types.TypeParam{onTypeParam})
-	scope.Insert(onTypeName)
-
-	for _, name := range []string{"Context", "Route", "RouteMatch", "Router", "TrustedHTML", "VNode"} {
+	for _, name := range []string{"Context", "DOMEvent", "Route", "RouteMatch", "Router", "TrustedHTML", "VNode"} {
 		typeName := types.NewTypeName(token.NoPos, pkg, name, nil)
 		types.NewNamed(typeName, emptyInterface, nil)
 		scope.Insert(typeName)
@@ -72,4 +57,16 @@ func stubTuePackage() *types.Package {
 
 	pkg.MarkComplete()
 	return pkg
+}
+
+func insertGenericStubType(scope *types.Scope, pkg *types.Package, name string, underlying types.Type, constraint types.Type, arity int) {
+	typeName := types.NewTypeName(token.NoPos, pkg, name, nil)
+	named := types.NewNamed(typeName, underlying, nil)
+	parameters := make([]*types.TypeParam, arity)
+	for index := range parameters {
+		parameterName := types.NewTypeName(token.NoPos, pkg, fmt.Sprintf("T%d", index+1), nil)
+		parameters[index] = types.NewTypeParam(parameterName, constraint)
+	}
+	named.SetTypeParams(parameters)
+	scope.Insert(typeName)
 }

@@ -99,6 +99,13 @@ func (c *exprChecker) ident(ident *ast.Ident) value {
 		c.fileChecker.add(fmt.Sprintf("unknown identifier %q", ident.Name), c.nodeSpan(ident))
 		return value{Type: unknownType}
 	}
+	if symbol.ImplicitGetter {
+		return value{Type: symbol.ResultType, Symbol: symbol}
+	}
+	if symbol.Method {
+		c.fileChecker.add(fmt.Sprintf("method %q must be called", ident.Name), c.nodeSpan(ident))
+		return value{Type: unknownType, Symbol: symbol}
+	}
 	return value{Type: symbol.Type, Symbol: symbol}
 }
 

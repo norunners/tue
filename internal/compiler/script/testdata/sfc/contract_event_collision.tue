@@ -1,0 +1,15 @@
+<template></template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type ContractEventCollision struct {
+	tue.Comp[struct {
+		Select func(string) `event:""`
+	}]
+}
+
+func (c *ContractEventCollision) Select(value string) bool { return true }
+</script>

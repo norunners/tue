@@ -12,7 +12,7 @@ type Context interface {
 }
 
 type contextValue struct {
-	component *Comp
+	component *ComponentInstance
 }
 
 // OnCleanup registers a function to run before OnUnmounted.
@@ -34,8 +34,8 @@ type VNode struct {
 	Text             string
 	InnerHTML        TrustedHTML
 	HasInnerHTML     bool
-	ComponentFactory func() *Comp
-	ComponentUpdater func(*Comp)
+	ComponentFactory func() *ComponentInstance
+	ComponentUpdater func(*ComponentInstance)
 
 	scopeAttrs []string
 }
@@ -123,13 +123,13 @@ func Fragment(children []VNode) VNode {
 }
 
 // Component returns a component VNode backed by a lazy generated factory.
-func Component(name string, factory func() *Comp) VNode {
+func Component(name string, factory func() *ComponentInstance) VNode {
 	return VNode{Type: VNodeTypeComponent, Tag: name, ComponentFactory: factory}
 }
 
 // ComponentWithUpdate returns a component VNode that can refresh generated
 // input bindings on an existing component instance during patching.
-func ComponentWithUpdate(name string, factory func() *Comp, update func(*Comp)) VNode {
+func ComponentWithUpdate(name string, factory func() *ComponentInstance, update func(*ComponentInstance)) VNode {
 	return VNode{
 		Type:             VNodeTypeComponent,
 		Tag:              name,
@@ -145,8 +145,8 @@ func WithScopeAttrs(node VNode, attrs ...string) VNode {
 	return node
 }
 
-// Comp is a generated component instance.
-type Comp struct {
+// ComponentInstance is a generated component instance.
+type ComponentInstance struct {
 	Component   any
 	Render      func() VNode
 	DefaultSlot func() VNode
@@ -172,8 +172,8 @@ type unmountedComponent interface {
 }
 
 // CompOf returns a component wrapper for generated code.
-func CompOf[C any](component *C, render func(*C) VNode) *Comp {
-	comp := &Comp{Component: component}
+func CompOf[C any](component *C, render func(*C) VNode) *ComponentInstance {
+	comp := &ComponentInstance{Component: component}
 	if render != nil {
 		comp.Render = func() VNode {
 			return render(component)
@@ -187,7 +187,7 @@ func CompOf[C any](component *C, render func(*C) VNode) *Comp {
 	return comp
 }
 
-func (c *Comp) renderVNode() VNode {
+func (c *ComponentInstance) renderVNode() VNode {
 	if c == nil || c.Render == nil {
 		return Fragment(nil)
 	}
@@ -207,21 +207,21 @@ func Slot(fallback VNode) VNode {
 	return component.DefaultSlot()
 }
 
-func (c *Comp) addCleanup(cleanup func()) {
+func (c *ComponentInstance) addCleanup(cleanup func()) {
 	if c == nil || cleanup == nil {
 		return
 	}
 	c.cleanups = append(c.cleanups, cleanup)
 }
 
-func (c *Comp) addEffectCleanup(cleanup func()) {
+func (c *ComponentInstance) addEffectCleanup(cleanup func()) {
 	if c == nil || cleanup == nil {
 		return
 	}
 	c.effectCleanups = append(c.effectCleanups, cleanup)
 }
 
-func (c *Comp) runCleanups() {
+func (c *ComponentInstance) runCleanups() {
 	if c == nil {
 		return
 	}
@@ -238,7 +238,7 @@ func (c *Comp) runCleanups() {
 	}
 }
 
-func (c *Comp) mounted() {
+func (c *ComponentInstance) mounted() {
 	if c == nil {
 		return
 	}
@@ -247,7 +247,7 @@ func (c *Comp) mounted() {
 	}
 }
 
-func (c *Comp) updated() {
+func (c *ComponentInstance) updated() {
 	if c == nil {
 		return
 	}
@@ -256,7 +256,7 @@ func (c *Comp) updated() {
 	}
 }
 
-func (c *Comp) unmounted() {
+func (c *ComponentInstance) unmounted() {
 	if c == nil {
 		return
 	}
@@ -266,7 +266,7 @@ func (c *Comp) unmounted() {
 }
 
 // Mount renders a component into a browser target under js/wasm.
-func Mount(target string, component *Comp) (*Mounted, error) {
+func Mount(target string, component *ComponentInstance) (*Mounted, error) {
 	return mount(target, component)
 }
 

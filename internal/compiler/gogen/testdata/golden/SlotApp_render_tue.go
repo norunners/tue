@@ -7,14 +7,17 @@ import (
 	"github.com/norunners/tue"
 )
 
-func NewApp() *tue.Comp {
+func NewApp() *tue.ComponentInstance {
 	component := &App{}
 	return tue.CompOf(component, renderApp)
 }
 
 func renderApp(component *App) tue.VNode {
-	return tue.Element("main", nil, []tue.VNode{tue.ComponentWithUpdate("Card", func() *tue.Comp {
-		child := &Card{title: tue.PropOf("Status")}
+	return tue.Element("main", nil, []tue.VNode{tue.ComponentWithUpdate("Card", func() *tue.ComponentInstance {
+		child := &Card{__tue: newTueCardContract()}
+		child.__tue.__propTitle = func() (string, bool) {
+			return "Status", true
+		}
 		childComp := tue.CompOf(child, renderCard)
 		childComp.DefaultSlot = func() tue.VNode {
 			return tue.Fragment([]tue.VNode{tue.Element("p", []tue.Attribute{tue.Attr("class", "body")}, []tue.VNode{tue.Text(fmt.Sprint(component.message))}), func() tue.VNode {
@@ -25,9 +28,11 @@ func renderApp(component *App) tue.VNode {
 			}()})
 		}
 		return childComp
-	}, func(childComp *tue.Comp) {
+	}, func(childComp *tue.ComponentInstance) {
 		child := childComp.Component.(*Card)
-		child.title = tue.PropOf("Status")
+		child.__tue.__propTitle = func() (string, bool) {
+			return "Status", true
+		}
 		childComp.DefaultSlot = func() tue.VNode {
 			return tue.Fragment([]tue.VNode{tue.Element("p", []tue.Attribute{tue.Attr("class", "body")}, []tue.VNode{tue.Text(fmt.Sprint(component.message))}), func() tue.VNode {
 				if component.ready {
@@ -36,13 +41,18 @@ func renderApp(component *App) tue.VNode {
 				return tue.Fragment(nil)
 			}()})
 		}
-	}), tue.ComponentWithUpdate("Card", func() *tue.Comp {
-		child := &Card{title: tue.PropOf("Empty")}
+	}), tue.ComponentWithUpdate("Card", func() *tue.ComponentInstance {
+		child := &Card{__tue: newTueCardContract()}
+		child.__tue.__propTitle = func() (string, bool) {
+			return "Empty", true
+		}
 		childComp := tue.CompOf(child, renderCard)
 		return childComp
-	}, func(childComp *tue.Comp) {
+	}, func(childComp *tue.ComponentInstance) {
 		child := childComp.Component.(*Card)
-		child.title = tue.PropOf("Empty")
+		child.__tue.__propTitle = func() (string, bool) {
+			return "Empty", true
+		}
 		childComp.DefaultSlot = nil
 	})})
 }

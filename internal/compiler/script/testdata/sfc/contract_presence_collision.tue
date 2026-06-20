@@ -1,0 +1,15 @@
+<template></template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type ContractPresenceCollision struct {
+	tue.Comp[struct {
+		Name string `prop:""`
+	}]
+}
+
+func (c *ContractPresenceCollision) NameOk() (string, bool) { return "", false }
+</script>

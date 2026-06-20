@@ -1,6 +1,10 @@
 package script
 
-import "github.com/norunners/tue/internal/compiler/sfc"
+import (
+	"strings"
+
+	"github.com/norunners/tue/internal/compiler/sfc"
+)
 
 // File is the extracted contract view of one Go script block.
 type File struct {
@@ -30,32 +34,74 @@ type TypeInfo struct {
 
 // Component is the contract extracted from the expected component struct.
 type Component struct {
-	Name       string
-	Span       sfc.Span
-	NameSpan   sfc.Span
-	Props      []Prop
-	Events     []Field
-	State      []Field
-	Refs       []Field
-	Computed   []Field
-	Resources  []Field
-	Methods    []Method
-	Init       *Method
-	Allocation Allocation
+	Name           string
+	ContractType   string
+	Span           sfc.Span
+	NameSpan       sfc.Span
+	Props          []Prop
+	Events         []Event
+	ContractStates []ContractState
+	State          []Field
+	Refs           []Field
+	Computed       []Field
+	Resources      []Field
+	Methods        []Method
+	Init           *Method
+	Allocation     Allocation
 }
 
 // Allocation describes the generated-code construction shape for a component.
 type Allocation struct {
 	ComponentName string
-	PropFields    []string
 	CallsInit     bool
 }
 
-// Prop is a component prop field plus prop-specific metadata.
+// Prop is a parent-provided component value declared by a Comp marker.
 type Prop struct {
-	Field    Field
 	Name     string
+	GoName   string
+	Type     string
 	Required bool
+	Span     sfc.Span
+	NameSpan sfc.Span
+	TypeSpan sfc.Span
+}
+
+// Event is a component callback declared by a Comp marker.
+type Event struct {
+	Name       string
+	GoName     string
+	Parameters []Parameter
+	Span       sfc.Span
+	NameSpan   sfc.Span
+}
+
+// ContractState is local reactive state declared by a Comp marker.
+type ContractState struct {
+	Name     string
+	GoName   string
+	Type     string
+	Span     sfc.Span
+	NameSpan sfc.Span
+	TypeSpan sfc.Span
+}
+
+// FunctionType returns the Go callback type represented by the event.
+func (e Event) FunctionType() string {
+	var builder strings.Builder
+	builder.WriteString("func(")
+	for index, parameter := range e.Parameters {
+		if index != 0 {
+			builder.WriteString(", ")
+		}
+		if parameter.Name != "" {
+			builder.WriteString(parameter.Name)
+			builder.WriteByte(' ')
+		}
+		builder.WriteString(parameter.Type)
+	}
+	builder.WriteByte(')')
+	return builder.String()
 }
 
 // Struct is a top-level Go struct declaration available to template expressions.
@@ -83,6 +129,7 @@ type Method struct {
 	Name            string
 	ReceiverName    string
 	PointerReceiver bool
+	ImplicitGetter  bool
 	Parameters      []Parameter
 	Results         []Parameter
 	Span            sfc.Span
@@ -123,10 +170,7 @@ type Diagnostic struct {
 	Span    sfc.Span
 }
 
-// EventName returns the template event name represented by an event callback field.
-func EventName(field Field) (string, bool) {
-	if field.Kind != FieldKindEvent {
-		return "", false
-	}
-	return eventNameFromFieldName(field.Name)
+// EventName returns the template event name represented by a component contract.
+func EventName(event Event) (string, bool) {
+	return event.Name, event.Name != ""
 }

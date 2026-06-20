@@ -2,6 +2,7 @@
 	<main>
 		<p>{{ user.missing }}</p>
 		<p v-if="visible(true)">Visible</p>
+		<p>{{ visible }}</p>
 	</main>
 </template>
 

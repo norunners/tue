@@ -1,5 +1,5 @@
 <template>
-<main class="page" data-title="A & B">Hello, {{ name }}!
+	<main class="page" data-title="A & B">Hello, {{ Name }}!
 	<span>{{ count + 1 }}</span></main>
 </template>
 
@@ -9,7 +9,9 @@ package app
 import tue "github.com/norunners/tue"
 
 type App struct {
-	name  tue.Prop[string] `prop:"name"`
+	tue.Comp[struct {
+		Name string `prop:"name"`
+	}]
 	count tue.Ref[int]
 }
 </script>

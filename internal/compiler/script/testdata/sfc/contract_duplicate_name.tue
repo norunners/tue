@@ -1,0 +1,14 @@
+<template></template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type ContractDuplicateName struct {
+	tue.Comp[struct {
+		Name    string `prop:"value"`
+		Changed func() `event:"value"`
+	}]
+}
+</script>
