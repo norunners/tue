@@ -252,18 +252,6 @@ func TestParseRejectsUnsupportedAndUnexpectedTopLevelSyntax(t *testing.T) {
 	}
 }
 
-func TestParseRejectsUnsupportedContractBlock(t *testing.T) {
-	source := `<template></template>
-<contract></contract>
-<script lang="go"></script>
-`
-
-	_, diagnostics := Parse("unsupported-contract.tue", []byte(source))
-	assertDiagnosticMessages(t, diagnostics, []string{
-		"unsupported top-level block <contract>",
-	})
-}
-
 func TestParseRejectsDuplicateBlocks(t *testing.T) {
 	source := `<template></template>
 <template></template>

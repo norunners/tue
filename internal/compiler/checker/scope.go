@@ -28,10 +28,7 @@ type symbol struct {
 
 func componentScope(component *script.Component) *scope {
 	scope := newScope(nil)
-	for _, field := range component.State {
-		scope.add(symbol{Name: field.Name, Type: fieldType(field), Writable: true})
-	}
-	for _, field := range component.Refs {
+	for _, field := range component.LocalFields {
 		scope.add(symbol{Name: field.Name, Type: fieldType(field), Writable: true})
 	}
 	for _, field := range component.Computed {
@@ -47,6 +44,7 @@ func componentScope(component *script.Component) *scope {
 			ResultType:     methodResultType(method),
 			Method:         true,
 			ImplicitGetter: method.ImplicitGetter,
+			Writable:       method.StateGetter,
 			Parameters:     method.ParameterTypes(),
 			Results:        method.ResultTypes(),
 		})

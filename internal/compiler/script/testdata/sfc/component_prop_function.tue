@@ -5,9 +5,9 @@ package fixtures
 
 import tue "github.com/norunners/tue"
 
-type ContractStateFunction struct {
+type ComponentPropFunction struct {
 	tue.Comp[struct {
-		Compute func() bool `state:""`
+		Format func(string) string `prop:""`
 	}]
 }
 </script>

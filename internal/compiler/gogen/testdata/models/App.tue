@@ -1,12 +1,12 @@
 <template>
 	<main>
-		<input value="stale" v-model="query" @input="touch" />
-		<input type="checkbox" checked v-model="enabled" />
-		<select value="stale" v-model="choice">
+		<input value="stale" v-model="Query" @input="touch" />
+		<input type="checkbox" checked v-model="Enabled" />
+		<select value="stale" v-model="Choice">
 			<option value="small">Small</option>
 			<option value="large">Large</option>
 		</select>
-		<p>{{ query }} {{ enabled }} {{ choice }}</p>
+		<p>{{ Query }} {{ Enabled }} {{ Choice }}</p>
 	</main>
 </template>
 
@@ -16,9 +16,11 @@ package app
 import tue "github.com/norunners/tue"
 
 type App struct {
-	query   string
-	enabled tue.Ref[bool]
-	choice  string
+	tue.Comp[struct {
+		Query   string `state:""`
+		Enabled bool   `state:""`
+		Choice  string `state:""`
+	}]
 }
 
 func (a *App) touch() {}

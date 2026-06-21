@@ -595,7 +595,7 @@ func TestMountedUpdateReordersKeyedComponentChildren(t *testing.T) {
 	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
 		children := make([]VNode, 0, len(items))
 		for _, item := range items {
-			vnode := Component("PatchChild", func() *ComponentInstance {
+			vnode := Component("PatchChild", func() *CompInstance {
 				return CompOf(&patchChildFixture{label: item.Text, renderAsElement: &renderAsElement}, renderPatchChildFixture)
 			})
 			vnode.Key = item.Key

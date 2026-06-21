@@ -7,14 +7,14 @@ import (
 	"github.com/norunners/tue"
 )
 
-func NewApp() *tue.ComponentInstance {
+func NewApp() *tue.CompInstance {
 	component := &App{}
 	return tue.CompOf(component, renderApp)
 }
 
 func renderApp(component *App) tue.VNode {
-	return tue.Element("main", nil, []tue.VNode{tue.ComponentWithUpdate("Card", func() *tue.ComponentInstance {
-		child := &Card{__tue: newTueCardContract()}
+	return tue.Element("main", nil, []tue.VNode{tue.ComponentWithUpdate("Card", func() *tue.CompInstance {
+		child := &Card{__tue: newTueCardData()}
 		child.__tue.__propTitle = func() (string, bool) {
 			return "Status", true
 		}
@@ -28,7 +28,7 @@ func renderApp(component *App) tue.VNode {
 			}()})
 		}
 		return childComp
-	}, func(childComp *tue.ComponentInstance) {
+	}, func(childComp *tue.CompInstance) {
 		child := childComp.Component.(*Card)
 		child.__tue.__propTitle = func() (string, bool) {
 			return "Status", true
@@ -41,14 +41,14 @@ func renderApp(component *App) tue.VNode {
 				return tue.Fragment(nil)
 			}()})
 		}
-	}), tue.ComponentWithUpdate("Card", func() *tue.ComponentInstance {
-		child := &Card{__tue: newTueCardContract()}
+	}), tue.ComponentWithUpdate("Card", func() *tue.CompInstance {
+		child := &Card{__tue: newTueCardData()}
 		child.__tue.__propTitle = func() (string, bool) {
 			return "Empty", true
 		}
 		childComp := tue.CompOf(child, renderCard)
 		return childComp
-	}, func(childComp *tue.ComponentInstance) {
+	}, func(childComp *tue.CompInstance) {
 		child := childComp.Component.(*Card)
 		child.__tue.__propTitle = func() (string, bool) {
 			return "Empty", true

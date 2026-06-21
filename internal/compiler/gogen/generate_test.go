@@ -38,7 +38,7 @@ func TestGenerateProjectEmitsStaticRenderFiles(t *testing.T) {
 	if diff := cmp.Diff([]diagnosticSummary{}, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}
-	expectedPaths := []string{"App_tue.go", "App_contract_tue.go", "App_render_tue.go"}
+	expectedPaths := []string{"App_tue.go", "App_component_tue.go", "App_render_tue.go"}
 	if diff := cmp.Diff(expectedPaths, generatedPaths(result.Files)); diff != "" {
 		t.Errorf("mismatch generated paths (-expected, +actual):\n%s", diff)
 	}
@@ -53,16 +53,16 @@ func TestGenerateProjectEmitsStaticRenderFiles(t *testing.T) {
 	if diff := cmp.Diff(expectedScript, string(actualScript)); diff != "" {
 		t.Errorf("mismatch generated script (-expected, +actual):\n%s", diff)
 	}
-	expectedContract, err := testFixtureString("testdata/golden/App_contract_tue.go")
+	expectedComponent, err := testFixtureString("testdata/golden/App_component_tue.go")
 	if err != nil {
-		t.Fatalf("read expected contract fixture: %v", err)
+		t.Fatalf("read expected declaration fixture: %v", err)
 	}
-	actualContract, err := generatedSource(result, "App_contract_tue.go")
+	actualComponent, err := generatedSource(result, "App_component_tue.go")
 	if err != nil {
-		t.Fatalf("read actual generated contract: %v", err)
+		t.Fatalf("read actual generated component support: %v", err)
 	}
-	if diff := cmp.Diff(expectedContract, string(actualContract)); diff != "" {
-		t.Errorf("mismatch generated contract (-expected, +actual):\n%s", diff)
+	if diff := cmp.Diff(expectedComponent, string(actualComponent)); diff != "" {
+		t.Errorf("mismatch generated component support (-expected, +actual):\n%s", diff)
 	}
 	expectedRender, err := testFixtureString("testdata/golden/App_render_tue.go")
 	if err != nil {
@@ -85,11 +85,11 @@ func TestGenerateProjectEmitsStaticRenderFiles(t *testing.T) {
 	if diff := cmp.Diff(manifestSummary{
 		GeneratedBy: "tue",
 		Files: []manifestFileSummary{{
-			Source:       "App.tue",
-			Component:    "App",
-			ScriptFile:   "App_tue.go",
-			ContractFile: "App_contract_tue.go",
-			RenderFile:   "App_render_tue.go",
+			Source:        "App.tue",
+			Component:     "App",
+			ScriptFile:    "App_tue.go",
+			ComponentFile: "App_component_tue.go",
+			RenderFile:    "App_render_tue.go",
 			Nodes: []manifestNodeSummary{
 				{Kind: "text", Line: 2, Column: 40},
 				{Kind: "interpolation", Line: 2, Column: 47},
@@ -248,7 +248,7 @@ func TestGenerateProjectEmitsLoopRenderFiles(t *testing.T) {
 		"App_tue.go",
 		"App_render_tue.go",
 		"UserBadge_tue.go",
-		"UserBadge_contract_tue.go",
+		"UserBadge_component_tue.go",
 		"UserBadge_render_tue.go",
 	}, generatedPaths(result.Files)); diff != "" {
 		t.Errorf("mismatch generated paths (-expected, +actual):\n%s", diff)
@@ -469,7 +469,7 @@ func TestGenerateProjectEmitsHTMLBindingRenderFiles(t *testing.T) {
 	if diff := cmp.Diff(expectedDiagnostics, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}
-	expectedPaths := []string{"App_tue.go", "App_contract_tue.go", "App_render_tue.go"}
+	expectedPaths := []string{"App_tue.go", "App_component_tue.go", "App_render_tue.go"}
 	if diff := cmp.Diff(expectedPaths, generatedPaths(result.Files)); diff != "" {
 		t.Errorf("mismatch generated paths (-expected, +actual):\n%s", diff)
 	}
@@ -656,7 +656,7 @@ func TestGenerateProjectEmitsModelBindingRenderFiles(t *testing.T) {
 	if diff := cmp.Diff(expectedDiagnostics, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}
-	expectedPaths := []string{"App_tue.go", "App_render_tue.go"}
+	expectedPaths := []string{"App_tue.go", "App_component_tue.go", "App_render_tue.go"}
 	if diff := cmp.Diff(expectedPaths, generatedPaths(result.Files)); diff != "" {
 		t.Errorf("mismatch generated paths (-expected, +actual):\n%s", diff)
 	}
@@ -692,7 +692,7 @@ func TestGenerateProjectEmitsDefaultSlotRenderFiles(t *testing.T) {
 		"App_tue.go",
 		"App_render_tue.go",
 		"Card_tue.go",
-		"Card_contract_tue.go",
+		"Card_component_tue.go",
 		"Card_render_tue.go",
 	}
 	if diff := cmp.Diff(expectedPaths, generatedPaths(result.Files)); diff != "" {
@@ -870,7 +870,7 @@ func TestGenerateProjectEmitsNativeEventHandlers(t *testing.T) {
 	if diff := cmp.Diff([]diagnosticSummary{}, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}
-	if diff := cmp.Diff([]string{"Counter_tue.go", "Counter_render_tue.go"}, generatedPaths(result.Files)); diff != "" {
+	if diff := cmp.Diff([]string{"Counter_tue.go", "Counter_component_tue.go", "Counter_render_tue.go"}, generatedPaths(result.Files)); diff != "" {
 		t.Errorf("mismatch generated paths (-expected, +actual):\n%s", diff)
 	}
 	expectedRender, err := testFixtureString("testdata/golden/Counter_render_tue.go")
@@ -902,9 +902,10 @@ func TestGenerateProjectEmitsChildComponents(t *testing.T) {
 	}
 	if diff := cmp.Diff([]string{
 		"Parent_tue.go",
+		"Parent_component_tue.go",
 		"Parent_render_tue.go",
 		"UserBadge_tue.go",
-		"UserBadge_contract_tue.go",
+		"UserBadge_component_tue.go",
 		"UserBadge_render_tue.go",
 	}, generatedPaths(result.Files)); diff != "" {
 		t.Errorf("mismatch generated paths (-expected, +actual):\n%s", diff)
@@ -921,16 +922,16 @@ func TestGenerateProjectEmitsChildComponents(t *testing.T) {
 	if diff := cmp.Diff(expectedRender, string(actualRender)); diff != "" {
 		t.Errorf("mismatch generated parent render (-expected, +actual):\n%s", diff)
 	}
-	expectedContract, err := testFixtureString("testdata/golden/UserBadge_contract_tue.go")
+	expectedComponent, err := testFixtureString("testdata/golden/UserBadge_component_tue.go")
 	if err != nil {
-		t.Fatalf("read expected user badge contract fixture: %v", err)
+		t.Fatalf("read expected user badge declaration fixture: %v", err)
 	}
-	actualContract, err := generatedSource(result, "UserBadge_contract_tue.go")
+	actualComponent, err := generatedSource(result, "UserBadge_component_tue.go")
 	if err != nil {
-		t.Fatalf("read actual generated user badge contract: %v", err)
+		t.Fatalf("read actual generated user badge declaration: %v", err)
 	}
-	if diff := cmp.Diff(expectedContract, string(actualContract)); diff != "" {
-		t.Errorf("mismatch generated user badge contract (-expected, +actual):\n%s", diff)
+	if diff := cmp.Diff(expectedComponent, string(actualComponent)); diff != "" {
+		t.Errorf("mismatch generated user badge declaration (-expected, +actual):\n%s", diff)
 	}
 }
 
@@ -992,7 +993,7 @@ func TestGeneratedComponentFixtureCompilesForWASM(t *testing.T) {
 	}
 }
 
-func TestGeneratedComponentContractBehavior(t *testing.T) {
+func TestGeneratedComponentBehavior(t *testing.T) {
 	project, err := parseProjectFixture("testdata/components")
 	if err != nil {
 		t.Fatalf("parse project fixture: %v", err)
@@ -1006,10 +1007,16 @@ import (
 	tue "github.com/norunners/tue"
 )
 
-func TestComponentContract(t *testing.T) {
+func TestGeneratedComponentAPI(t *testing.T) {
 	parentInstance := NewParent()
 	parent := parentInstance.Component.(*Parent)
-	parent.showBadge = true
+	if parent.ShowBadge() {
+		t.Error("ShowBadge() actual = true, expected zero value before assignment")
+	}
+	if parent.Selected() != "" {
+		t.Errorf("Selected() actual = %q, expected zero value", parent.Selected())
+	}
+	parent.ShowBadgeSet(true)
 
 	created := renderParent(parent).Children[0]
 	childInstance := created.ComponentFactory()
@@ -1031,7 +1038,7 @@ func TestComponentContract(t *testing.T) {
 	stopNames := tue.Watch(func() {
 		observedNames = append(observedNames, child.Name())
 	})
-	parent.name.Set("Marie")
+	parent.NameSet("Marie")
 	stopNames()
 	if len(observedNames) != 2 || observedNames[0] != "Ada" || observedNames[1] != "Marie" {
 		t.Errorf("reactive prop names actual = %#v, expected [Ada Marie]", observedNames)
@@ -1044,14 +1051,14 @@ func TestComponentContract(t *testing.T) {
 		t.Error("Expanded() actual = true after ExpandedSet(false)")
 	}
 	called := child.Select("Grace")
-	if !called || parent.selected != "Grace" {
-		t.Errorf("Select() actual = (%v, %q), expected (true, Grace)", called, parent.selected)
+	if !called || parent.Selected() != "Grace" {
+		t.Errorf("Select() actual = (%v, %q), expected (true, Grace)", called, parent.Selected())
 	}
 	if child.Dismiss("ignored") {
 		t.Error("Dismiss() actual = true, expected false without a listener")
 	}
 
-	parent.name.Set("Lin")
+	parent.NameSet("Lin")
 	patched := renderParent(parent).Children[0]
 	patched.ComponentUpdater(childInstance)
 	if actual := child.Name(); actual != "Lin" {
@@ -1063,7 +1070,7 @@ func TestComponentContract(t *testing.T) {
 }
 `
 	if err := runGeneratedProjectTests(t.TempDir(), *project, testSource); err != nil {
-		t.Fatalf("run generated component contract tests: %v", err)
+		t.Fatalf("run generated component tests: %v", err)
 	}
 }
 
@@ -1729,15 +1736,15 @@ func runGeneratedProjectTests(root string, project Project, testSource string) e
 			return fmt.Errorf("write generated file %s: %w", file.Path, err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(packageDir, "contract_behavior_test.go"), []byte(testSource), 0o644); err != nil {
-		return fmt.Errorf("write generated contract test: %w", err)
+	if err := os.WriteFile(filepath.Join(packageDir, "component_behavior_test.go"), []byte(testSource), 0o644); err != nil {
+		return fmt.Errorf("write generated component support test: %w", err)
 	}
 
 	repoRoot, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		return fmt.Errorf("resolve repo root: %w", err)
 	}
-	goMod := fmt.Sprintf("module generatedcontract\n\ngo 1.26.4\n\nrequire github.com/norunners/tue v0.0.0\n\nreplace github.com/norunners/tue => %s\n", filepath.ToSlash(repoRoot))
+	goMod := fmt.Sprintf("module generatedcomponent\n\ngo 1.26.4\n\nrequire github.com/norunners/tue v0.0.0\n\nreplace github.com/norunners/tue => %s\n", filepath.ToSlash(repoRoot))
 	if err := os.WriteFile(filepath.Join(packageDir, "go.mod"), []byte(goMod), 0o644); err != nil {
 		return fmt.Errorf("write generated go.mod: %w", err)
 	}
@@ -1827,13 +1834,13 @@ type manifestAssetSummary struct {
 }
 
 type manifestFileSummary struct {
-	Source       string
-	Component    string
-	ScriptFile   string
-	ContractFile string
-	RenderFile   string
-	ScopeAttr    string
-	Nodes        []manifestNodeSummary
+	Source        string
+	Component     string
+	ScriptFile    string
+	ComponentFile string
+	RenderFile    string
+	ScopeAttr     string
+	Nodes         []manifestNodeSummary
 }
 
 type manifestNodeSummary struct {
@@ -1861,13 +1868,13 @@ func summarizeManifest(manifest Manifest) manifestSummary {
 	}
 	for i, file := range manifest.Files {
 		summary.Files[i] = manifestFileSummary{
-			Source:       file.Source,
-			Component:    file.Component,
-			ScriptFile:   file.ScriptFile,
-			ContractFile: file.ContractFile,
-			RenderFile:   file.RenderFile,
-			ScopeAttr:    file.ScopeAttr,
-			Nodes:        make([]manifestNodeSummary, len(file.Nodes)),
+			Source:        file.Source,
+			Component:     file.Component,
+			ScriptFile:    file.ScriptFile,
+			ComponentFile: file.ComponentFile,
+			RenderFile:    file.RenderFile,
+			ScopeAttr:     file.ScopeAttr,
+			Nodes:         make([]manifestNodeSummary, len(file.Nodes)),
 		}
 		for j, node := range file.Nodes {
 			summary.Files[i].Nodes[j] = manifestNodeSummary{

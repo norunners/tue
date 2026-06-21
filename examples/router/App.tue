@@ -7,11 +7,11 @@
 		</header>
 
 		<nav>
-			<a :href="homeHref" :class="homeClass">Overview</a>
-			<a :href="userHref" :class="userClass">User 42</a>
-			<a :href="userProfileHref" :class="userClass">User 42 profile</a>
-			<a :href="settingsHref" :class="settingsClass">Settings</a>
-			<a :href="missingHref">Missing route</a>
+			<a :href="HomeHref" :class="homeClass">Overview</a>
+			<a :href="UserHref" :class="userClass">User 42</a>
+			<a :href="UserProfileHref" :class="userClass">User 42 profile</a>
+			<a :href="SettingsHref" :class="settingsClass">Settings</a>
+			<a :href="MissingHref">Missing route</a>
 		</nav>
 
 		<section v-if="homeActive" class="panel">
@@ -43,12 +43,14 @@ package app
 import tue "github.com/norunners/tue"
 
 type App struct {
+	tue.Comp[struct {
+		HomeHref        string `state:""`
+		UserHref        string `state:""`
+		UserProfileHref string `state:""`
+		SettingsHref    string `state:""`
+		MissingHref     string `state:""`
+	}]
 	router          *tue.Router
-	homeHref        string
-	userHref        string
-	userProfileHref string
-	settingsHref    string
-	missingHref     string
 	routeLabel      tue.Computed[string]
 	currentUserID   tue.Computed[string]
 	currentTab      tue.Computed[string]
@@ -70,11 +72,11 @@ func (a *App) Init(ctx tue.Context) {
 	}, func(match tue.RouteMatch) tue.VNode {
 		return tue.Text("No route matched " + match.Path)
 	})
-	a.homeHref = a.router.Href("/")
-	a.userHref = a.router.Href("/users/42")
-	a.userProfileHref = a.router.Href("/users/42?tab=profile")
-	a.settingsHref = a.router.Href("/settings")
-	a.missingHref = a.router.Href("/missing")
+	a.HomeHrefSet(a.router.Href("/"))
+	a.UserHrefSet(a.router.Href("/users/42"))
+	a.UserProfileHrefSet(a.router.Href("/users/42?tab=profile"))
+	a.SettingsHrefSet(a.router.Href("/settings"))
+	a.MissingHrefSet(a.router.Href("/missing"))
 	a.routeLabel = tue.ComputedOfFunc(func() string {
 		match := a.router.Current()
 		if !match.Found {

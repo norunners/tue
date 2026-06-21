@@ -5,11 +5,10 @@ package fixtures
 
 import tue "github.com/norunners/tue"
 
-type ContractMemberCollision struct {
+type ComponentReservedStorage struct {
 	tue.Comp[struct {
 		Name string `prop:""`
 	}]
+	__tue int
 }
-
-func (c *ContractMemberCollision) Name() string { return "local" }
 </script>

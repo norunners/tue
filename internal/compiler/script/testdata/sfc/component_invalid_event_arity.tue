@@ -5,12 +5,9 @@ package fixtures
 
 import tue "github.com/norunners/tue"
 
-type ContractMultipleMarkers struct {
+type ComponentInvalidEventArity struct {
 	tue.Comp[struct {
-		Name string `prop:""`
-	}]
-	tue.Comp[struct {
-		Ready bool `state:""`
+		Range func(string) int `event:""`
 	}]
 }
 </script>

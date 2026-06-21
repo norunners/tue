@@ -14,14 +14,14 @@ import (
 	"github.com/norunners/tue/internal/compiler/sfc"
 )
 
-const generatedContractFieldName = "__tue"
+const generatedFieldName = "__tue"
 
-type contractFieldTag struct {
+type componentFieldTag struct {
 	name     string
 	required bool
 }
 
-func (e *extractor) extractComponentContract(file *ast.File, componentName string) {
+func (e *extractor) extractCompDeclaration(file *ast.File, componentName string) {
 	spec, ok := findTypeSpec(file, componentName)
 	if !ok {
 		return
@@ -39,26 +39,26 @@ func (e *extractor) extractComponentContract(file *ast.File, componentName strin
 			continue
 		}
 		if len(field.Names) != 0 {
-			e.addDiagnostic("tue.Comp contract marker must be embedded anonymously", e.nodeSpan(field))
+			e.addDiagnostic("tue.Comp marker must be embedded anonymously", e.nodeSpan(field))
 			continue
 		}
 		if found {
-			e.addDiagnostic("component may embed at most one tue.Comp contract marker", e.nodeSpan(field))
+			e.addDiagnostic("component may embed at most one tue.Comp marker", e.nodeSpan(field))
 			continue
 		}
 		found = true
-		e.contract = true
+		e.hasComp = true
 		if len(arguments) != 1 {
-			e.addDiagnostic("tue.Comp contract marker requires exactly one anonymous struct type argument", e.nodeSpan(field.Type))
+			e.addDiagnostic("tue.Comp marker requires exactly one anonymous struct type argument", e.nodeSpan(field.Type))
 			continue
 		}
-		contract, ok := arguments[0].(*ast.StructType)
+		declared, ok := arguments[0].(*ast.StructType)
 		if !ok {
-			e.addDiagnostic("tue.Comp contract type argument must be an anonymous struct", e.nodeSpan(arguments[0]))
+			e.addDiagnostic("tue.Comp type argument must be an anonymous struct", e.nodeSpan(arguments[0]))
 			continue
 		}
-		for _, contractField := range contract.Fields.List {
-			e.extractContractField(contractField, names)
+		for _, componentField := range declared.Fields.List {
+			e.extractComponentField(componentField, names)
 		}
 	}
 }
@@ -68,45 +68,45 @@ func (e *extractor) compMarkerArguments(expression ast.Expr) ([]ast.Expr, bool) 
 	return arguments, ok && name == "Comp"
 }
 
-func (e *extractor) extractContractField(field *ast.Field, names map[string]bool) {
+func (e *extractor) extractComponentField(field *ast.Field, names map[string]bool) {
 	if len(field.Names) != 1 || field.Names[0].Name == "_" {
-		e.addDiagnostic("component contract fields must have one exported name", e.nodeSpan(field))
+		e.addDiagnostic("component declaration fields must have one exported name", e.nodeSpan(field))
 		return
 	}
 	fieldName := field.Names[0]
 	if !fieldName.IsExported() {
-		e.addDiagnostic(fmt.Sprintf("component contract field %q must be exported", fieldName.Name), e.nodeSpan(fieldName))
+		e.addDiagnostic(fmt.Sprintf("component declaration field %q must be exported", fieldName.Name), e.nodeSpan(fieldName))
 		return
 	}
 
-	category, value, err := contractFieldCategory(field)
+	category, value, err := componentFieldCategory(field)
 	if err != nil {
-		e.addDiagnostic(fmt.Sprintf("component contract field %q: %v", fieldName.Name, err), contractTagSpan(e, field))
+		e.addDiagnostic(fmt.Sprintf("component declaration field %q: %v", fieldName.Name, err), componentTagSpan(e, field))
 		return
 	}
 
 	switch category {
 	case "prop":
-		e.extractContractProp(field, fieldName, value, names)
+		e.extractComponentProp(field, fieldName, value, names)
 	case "event":
-		e.extractContractEvent(field, fieldName, value, names)
+		e.extractComponentEvent(field, fieldName, value, names)
 	case "state":
-		e.extractContractState(field, fieldName, value, names)
+		e.extractComponentState(field, fieldName, value, names)
 	}
 }
 
-func (e *extractor) extractContractProp(field *ast.Field, fieldName *ast.Ident, value string, names map[string]bool) {
+func (e *extractor) extractComponentProp(field *ast.Field, fieldName *ast.Ident, value string, names map[string]bool) {
 	if _, ok := field.Type.(*ast.FuncType); ok {
 		e.addDiagnostic(fmt.Sprintf("component prop %q must not have a function type", lowerIdentifier(fieldName.Name)), e.nodeSpan(field.Type))
 		return
 	}
-	tag, err := parseContractTagValue(value, lowerIdentifier(fieldName.Name), true)
+	tag, err := parseComponentTagValue(value, lowerIdentifier(fieldName.Name), true)
 	if err != nil {
-		e.addDiagnostic(fmt.Sprintf("component prop %q: %v", fieldName.Name, err), contractTagSpan(e, field))
+		e.addDiagnostic(fmt.Sprintf("component prop %q: %v", fieldName.Name, err), componentTagSpan(e, field))
 		return
 	}
 	if names[tag.name] {
-		e.addDiagnostic(fmt.Sprintf("duplicate component contract name %q", tag.name), e.nodeSpan(fieldName))
+		e.addDiagnostic(fmt.Sprintf("duplicate component declaration name %q", tag.name), e.nodeSpan(fieldName))
 		return
 	}
 	typeName, ok := formatNode(e.fset, field.Type)
@@ -127,14 +127,14 @@ func (e *extractor) extractContractProp(field *ast.Field, fieldName *ast.Ident, 
 	})
 }
 
-func (e *extractor) extractContractEvent(field *ast.Field, fieldName *ast.Ident, value string, names map[string]bool) {
-	tag, err := parseContractTagValue(value, lowerIdentifier(fieldName.Name), false)
+func (e *extractor) extractComponentEvent(field *ast.Field, fieldName *ast.Ident, value string, names map[string]bool) {
+	tag, err := parseComponentTagValue(value, lowerIdentifier(fieldName.Name), false)
 	if err != nil {
-		e.addDiagnostic(fmt.Sprintf("component event %q: %v", fieldName.Name, err), contractTagSpan(e, field))
+		e.addDiagnostic(fmt.Sprintf("component event %q: %v", fieldName.Name, err), componentTagSpan(e, field))
 		return
 	}
 	if names[tag.name] {
-		e.addDiagnostic(fmt.Sprintf("duplicate component contract name %q", tag.name), e.nodeSpan(fieldName))
+		e.addDiagnostic(fmt.Sprintf("duplicate component declaration name %q", tag.name), e.nodeSpan(fieldName))
 		return
 	}
 
@@ -168,14 +168,14 @@ func (e *extractor) extractContractEvent(field *ast.Field, fieldName *ast.Ident,
 	})
 }
 
-func (e *extractor) extractContractState(field *ast.Field, fieldName *ast.Ident, value string, names map[string]bool) {
-	tag, err := parseContractTagValue(value, lowerIdentifier(fieldName.Name), false)
+func (e *extractor) extractComponentState(field *ast.Field, fieldName *ast.Ident, value string, names map[string]bool) {
+	tag, err := parseComponentTagValue(value, lowerIdentifier(fieldName.Name), false)
 	if err != nil {
-		e.addDiagnostic(fmt.Sprintf("component state %q: %v", fieldName.Name, err), contractTagSpan(e, field))
+		e.addDiagnostic(fmt.Sprintf("component state %q: %v", fieldName.Name, err), componentTagSpan(e, field))
 		return
 	}
 	if names[tag.name] {
-		e.addDiagnostic(fmt.Sprintf("duplicate component contract name %q", tag.name), e.nodeSpan(fieldName))
+		e.addDiagnostic(fmt.Sprintf("duplicate component declaration name %q", tag.name), e.nodeSpan(fieldName))
 		return
 	}
 	if _, ok := field.Type.(*ast.FuncType); ok {
@@ -188,7 +188,7 @@ func (e *extractor) extractContractState(field *ast.Field, fieldName *ast.Ident,
 		return
 	}
 	names[tag.name] = true
-	e.contractStates = append(e.contractStates, ContractState{
+	e.states = append(e.states, State{
 		Name:     tag.name,
 		GoName:   fieldName.Name,
 		Type:     typeName,
@@ -198,7 +198,7 @@ func (e *extractor) extractContractState(field *ast.Field, fieldName *ast.Ident,
 	})
 }
 
-func contractFieldCategory(field *ast.Field) (string, string, error) {
+func componentFieldCategory(field *ast.Field) (string, string, error) {
 	if field.Tag == nil {
 		return "", "", fmt.Errorf("must declare exactly one prop, event, or state tag")
 	}
@@ -219,7 +219,7 @@ func contractFieldCategory(field *ast.Field) (string, string, error) {
 		}
 	}
 	for key := range tags {
-		return "", "", fmt.Errorf("unknown contract tag %q", key)
+		return "", "", fmt.Errorf("unknown component tag %q", key)
 	}
 	return "", "", fmt.Errorf("must declare exactly one prop, event, or state tag")
 }
@@ -261,7 +261,7 @@ func parseStructTags(raw string) (map[string]string, error) {
 			return nil, fmt.Errorf("invalid struct tag")
 		}
 		if _, exists := tags[key]; exists {
-			return nil, fmt.Errorf("duplicate contract tag %q", key)
+			return nil, fmt.Errorf("duplicate component tag %q", key)
 		}
 		tags[key] = value
 		raw = quoted[end+1:]
@@ -269,14 +269,14 @@ func parseStructTags(raw string) (map[string]string, error) {
 	return tags, nil
 }
 
-func parseContractTagValue(value string, defaultName string, allowRequired bool) (contractFieldTag, error) {
-	result := contractFieldTag{name: defaultName}
+func parseComponentTagValue(value string, defaultName string, allowRequired bool) (componentFieldTag, error) {
+	result := componentFieldTag{name: defaultName}
 	parts := strings.Split(value, ",")
 	if parts[0] != "" {
 		result.name = parts[0]
 	}
-	if !isContractName(result.name) {
-		return contractFieldTag{}, fmt.Errorf("invalid template name %q", result.name)
+	if !isTemplateName(result.name) {
+		return componentFieldTag{}, fmt.Errorf("invalid template name %q", result.name)
 	}
 
 	for index := 1; index < len(parts); index++ {
@@ -285,14 +285,14 @@ func parseContractTagValue(value string, defaultName string, allowRequired bool)
 		case option == "":
 			continue
 		case !allowRequired:
-			return contractFieldTag{}, fmt.Errorf("tag does not accept option %q", option)
+			return componentFieldTag{}, fmt.Errorf("tag does not accept option %q", option)
 		case option == "required":
 			if result.required {
-				return contractFieldTag{}, fmt.Errorf("duplicate required option")
+				return componentFieldTag{}, fmt.Errorf("duplicate required option")
 			}
 			result.required = true
 		default:
-			return contractFieldTag{}, fmt.Errorf("unknown option %q", option)
+			return componentFieldTag{}, fmt.Errorf("unknown option %q", option)
 		}
 	}
 	return result, nil
@@ -306,14 +306,14 @@ func formatNode(fset *token.FileSet, node any) (string, bool) {
 	return buffer.String(), true
 }
 
-func contractTagSpan(e *extractor, field *ast.Field) sfc.Span {
+func componentTagSpan(e *extractor, field *ast.Field) sfc.Span {
 	if field.Tag == nil {
 		return e.nodeSpan(field)
 	}
 	return e.nodeSpan(field.Tag)
 }
 
-func isContractName(name string) bool {
+func isTemplateName(name string) bool {
 	if name == "" {
 		return false
 	}
@@ -332,19 +332,19 @@ func isContractName(name string) bool {
 	return true
 }
 
-// ContractTypeName returns the generated contract storage type for componentName.
-func ContractTypeName(componentName string) string {
-	return "tue" + componentName + "Contract"
+// GeneratedTypeName returns the hidden generated storage type for componentName.
+func GeneratedTypeName(componentName string) string {
+	return "tue" + componentName + "Data"
 }
 
-// ContractConstructorName returns the generated backing initializer.
-func ContractConstructorName(componentName string) string {
-	return "new" + exportedIdentifier(ContractTypeName(componentName))
+// GeneratedConstructorName returns the generated backing initializer.
+func GeneratedConstructorName(componentName string) string {
+	return "new" + exportedIdentifier(GeneratedTypeName(componentName))
 }
 
-// ContractFieldName returns the hidden generated component contract field.
-func ContractFieldName() string {
-	return generatedContractFieldName
+// GeneratedFieldName returns the hidden generated component field.
+func GeneratedFieldName() string {
+	return generatedFieldName
 }
 
 // PropGetterName returns the generated effective-value prop accessor.

@@ -4,8 +4,8 @@ package app
 
 import "github.com/norunners/tue"
 
-func NewApp() *tue.ComponentInstance {
-	component := &App{__tue: newTueAppContract()}
+func NewApp() *tue.CompInstance {
+	component := &App{__tue: newTueAppData()}
 	return tue.CompOf(component, renderApp)
 }
 

@@ -72,7 +72,7 @@ func (c *projectChecker) checkFile(file File) {
 		return
 	}
 	if file.Script == nil || file.Script.Component == nil {
-		c.add(path, "missing component contract", file.Template.Span)
+		c.add(path, "missing component declaration", file.Template.Span)
 		return
 	}
 

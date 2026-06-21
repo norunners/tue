@@ -5,9 +5,9 @@ package fixtures
 
 import tue "github.com/norunners/tue"
 
-type ContractPropDefaultOption struct {
+type ComponentMixedTags struct {
 	tue.Comp[struct {
-		Active bool `prop:"active,default=true"`
+		Name string `prop:"" state:""`
 	}]
 }
 </script>

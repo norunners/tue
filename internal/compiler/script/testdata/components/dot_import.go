@@ -6,8 +6,8 @@ type DotImport struct {
 	Comp[struct {
 		Name  string `prop:",required"`
 		Close func() `event:""`
+		Count int    `state:""`
 	}]
-	count Ref[int]
 }
 
 func (d *DotImport) Init(ctx Context) {}

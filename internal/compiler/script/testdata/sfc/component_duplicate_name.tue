@@ -5,10 +5,10 @@ package fixtures
 
 import tue "github.com/norunners/tue"
 
-type ContractDuplicateEvent struct {
+type ComponentDuplicateName struct {
 	tue.Comp[struct {
-		Select func(string) `event:"select"`
-		Choose func(int)    `event:"select"`
+		Name    string `prop:"value"`
+		Changed func() `event:"value"`
 	}]
 }
 </script>

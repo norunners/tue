@@ -5,9 +5,10 @@ package fixtures
 
 import tue "github.com/norunners/tue"
 
-type ContractMixedTags struct {
+type ComponentDuplicateProp struct {
 	tue.Comp[struct {
-		Name string `prop:"" state:""`
+		Name  string `prop:"name"`
+		Label int    `prop:"name"`
 	}]
 }
 </script>

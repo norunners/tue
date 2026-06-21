@@ -6,7 +6,7 @@ import (
 	"github.com/norunners/tue/internal/compiler/sfc"
 )
 
-// File is the extracted contract view of one Go script block.
+// File is the extracted component view of one Go script block.
 type File struct {
 	Path        string
 	PackageName string
@@ -32,22 +32,21 @@ type TypeInfo struct {
 	Comparable bool
 }
 
-// Component is the contract extracted from the expected component struct.
+// Component is component metadata extracted from the expected component struct.
 type Component struct {
-	Name           string
-	ContractType   string
-	Span           sfc.Span
-	NameSpan       sfc.Span
-	Props          []Prop
-	Events         []Event
-	ContractStates []ContractState
-	State          []Field
-	Refs           []Field
-	Computed       []Field
-	Resources      []Field
-	Methods        []Method
-	Init           *Method
-	Allocation     Allocation
+	Name          string
+	GeneratedType string
+	Span          sfc.Span
+	NameSpan      sfc.Span
+	Props         []Prop
+	Events        []Event
+	States        []State
+	LocalFields   []Field
+	Computed      []Field
+	Resources     []Field
+	Methods       []Method
+	Init          *Method
+	Allocation    Allocation
 }
 
 // Allocation describes the generated-code construction shape for a component.
@@ -56,7 +55,7 @@ type Allocation struct {
 	CallsInit     bool
 }
 
-// Prop is a parent-provided component value declared by a Comp marker.
+// Prop is a parent-provided value declared by a Comp marker.
 type Prop struct {
 	Name     string
 	GoName   string
@@ -67,7 +66,7 @@ type Prop struct {
 	TypeSpan sfc.Span
 }
 
-// Event is a component callback declared by a Comp marker.
+// Event is a parent callback declared by a Comp marker.
 type Event struct {
 	Name       string
 	GoName     string
@@ -76,8 +75,8 @@ type Event struct {
 	NameSpan   sfc.Span
 }
 
-// ContractState is local reactive state declared by a Comp marker.
-type ContractState struct {
+// State is generated reactive state declared by a Comp marker.
+type State struct {
 	Name     string
 	GoName   string
 	Type     string
@@ -130,6 +129,7 @@ type Method struct {
 	ReceiverName    string
 	PointerReceiver bool
 	ImplicitGetter  bool
+	StateGetter     bool
 	Parameters      []Parameter
 	Results         []Parameter
 	Span            sfc.Span
@@ -170,7 +170,7 @@ type Diagnostic struct {
 	Span    sfc.Span
 }
 
-// EventName returns the template event name represented by a component contract.
+// EventName returns the template event name represented by an event declaration.
 func EventName(event Event) (string, bool) {
 	return event.Name, event.Name != ""
 }

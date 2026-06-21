@@ -7,8 +7,8 @@ import (
 	"github.com/norunners/tue"
 )
 
-func NewCard() *tue.ComponentInstance {
-	component := &Card{__tue: newTueCardContract()}
+func NewCard() *tue.CompInstance {
+	component := &Card{__tue: newTueCardData()}
 	return tue.CompOf(component, renderCard)
 }
 

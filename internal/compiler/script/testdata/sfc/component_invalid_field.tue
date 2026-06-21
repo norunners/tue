@@ -5,9 +5,9 @@ package fixtures
 
 import tue "github.com/norunners/tue"
 
-type ContractInvalidEventArity struct {
+type ComponentInvalidField struct {
 	tue.Comp[struct {
-		Range func(string) int `event:""`
+		Name string
 	}]
 }
 </script>

@@ -148,7 +148,7 @@ func TestMountComponentRunsLifecycleInOrder(t *testing.T) {
 }
 
 func TestMountedReactiveRerendersWhenRenderDependencyChanges(t *testing.T) {
-	count := RefOf(0)
+	count := StateOf(0)
 	renderCount := 0
 	component := &reactiveRenderFixture{}
 	target := newStubDOMTarget()
@@ -188,7 +188,7 @@ func TestMountedReactiveRerendersWhenRenderDependencyChanges(t *testing.T) {
 }
 
 func TestMountedReactiveRerendersCoalesceInsideBatch(t *testing.T) {
-	count := RefOf(0)
+	count := StateOf(0)
 	renderCount := 0
 	component := &reactiveRenderFixture{}
 	target := newStubDOMTarget()
@@ -232,7 +232,7 @@ func TestMountedReactiveRerendersCoalesceInsideBatch(t *testing.T) {
 }
 
 func TestMountedReactiveRerenderStopsOnUnmount(t *testing.T) {
-	count := RefOf(0)
+	count := StateOf(0)
 	renderCount := 0
 	component := &reactiveRenderFixture{}
 	target := newStubDOMTarget()
@@ -264,8 +264,8 @@ func TestMountedReactiveRerenderStopsOnUnmount(t *testing.T) {
 }
 
 func TestMountedReactiveRerenderDoesNotTrackUpdatedHookReads(t *testing.T) {
-	count := RefOf(0)
-	hookValue := RefOf("initial")
+	count := StateOf(0)
+	hookValue := StateOf("initial")
 	events := []string{}
 	component := &reactiveUpdatedHookFixture{
 		events:    &events,
@@ -305,7 +305,7 @@ func TestMountedComponentVNodeRunsChildLifecycleAndUpdates(t *testing.T) {
 	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
 		return Element("main", nil, []VNode{
-			Component("Child", func() *ComponentInstance {
+			Component("Child", func() *CompInstance {
 				child := &componentVNodeFixture{
 					events: &events,
 					value:  func() string { return value },
@@ -357,7 +357,7 @@ func TestMountedComponentVNodeAppliesInheritedScopeAttrsToRoot(t *testing.T) {
 	childTag := "section"
 	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
-		child := Component("Child", func() *ComponentInstance {
+		child := Component("Child", func() *CompInstance {
 			return CompOf(&patchFixture{}, func(*patchFixture) VNode {
 				return Element(childTag, []Attribute{Attr("class", "banner")}, []VNode{
 					Element("p", nil, []VNode{Text("Child")}),
@@ -394,9 +394,9 @@ func TestMountedComponentVNodeAppliesInheritedScopeAttrsToRoot(t *testing.T) {
 func TestMountedComponentVNodeAppendsNestedInheritedScopeAttrsToRoot(t *testing.T) {
 	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
-		parent := Component("Parent", func() *ComponentInstance {
+		parent := Component("Parent", func() *CompInstance {
 			return CompOf(&patchFixture{}, func(*patchFixture) VNode {
-				child := Component("Child", func() *ComponentInstance {
+				child := Component("Child", func() *CompInstance {
 					return CompOf(&patchFixture{}, func(*patchFixture) VNode {
 						return Element("section", []Attribute{
 							Attr("class", "child-root"),
@@ -424,10 +424,10 @@ func TestMountedComponentVNodeAppendsNestedInheritedScopeAttrsToRoot(t *testing.
 }
 
 func TestMountedComponentVNodeTracksChildReactiveReads(t *testing.T) {
-	count := RefOf(0)
+	count := StateOf(0)
 	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
-		return Component("Child", func() *ComponentInstance {
+		return Component("Child", func() *CompInstance {
 			return CompOf(&patchFixture{}, func(*patchFixture) VNode {
 				return Text(fmt.Sprint(count.Get()))
 			})
@@ -449,10 +449,10 @@ func TestMountedComponentVNodeTracksChildReactiveReads(t *testing.T) {
 }
 
 func TestMountedComponentVNodeRendersDefaultSlot(t *testing.T) {
-	value := RefOf("first")
+	value := StateOf("first")
 	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
-		return Component("Child", func() *ComponentInstance {
+		return Component("Child", func() *CompInstance {
 			child := CompOf(&patchFixture{}, func(*patchFixture) VNode {
 				return Element("section", nil, []VNode{Slot(Text("fallback"))})
 			})
@@ -501,14 +501,14 @@ func TestMountedComponentVNodeRefreshesDefaultSlotOnPatch(t *testing.T) {
 			return nil
 		}
 	}
-	updateChild := func(childComp *ComponentInstance) {
+	updateChild := func(childComp *CompInstance) {
 		child := childComp.Component.(*componentSlotPatchFixture)
 		child.label = func() string { return label }
 		childComp.DefaultSlot = defaultSlot()
 	}
 	target := newStubDOMTarget()
 	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
-		return ComponentWithUpdate("Child", func() *ComponentInstance {
+		return ComponentWithUpdate("Child", func() *CompInstance {
 			child := &componentSlotPatchFixture{
 				label:     func() string { return label },
 				initCount: &initCount,
@@ -565,7 +565,7 @@ func TestMountedComponentVNodeRefreshesDefaultSlotOnPatch(t *testing.T) {
 func TestMountedComponentVNodeRendersSlotFallback(t *testing.T) {
 	target := newStubDOMTarget()
 	_, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
-		return Component("Child", func() *ComponentInstance {
+		return Component("Child", func() *CompInstance {
 			return CompOf(&patchFixture{}, func(*patchFixture) VNode {
 				return Element("section", nil, []VNode{Slot(Text("fallback"))})
 			})
@@ -589,7 +589,7 @@ func TestMountedComponentVNodeUnmountsWhenReplaced(t *testing.T) {
 		if !showChild {
 			return Text("gone")
 		}
-		return Component("Child", func() *ComponentInstance {
+		return Component("Child", func() *CompInstance {
 			child := &componentVNodeFixture{
 				events: &events,
 				value:  func() string { return "shown" },
@@ -641,7 +641,7 @@ func TestMountValidatesInputBeforePlatformBoundary(t *testing.T) {
 	tests := []struct {
 		name      string
 		target    string
-		component *ComponentInstance
+		component *CompInstance
 		expected  string
 	}{
 		{
@@ -708,7 +708,7 @@ func (f *reactiveRenderFixture) OnUpdated() {
 
 type reactiveUpdatedHookFixture struct {
 	events    *[]string
-	hookValue *RefValue[string]
+	hookValue *StateValue[string]
 }
 
 func (f *reactiveUpdatedHookFixture) OnUpdated() {

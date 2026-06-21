@@ -140,7 +140,7 @@ func (g expressionGenerator) ident(ident *ast.Ident) jen.Code {
 
 	access := jen.Id("component").Dot(field.Name)
 	switch field.Kind {
-	case script.FieldKindRef, script.FieldKindComputed, script.FieldKindResource:
+	case script.FieldKindComputed, script.FieldKindResource:
 		return access.Dot("Get").Call()
 	default:
 		return access

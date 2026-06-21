@@ -1,13 +1,13 @@
 <template>
 	<main>
-		<UserBadge :name="name" :isAdmin='role == "admin"' @select="selectUser" @tags="selectTags" />
+		<UserBadge :name="Name" :isAdmin='Role == "admin"' @select="selectUser" @tags="selectTags" />
 			<ul>
 				<li v-for="todo in visibleTodos()" :key="todo.ID">{{ todo.Text }}</li>
 			</ul>
-		<input v-model="query" />
+		<input v-model="Query" />
 		<button type="button" @click="increment">Increment</button>
-		<p v-if="ready">Count: {{ count }}</p>
-		<article v-html="body">{{ missing }}</article>
+		<p v-if="Ready">Count: {{ Count }}</p>
+		<article v-html="Body">{{ missing }}</article>
 	</main>
 </template>
 
@@ -22,13 +22,15 @@ type Todo struct {
 }
 
 type Parent struct {
-	name  string
-	role  string
-	todos []Todo
-	query string
-	ready bool
-	body  tue.TrustedHTML
-	count tue.Ref[int]
+	tue.Comp[struct {
+		Name  string          `state:""`
+		Role  string          `state:""`
+		Todos []Todo          `state:""`
+		Query string          `state:""`
+		Ready bool            `state:""`
+		Body  tue.TrustedHTML `state:""`
+		Count int             `state:""`
+	}]
 }
 
 func (p *Parent) increment() {}
@@ -38,6 +40,6 @@ func (p *Parent) selectUser(name string) {}
 func (p *Parent) selectTags(tags []string) {}
 
 func (p *Parent) visibleTodos() []Todo {
-	return p.todos
+	return p.Todos()
 }
 </script>

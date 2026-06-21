@@ -4,7 +4,7 @@ package fixtures
 
 import "github.com/norunners/tue"
 
-type tueUserBadgeContract struct {
+type tueUserBadgeData struct {
 	__propName      func() (string, bool)
 	__propActive    func() (bool, bool)
 	__propLabel     func() (string, bool)
@@ -12,11 +12,11 @@ type tueUserBadgeContract struct {
 	__eventRange    func(value1 string, value2 int)
 	__eventTags     func(value []string)
 	__eventDismiss  func(value string)
-	__stateExpanded tue.Ref[bool]
+	__stateExpanded tue.State[bool]
 }
 
-func newTueUserBadgeContract() tueUserBadgeContract {
-	return tueUserBadgeContract{__stateExpanded: tue.RefOf(*new(bool))}
+func newTueUserBadgeData() tueUserBadgeData {
+	return tueUserBadgeData{__stateExpanded: tue.StateOf(*new(bool))}
 }
 func (component *UserBadge) NameOk() (string, bool) {
 	if component == nil || component.__tue.__propName == nil {

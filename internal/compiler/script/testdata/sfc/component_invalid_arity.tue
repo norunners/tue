@@ -5,9 +5,7 @@ package fixtures
 
 import tue "github.com/norunners/tue"
 
-type ContractInvalidEventTag struct {
-	tue.Comp[struct {
-		Select func(string) `event:"select,required"`
-	}]
+type ComponentInvalidArity struct {
+	tue.Comp[struct{}, struct{}]
 }
 </script>

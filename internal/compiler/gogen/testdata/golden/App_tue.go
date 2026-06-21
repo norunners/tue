@@ -5,9 +5,9 @@ package app
 import tue "github.com/norunners/tue"
 
 type App struct {
-	__tue tueAppContract
+	__tue tueAppData
 	tue.Comp[struct {
-		Name string `prop:"name"`
+		Name  string `prop:"name"`
+		Count int    `state:""`
 	}]
-	count tue.Ref[int]
 }

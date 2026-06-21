@@ -4,18 +4,18 @@ package fixtures
 
 import "github.com/norunners/tue"
 
-func NewParent() *tue.ComponentInstance {
-	component := &Parent{}
+func NewParent() *tue.CompInstance {
+	component := &Parent{__tue: newTueParentData()}
 	return tue.CompOf(component, renderParent)
 }
 
 func renderParent(component *Parent) tue.VNode {
 	return tue.Element("main", nil, []tue.VNode{func() tue.VNode {
-		if component.showBadge {
-			return tue.ComponentWithUpdate("UserBadge", func() *tue.ComponentInstance {
-				child := &UserBadge{__tue: newTueUserBadgeContract()}
+		if component.ShowBadge() {
+			return tue.ComponentWithUpdate("UserBadge", func() *tue.CompInstance {
+				child := &UserBadge{__tue: newTueUserBadgeData()}
 				child.__tue.__propName = func() (string, bool) {
-					return component.name.Get(), true
+					return component.Name(), true
 				}
 				child.__tue.__propActive = func() (bool, bool) {
 					return true, true
@@ -27,10 +27,10 @@ func renderParent(component *Parent) tue.VNode {
 				child.__tue.__eventDismiss = nil
 				childComp := tue.CompOf(child, renderUserBadge)
 				return childComp
-			}, func(childComp *tue.ComponentInstance) {
+			}, func(childComp *tue.CompInstance) {
 				child := childComp.Component.(*UserBadge)
 				child.__tue.__propName = func() (string, bool) {
-					return component.name.Get(), true
+					return component.Name(), true
 				}
 				child.__tue.__propActive = func() (bool, bool) {
 					return true, true

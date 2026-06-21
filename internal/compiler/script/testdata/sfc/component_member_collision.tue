@@ -5,9 +5,11 @@ package fixtures
 
 import tue "github.com/norunners/tue"
 
-type ContractUnexportedField struct {
+type ComponentMemberCollision struct {
 	tue.Comp[struct {
-		name string `prop:""`
+		Name string `prop:""`
 	}]
 }
+
+func (c *ComponentMemberCollision) Name() string { return "local" }
 </script>

@@ -45,7 +45,7 @@ func stubTuePackage() *types.Package {
 	emptyInterface := types.NewInterfaceType(nil, nil).Complete()
 	anyType := types.Universe.Lookup("any").Type()
 
-	for _, name := range []string{"Ref", "Computed", "Resource", "Comp"} {
+	for _, name := range []string{"State", "Computed", "Resource", "Comp"} {
 		insertGenericStubType(scope, pkg, name, emptyInterface, anyType, 1)
 	}
 

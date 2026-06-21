@@ -79,20 +79,20 @@ func ComponentNameFromPath(path string) string {
 }
 
 type extractor struct {
-	path           string
-	source         string
-	lineStarts     []int
-	base           sfc.Position
-	fset           *token.FileSet
-	tokenFile      *token.File
-	tueNames       map[string]bool
-	tueDot         bool
-	component      string
-	contract       bool
-	props          []Prop
-	events         []Event
-	contractStates []ContractState
-	diagnostics    []Diagnostic
+	path        string
+	source      string
+	lineStarts  []int
+	base        sfc.Position
+	fset        *token.FileSet
+	tokenFile   *token.File
+	tueNames    map[string]bool
+	tueDot      bool
+	component   string
+	hasComp     bool
+	props       []Prop
+	events      []Event
+	states      []State
+	diagnostics []Diagnostic
 }
 
 func parseSource(path string, source string, componentName string, base sfc.Position) (*File, []Diagnostic) {
@@ -141,7 +141,7 @@ func (e *extractor) parse(componentName string) (*File, []Diagnostic) {
 	file.PackageSpan = e.posSpan(astFile.Pos(), astFile.Name.End())
 	file.Imports = e.extractImports(astFile)
 	if componentName != "" {
-		e.extractComponentContract(astFile, componentName)
+		e.extractCompDeclaration(astFile, componentName)
 	}
 	typesPackage, typesInfo := e.typeCheck(astFile, componentName)
 	file.Types = e.extractTypes(astFile, typesPackage, typesInfo)
@@ -237,14 +237,14 @@ func (e *extractor) typeCheck(file *ast.File, componentName string) (*types.Pack
 				diagnostic.Span = e.props[0].Span
 			} else if len(e.events) != 0 {
 				diagnostic.Span = e.events[0].Span
-			} else if len(e.contractStates) != 0 {
-				diagnostic.Span = e.contractStates[0].Span
+			} else if len(e.states) != 0 {
+				diagnostic.Span = e.states[0].Span
 			}
 			diagnostics = append(diagnostics, diagnostic)
 		},
 	}
 	originalDeclarations := len(file.Decls)
-	file.Decls = append(file.Decls, e.generatedContractDeclarations(file, componentName)...)
+	file.Decls = append(file.Decls, e.generatedMethodDeclarations(file, componentName)...)
 	pkg, _ := config.Check(e.path, e.fset, []*ast.File{file}, info)
 	file.Decls = file.Decls[:originalDeclarations]
 	e.diagnostics = append(e.diagnostics, diagnostics...)
@@ -259,8 +259,8 @@ func (e *extractor) scriptPosition(position token.Pos) bool {
 	return offset >= 0 && offset <= e.tokenFile.Size()
 }
 
-func (e *extractor) generatedContractDeclarations(file *ast.File, componentName string) []ast.Decl {
-	if !e.contract {
+func (e *extractor) generatedMethodDeclarations(file *ast.File, componentName string) []ast.Decl {
+	if !e.hasComp {
 		return nil
 	}
 
@@ -286,7 +286,7 @@ func (e *extractor) generatedContractDeclarations(file *ast.File, componentName 
 			declared[method] = true
 		}
 	}
-	for _, state := range e.contractStates {
+	for _, state := range e.states {
 		getter := StateGetterName(state.GoName)
 		if !declared[getter] {
 			fmt.Fprintf(&source, "func (*%s) %s() %s { panic(\"generated\") }\n", componentName, getter, state.Type)
@@ -299,9 +299,9 @@ func (e *extractor) generatedContractDeclarations(file *ast.File, componentName 
 		}
 	}
 
-	generated, err := goparser.ParseFile(e.fset, e.path+"#contract", source.String(), goparser.AllErrors)
+	generated, err := goparser.ParseFile(e.fset, e.path+"#component", source.String(), goparser.AllErrors)
 	if err != nil {
-		e.addDiagnostic(fmt.Sprintf("build generated component contract: %v", err), e.span(len(e.source), len(e.source)))
+		e.addDiagnostic(fmt.Sprintf("build generated component methods: %v", err), e.span(len(e.source), len(e.source)))
 		return nil
 	}
 	return generated.Decls
@@ -398,19 +398,19 @@ func (e *extractor) extractComponent(file *File, astFile *ast.File, componentNam
 	}
 
 	component := &Component{
-		Name:           componentName,
-		Span:           e.nodeSpan(spec),
-		NameSpan:       e.nodeSpan(spec.Name),
-		Props:          append([]Prop(nil), e.props...),
-		Events:         append([]Event(nil), e.events...),
-		ContractStates: append([]ContractState(nil), e.contractStates...),
+		Name:     componentName,
+		Span:     e.nodeSpan(spec),
+		NameSpan: e.nodeSpan(spec.Name),
+		Props:    append([]Prop(nil), e.props...),
+		Events:   append([]Event(nil), e.events...),
+		States:   append([]State(nil), e.states...),
 	}
-	if e.contract {
-		component.ContractType = ContractTypeName(componentName)
+	if e.hasComp {
+		component.GeneratedType = GeneratedTypeName(componentName)
 	}
 	e.extractFields(component, structType)
 	e.extractMethods(component, astFile)
-	e.validateGeneratedContract(component)
+	e.validateGeneratedMembers(component)
 	component.Allocation = allocationFor(component)
 	file.Component = component
 }
@@ -465,7 +465,7 @@ func (e *extractor) structFields(structType *ast.StructType) []Field {
 		for _, name := range astField.Names {
 			tag, tagSpan := e.fieldTag(astField)
 			fields = append(fields, Field{
-				Kind:     FieldKindState,
+				Kind:     FieldKindLocal,
 				Name:     name.Name,
 				Exported: name.IsExported(),
 				Type:     e.nodeString(astField.Type),
@@ -489,14 +489,12 @@ func (e *extractor) extractFields(component *Component, structType *ast.StructTy
 		for _, name := range astField.Names {
 			field := e.fieldFromAST(name, astField)
 			switch field.Kind {
-			case FieldKindRef:
-				component.Refs = append(component.Refs, field)
 			case FieldKindComputed:
 				component.Computed = append(component.Computed, field)
 			case FieldKindResource:
 				component.Resources = append(component.Resources, field)
 			default:
-				component.State = append(component.State, field)
+				component.LocalFields = append(component.LocalFields, field)
 			}
 		}
 	}
@@ -521,20 +519,27 @@ func (e *extractor) fieldFromAST(name *ast.Ident, astField *ast.Field) Field {
 
 func (e *extractor) classifyField(fieldName string, expr ast.Expr) (FieldKind, string) {
 	if _, ok := expr.(*ast.FuncType); ok {
-		return FieldKindState, ""
+		return FieldKindLocal, ""
 	}
 
 	typeName, args, ok := e.tueGenericType(expr)
 	if !ok {
-		return FieldKindState, ""
+		return FieldKindLocal, ""
 	}
 	if typeName == "Comp" {
-		e.addDiagnostic("tue.Comp contract marker must be embedded anonymously", e.nodeSpan(expr))
-		return FieldKindState, ""
+		e.addDiagnostic("tue.Comp marker must be embedded anonymously", e.nodeSpan(expr))
+		return FieldKindLocal, ""
+	}
+	if typeName == "State" {
+		e.addDiagnostic(
+			fmt.Sprintf("component state %q must be declared inside embedded tue.Comp", fieldName),
+			e.nodeSpan(expr),
+		)
+		return FieldKindLocal, ""
 	}
 	kind, ok := fieldKindForTueType(typeName)
 	if !ok {
-		return FieldKindState, ""
+		return FieldKindLocal, ""
 	}
 	if len(args) != 1 {
 		e.addDiagnostic(
@@ -586,14 +591,12 @@ func (e *extractor) tueTypeName(expr ast.Expr) (string, bool) {
 
 func fieldKindForTueType(name string) (FieldKind, bool) {
 	switch name {
-	case "Ref":
-		return FieldKindRef, true
 	case "Computed":
 		return FieldKindComputed, true
 	case "Resource":
 		return FieldKindResource, true
 	default:
-		return FieldKindState, false
+		return FieldKindLocal, false
 	}
 }
 
@@ -637,9 +640,9 @@ func (e *extractor) extractMethods(component *Component, file *ast.File) {
 	}
 }
 
-func (e *extractor) validateGeneratedContract(component *Component) {
-	if !e.contract {
-		component.ContractType = ""
+func (e *extractor) validateGeneratedMembers(component *Component) {
+	if !e.hasComp {
+		component.GeneratedType = ""
 		return
 	}
 
@@ -650,13 +653,13 @@ func (e *extractor) validateGeneratedContract(component *Component) {
 	for _, method := range component.Methods {
 		declared[method.Name] = method.NameSpan
 	}
-	for _, fields := range [][]Field{component.State, component.Refs, component.Computed, component.Resources} {
+	for _, fields := range [][]Field{component.LocalFields, component.Computed, component.Resources} {
 		for _, field := range fields {
 			declared[field.Name] = field.NameSpan
 		}
 	}
-	if span, exists := declared[ContractFieldName()]; exists {
-		e.addDiagnostic(fmt.Sprintf("component member %s is reserved for generated contract storage", ContractFieldName()), span)
+	if span, exists := declared[GeneratedFieldName()]; exists {
+		e.addDiagnostic(fmt.Sprintf("component member %s is reserved for generated storage", GeneratedFieldName()), span)
 	}
 
 	for _, prop := range component.Props {
@@ -711,7 +714,7 @@ func (e *extractor) validateGeneratedContract(component *Component) {
 			NameSpan:        event.NameSpan,
 		})
 	}
-	for _, state := range component.ContractStates {
+	for _, state := range component.States {
 		getter := StateGetterName(state.GoName)
 		if _, exists := declared[getter]; exists {
 			e.addDiagnostic(fmt.Sprintf("generated state getter %s conflicts with a component member", getter), state.NameSpan)
@@ -722,6 +725,7 @@ func (e *extractor) validateGeneratedContract(component *Component) {
 				ReceiverName:    component.Name,
 				PointerReceiver: true,
 				ImplicitGetter:  true,
+				StateGetter:     true,
 				Results:         []Parameter{{Type: state.Type, Span: state.TypeSpan, TypeSpan: state.TypeSpan}},
 				Span:            state.Span,
 				NameSpan:        state.NameSpan,

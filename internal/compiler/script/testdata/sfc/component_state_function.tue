@@ -5,9 +5,9 @@ package fixtures
 
 import tue "github.com/norunners/tue"
 
-type ContractInvalidPropMarker struct {
+type ComponentStateFunction struct {
 	tue.Comp[struct {
-		Name string `json:"name"`
+		Compute func() bool `state:""`
 	}]
 }
 </script>

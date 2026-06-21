@@ -12,11 +12,11 @@ import (
 	"github.com/norunners/tue/internal/compiler/sfc"
 )
 
-//go:embed testdata/contracts/*.go testdata/diagnostics/*.go testdata/sfc/*.tue
+//go:embed testdata/components/*.go testdata/diagnostics/*.go testdata/sfc/*.tue
 var testFixtures embed.FS
 
-func TestParseExtractsComponentContract(t *testing.T) {
-	source, err := testFixture("testdata/contracts/dashboard.go")
+func TestParseExtractsComponentDeclaration(t *testing.T) {
+	source, err := testFixture("testdata/components/dashboard.go")
 	if err != nil {
 		t.Fatalf("read dashboard fixture: %v", err)
 	}
@@ -50,10 +50,8 @@ func TestParseExtractsComponentContract(t *testing.T) {
 	if diff := cmp.Diff([]structSummary{
 		{Name: "User", Fields: []fieldSummary{}},
 		{Name: "Dashboard", Fields: []fieldSummary{
-			{Kind: FieldKindState, Name: "count", Type: "tue.Ref[int]"},
-			{Kind: FieldKindState, Name: "total", Type: "tue.Computed[int]"},
-			{Kind: FieldKindState, Name: "user", Type: "tue.Resource[User]"},
-			{Kind: FieldKindState, Name: "label", Type: "string"},
+			{Kind: FieldKindLocal, Name: "total", Type: "tue.Computed[int]"},
+			{Kind: FieldKindLocal, Name: "user", Type: "tue.Resource[User]"},
 		}},
 	}, summarizeStructs(file.Structs)); diff != "" {
 		t.Errorf("mismatch structs (-expected, +actual):\n%s", diff)
@@ -89,15 +87,17 @@ func TestParseExtractsComponentContract(t *testing.T) {
 	if diff := cmp.Diff(expectedEvents, summarizeEvents(component.Events)); diff != "" {
 		t.Errorf("mismatch events (-expected, +actual):\n%s", diff)
 	}
-	expectedContractStates := []contractStateSummary{{Name: "expanded", GoName: "Expanded", Type: "bool"}}
-	if diff := cmp.Diff(expectedContractStates, summarizeContractStates(component.ContractStates)); diff != "" {
-		t.Errorf("mismatch contract states (-expected, +actual):\n%s", diff)
+	expectedStates := []stateSummary{
+		{Name: "expanded", GoName: "Expanded", Type: "bool"},
+		{Name: "count", GoName: "Count", Type: "int"},
+		{Name: "label", GoName: "Label", Type: "string"},
+	}
+	if diff := cmp.Diff(expectedStates, summarizeStates(component.States)); diff != "" {
+		t.Errorf("mismatch component states (-expected, +actual):\n%s", diff)
 	}
 
-	assertField(t, component.Refs, "count", FieldKindRef, "tue.Ref[int]", "int")
 	assertField(t, component.Computed, "total", FieldKindComputed, "tue.Computed[int]", "int")
 	assertField(t, component.Resources, "user", FieldKindResource, "tue.Resource[User]", "User")
-	assertField(t, component.State, "label", FieldKindState, "string", "")
 
 	init, err := requireInit(component)
 	if err != nil {
@@ -223,6 +223,30 @@ func TestParseExtractsComponentContract(t *testing.T) {
 			PointerReceiver: true,
 			Parameters:      []parameterSummary{{Name: "value", Type: "bool"}},
 		},
+		{
+			Name:            "Count",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results:         []parameterSummary{{Type: "int"}},
+		},
+		{
+			Name:            "CountSet",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Parameters:      []parameterSummary{{Name: "value", Type: "int"}},
+		},
+		{
+			Name:            "Label",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results:         []parameterSummary{{Type: "string"}},
+		},
+		{
+			Name:            "LabelSet",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Parameters:      []parameterSummary{{Name: "value", Type: "string"}},
+		},
 	}, summarizeMethods(component.Methods)); diff != "" {
 		t.Errorf("mismatch methods (-expected, +actual):\n%s", diff)
 	}
@@ -235,8 +259,8 @@ func TestParseExtractsComponentContract(t *testing.T) {
 	}
 }
 
-func TestParseAcceptsDotImportedTueReactiveFields(t *testing.T) {
-	source, err := testFixture("testdata/contracts/dot_import.go")
+func TestParseAcceptsDotImportedTueComponentFields(t *testing.T) {
+	source, err := testFixture("testdata/components/dot_import.go")
 	if err != nil {
 		t.Fatalf("read dot-import fixture: %v", err)
 	}
@@ -249,7 +273,9 @@ func TestParseAcceptsDotImportedTueReactiveFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertField(t, component.Refs, "count", FieldKindRef, "Ref[int]", "int")
+	if diff := cmp.Diff([]stateSummary{{Name: "count", GoName: "Count", Type: "int"}}, summarizeStates(component.States)); diff != "" {
+		t.Errorf("mismatch component states (-expected, +actual):\n%s", diff)
+	}
 	if diff := cmp.Diff([]propSummary{{Name: "name", GoName: "Name", Type: "string", Required: true}}, summarizeProps(component.Props)); diff != "" {
 		t.Errorf("mismatch props (-expected, +actual):\n%s", diff)
 	}
@@ -292,8 +318,8 @@ func TestParseBlockUsesSFCSourceSpans(t *testing.T) {
 	if diff := cmp.Diff([]eventSummary{{Name: "select", GoName: "Select", FunctionType: "func(value string)"}}, summarizeEvents(component.Events)); diff != "" {
 		t.Errorf("mismatch events (-expected, +actual):\n%s", diff)
 	}
-	if diff := cmp.Diff("tueUserBadgeContract", component.ContractType); diff != "" {
-		t.Errorf("mismatch generated contract type (-expected, +actual):\n%s", diff)
+	if diff := cmp.Diff("tueUserBadgeData", component.GeneratedType); diff != "" {
+		t.Errorf("mismatch generated component support type (-expected, +actual):\n%s", diff)
 	}
 	nameOffset := bytes.Index(source, []byte("Name     string"))
 	if nameOffset == -1 {
@@ -384,33 +410,122 @@ func TestParseDiagnostics(t *testing.T) {
 	}
 }
 
-func TestParseSFCComponentContractDiagnostics(t *testing.T) {
+func TestParseSFCComponentDeclarationDiagnostics(t *testing.T) {
 	tests := []struct {
 		name     string
 		fixture  string
 		expected []string
 	}{
-		{name: "duplicate event", fixture: "contract_duplicate_event.tue", expected: []string{`duplicate component contract name "select"`}},
-		{name: "duplicate prop", fixture: "contract_duplicate_prop.tue", expected: []string{`duplicate component contract name "name"`}},
-		{name: "invalid field", fixture: "contract_invalid_field.tue", expected: []string{`component contract field "Name": must declare exactly one prop, event, or state tag`}},
-		{name: "unknown tag", fixture: "contract_invalid_prop_marker.tue", expected: []string{`component contract field "Name": unknown contract tag "json"`}},
-		{name: "member collision", fixture: "contract_member_collision.tue", expected: []string{`generated prop getter Name conflicts with a component member`}},
-		{name: "reserved storage", fixture: "contract_reserved_storage.tue", expected: []string{`component member __tue is reserved for generated contract storage`}},
-		{name: "event result", fixture: "contract_invalid_event_arity.tue", expected: []string{`component event "range" must not return values`}},
-		{name: "default option", fixture: "contract_prop_default_option.tue", expected: []string{`component prop "Active": unknown option "default=true"`}},
-		{name: "contract must be anonymous struct", fixture: "contract_must_be_struct.tue", expected: []string{`tue.Comp contract type argument must be an anonymous struct`}},
-		{name: "unexported field", fixture: "contract_unexported_field.tue", expected: []string{`component contract field "name" must be exported`}},
-		{name: "invalid event tag", fixture: "contract_invalid_event_tag.tue", expected: []string{`component event "Select": tag does not accept option "required"`}},
-		{name: "event collision", fixture: "contract_event_collision.tue", expected: []string{`generated event method Select conflicts with a component member`}},
-		{name: "presence collision", fixture: "contract_presence_collision.tue", expected: []string{`generated prop presence getter NameOk conflicts with a component member`}},
-		{name: "multiple markers", fixture: "contract_multiple_markers.tue", expected: []string{`component may embed at most one tue.Comp contract marker`}},
-		{name: "mixed tags", fixture: "contract_mixed_tags.tue", expected: []string{`component contract field "Name": must declare exactly one prop, event, or state tag`}},
-		{name: "named marker", fixture: "contract_named_marker.tue", expected: []string{`tue.Comp contract marker must be embedded anonymously`}},
-		{name: "state function", fixture: "contract_state_function.tue", expected: []string{`component state "compute" must not have a function type`}},
-		{name: "state setter collision", fixture: "contract_state_setter_collision.tue", expected: []string{`generated state setter ExpandedSet conflicts with a component member`}},
-		{name: "duplicate category name", fixture: "contract_duplicate_name.tue", expected: []string{`duplicate component contract name "value"`}},
-		{name: "invalid marker arity", fixture: "contract_invalid_arity.tue", expected: []string{`tue.Comp contract marker requires exactly one anonymous struct type argument`}},
-		{name: "function prop", fixture: "contract_prop_function.tue", expected: []string{`component prop "format" must not have a function type`}},
+		{
+			name:     "duplicate event",
+			fixture:  "component_duplicate_event.tue",
+			expected: []string{`duplicate component declaration name "select"`},
+		},
+		{
+			name:     "duplicate prop",
+			fixture:  "component_duplicate_prop.tue",
+			expected: []string{`duplicate component declaration name "name"`},
+		},
+		{
+			name:     "invalid field",
+			fixture:  "component_invalid_field.tue",
+			expected: []string{`component declaration field "Name": must declare exactly one prop, event, or state tag`},
+		},
+		{
+			name:     "unknown tag",
+			fixture:  "component_invalid_prop_marker.tue",
+			expected: []string{`component declaration field "Name": unknown component tag "json"`},
+		},
+		{
+			name:     "member collision",
+			fixture:  "component_member_collision.tue",
+			expected: []string{`generated prop getter Name conflicts with a component member`},
+		},
+		{
+			name:     "reserved storage",
+			fixture:  "component_reserved_storage.tue",
+			expected: []string{`component member __tue is reserved for generated storage`},
+		},
+		{
+			name:     "event result",
+			fixture:  "component_invalid_event_arity.tue",
+			expected: []string{`component event "range" must not return values`},
+		},
+		{
+			name:     "default option",
+			fixture:  "component_prop_default_option.tue",
+			expected: []string{`component prop "Active": unknown option "default=true"`},
+		},
+		{
+			name:     "marker must use anonymous struct",
+			fixture:  "component_must_be_struct.tue",
+			expected: []string{`tue.Comp type argument must be an anonymous struct`},
+		},
+		{
+			name:     "unexported field",
+			fixture:  "component_unexported_field.tue",
+			expected: []string{`component declaration field "name" must be exported`},
+		},
+		{
+			name:     "invalid event tag",
+			fixture:  "component_invalid_event_tag.tue",
+			expected: []string{`component event "Select": tag does not accept option "required"`},
+		},
+		{
+			name:     "event collision",
+			fixture:  "component_event_collision.tue",
+			expected: []string{`generated event method Select conflicts with a component member`},
+		},
+		{
+			name:     "presence collision",
+			fixture:  "component_presence_collision.tue",
+			expected: []string{`generated prop presence getter NameOk conflicts with a component member`},
+		},
+		{
+			name:     "multiple markers",
+			fixture:  "component_multiple_markers.tue",
+			expected: []string{`component may embed at most one tue.Comp marker`},
+		},
+		{
+			name:     "mixed tags",
+			fixture:  "component_mixed_tags.tue",
+			expected: []string{`component declaration field "Name": must declare exactly one prop, event, or state tag`},
+		},
+		{
+			name:     "named marker",
+			fixture:  "component_named_marker.tue",
+			expected: []string{`tue.Comp marker must be embedded anonymously`},
+		},
+		{
+			name:     "state function",
+			fixture:  "component_state_function.tue",
+			expected: []string{`component state "compute" must not have a function type`},
+		},
+		{
+			name:     "state setter collision",
+			fixture:  "component_state_setter_collision.tue",
+			expected: []string{`generated state setter ExpandedSet conflicts with a component member`},
+		},
+		{
+			name:     "duplicate category name",
+			fixture:  "component_duplicate_name.tue",
+			expected: []string{`duplicate component declaration name "value"`},
+		},
+		{
+			name:     "invalid marker arity",
+			fixture:  "component_invalid_arity.tue",
+			expected: []string{`tue.Comp marker requires exactly one anonymous struct type argument`},
+		},
+		{
+			name:     "function prop",
+			fixture:  "component_prop_function.tue",
+			expected: []string{`component prop "format" must not have a function type`},
+		},
+		{
+			name:     "state outside marker",
+			fixture:  "component_external_state.tue",
+			expected: []string{`component state "Count" must be declared inside embedded tue.Comp`},
+		},
 	}
 
 	for _, test := range tests {
@@ -418,7 +533,7 @@ func TestParseSFCComponentContractDiagnostics(t *testing.T) {
 			path := "testdata/sfc/" + test.fixture
 			source, err := testFixture(path)
 			if err != nil {
-				t.Fatalf("read component contract diagnostic fixture: %v", err)
+				t.Fatalf("read component declaration diagnostic fixture: %v", err)
 			}
 			sfcFile, sfcDiagnostics := sfc.Parse(test.fixture, source)
 			if len(sfcDiagnostics) != 0 {
@@ -460,10 +575,22 @@ func TestLowerIdentifierPreservesGoInitialisms(t *testing.T) {
 		name     string
 		expected string
 	}{
-		{name: "Name", expected: "name"},
-		{name: "UserID", expected: "userID"},
-		{name: "URL", expected: "url"},
-		{name: "URLValue", expected: "urlValue"},
+		{
+			name:     "Name",
+			expected: "name",
+		},
+		{
+			name:     "UserID",
+			expected: "userID",
+		},
+		{
+			name:     "URL",
+			expected: "url",
+		},
+		{
+			name:     "URLValue",
+			expected: "urlValue",
+		},
 	}
 
 	for _, test := range tests {
@@ -601,7 +728,7 @@ type eventSummary struct {
 	FunctionType string
 }
 
-type contractStateSummary struct {
+type stateSummary struct {
 	Name   string
 	GoName string
 	Type   string
@@ -674,10 +801,10 @@ func summarizeEvents(events []Event) []eventSummary {
 	return summaries
 }
 
-func summarizeContractStates(states []ContractState) []contractStateSummary {
-	summaries := make([]contractStateSummary, len(states))
+func summarizeStates(states []State) []stateSummary {
+	summaries := make([]stateSummary, len(states))
 	for index, state := range states {
-		summaries[index] = contractStateSummary{Name: state.Name, GoName: state.GoName, Type: state.Type}
+		summaries[index] = stateSummary{Name: state.Name, GoName: state.GoName, Type: state.Type}
 	}
 	return summaries
 }

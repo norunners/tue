@@ -5,10 +5,9 @@ package fixtures
 
 import tue "github.com/norunners/tue"
 
-type ContractDuplicateName struct {
+type ComponentInvalidEventTag struct {
 	tue.Comp[struct {
-		Name    string `prop:"value"`
-		Changed func() `event:"value"`
+		Select func(string) `event:"select,required"`
 	}]
 }
 </script>

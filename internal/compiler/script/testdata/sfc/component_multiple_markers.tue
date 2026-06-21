@@ -5,10 +5,12 @@ package fixtures
 
 import tue "github.com/norunners/tue"
 
-type ContractDuplicateProp struct {
+type ComponentMultipleMarkers struct {
 	tue.Comp[struct {
-		Name  string `prop:"name"`
-		Label int    `prop:"name"`
+		Name string `prop:""`
+	}]
+	tue.Comp[struct {
+		Ready bool `state:""`
 	}]
 }
 </script>

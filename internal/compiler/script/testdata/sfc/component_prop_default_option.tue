@@ -5,9 +5,9 @@ package fixtures
 
 import tue "github.com/norunners/tue"
 
-type ContractNamedMarker struct {
-	Contract tue.Comp[struct {
-		Name string `prop:""`
+type ComponentPropDefaultOption struct {
+	tue.Comp[struct {
+		Active bool `prop:"active,default=true"`
 	}]
 }
 </script>

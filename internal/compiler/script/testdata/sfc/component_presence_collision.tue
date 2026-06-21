@@ -5,11 +5,11 @@ package fixtures
 
 import tue "github.com/norunners/tue"
 
-type ContractPresenceCollision struct {
+type ComponentPresenceCollision struct {
 	tue.Comp[struct {
 		Name string `prop:""`
 	}]
 }
 
-func (c *ContractPresenceCollision) NameOk() (string, bool) { return "", false }
+func (c *ComponentPresenceCollision) NameOk() (string, bool) { return "", false }
 </script>

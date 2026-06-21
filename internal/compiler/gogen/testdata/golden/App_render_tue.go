@@ -7,11 +7,11 @@ import (
 	"github.com/norunners/tue"
 )
 
-func NewApp() *tue.ComponentInstance {
-	component := &App{__tue: newTueAppContract()}
+func NewApp() *tue.CompInstance {
+	component := &App{__tue: newTueAppData()}
 	return tue.CompOf(component, renderApp)
 }
 
 func renderApp(component *App) tue.VNode {
-	return tue.Element("main", []tue.Attribute{tue.Attr("class", "page"), tue.Attr("data-title", "A & B")}, []tue.VNode{tue.Text("Hello, "), tue.Text(fmt.Sprint(component.Name())), tue.Text("!\n\t"), tue.Element("span", nil, []tue.VNode{tue.Text(fmt.Sprint((component.count.Get() + 1)))})})
+	return tue.Element("main", []tue.Attribute{tue.Attr("class", "page"), tue.Attr("data-title", "A & B")}, []tue.VNode{tue.Text("Hello, "), tue.Text(fmt.Sprint(component.Name())), tue.Text("!\n\t"), tue.Element("span", nil, []tue.VNode{tue.Text(fmt.Sprint((component.Count() + 1)))})})
 }

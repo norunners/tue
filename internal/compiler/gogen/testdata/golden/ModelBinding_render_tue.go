@@ -7,17 +7,17 @@ import (
 	"github.com/norunners/tue"
 )
 
-func NewApp() *tue.ComponentInstance {
-	component := &App{}
+func NewApp() *tue.CompInstance {
+	component := &App{__tue: newTueAppData()}
 	return tue.CompOf(component, renderApp)
 }
 
 func renderApp(component *App) tue.VNode {
-	return tue.Element("main", nil, []tue.VNode{tue.ElementWithEvents("input", []tue.Attribute{tue.Attr("value", component.query)}, []tue.EventBinding{tue.OnValue("input", func(value string) {
-		component.query = value
-	}), tue.EventOf("input", component.touch)}, nil), tue.ElementWithEvents("input", []tue.Attribute{tue.Attr("type", "checkbox"), tue.BoolStateAttr("checked", component.enabled.Get())}, []tue.EventBinding{tue.OnChecked("change", func(checked bool) {
-		component.enabled.Set(checked)
-	})}, nil), tue.ElementWithEvents("select", []tue.Attribute{tue.Attr("value", component.choice)}, []tue.EventBinding{tue.OnValue("change", func(value string) {
-		component.choice = value
-	})}, []tue.VNode{tue.Element("option", []tue.Attribute{tue.Attr("value", "small")}, []tue.VNode{tue.Text("Small")}), tue.Element("option", []tue.Attribute{tue.Attr("value", "large")}, []tue.VNode{tue.Text("Large")})}), tue.Element("p", nil, []tue.VNode{tue.Text(fmt.Sprint(component.query)), tue.Text(fmt.Sprint(component.enabled.Get())), tue.Text(fmt.Sprint(component.choice))})})
+	return tue.Element("main", nil, []tue.VNode{tue.ElementWithEvents("input", []tue.Attribute{tue.Attr("value", component.Query())}, []tue.EventBinding{tue.OnValue("input", func(value string) {
+		component.QuerySet(value)
+	}), tue.EventOf("input", component.touch)}, nil), tue.ElementWithEvents("input", []tue.Attribute{tue.Attr("type", "checkbox"), tue.BoolStateAttr("checked", component.Enabled())}, []tue.EventBinding{tue.OnChecked("change", func(checked bool) {
+		component.EnabledSet(checked)
+	})}, nil), tue.ElementWithEvents("select", []tue.Attribute{tue.Attr("value", component.Choice())}, []tue.EventBinding{tue.OnValue("change", func(value string) {
+		component.ChoiceSet(value)
+	})}, []tue.VNode{tue.Element("option", []tue.Attribute{tue.Attr("value", "small")}, []tue.VNode{tue.Text("Small")}), tue.Element("option", []tue.Attribute{tue.Attr("value", "large")}, []tue.VNode{tue.Text("Large")})}), tue.Element("p", nil, []tue.VNode{tue.Text(fmt.Sprint(component.Query())), tue.Text(fmt.Sprint(component.Enabled())), tue.Text(fmt.Sprint(component.Choice()))})})
 }

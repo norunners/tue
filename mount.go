@@ -4,7 +4,7 @@ package tue
 
 import "fmt"
 
-func mount(target string, component *ComponentInstance) (*Mounted, error) {
+func mount(target string, component *CompInstance) (*Mounted, error) {
 	if err := validateMount(target, component); err != nil {
 		return nil, err
 	}

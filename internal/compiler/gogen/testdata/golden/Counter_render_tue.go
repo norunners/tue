@@ -7,11 +7,11 @@ import (
 	"github.com/norunners/tue"
 )
 
-func NewCounter() *tue.ComponentInstance {
-	component := &Counter{}
+func NewCounter() *tue.CompInstance {
+	component := &Counter{__tue: newTueCounterData()}
 	return tue.CompOf(component, renderCounter)
 }
 
 func renderCounter(component *Counter) tue.VNode {
-	return tue.Element("main", nil, []tue.VNode{tue.Element("p", nil, []tue.VNode{tue.Text("Count: "), tue.Text(fmt.Sprint(component.count.Get()))}), tue.ElementWithEvents("button", []tue.Attribute{tue.Attr("type", "button")}, []tue.EventBinding{tue.EventOf("click", component.increment)}, []tue.VNode{tue.Text("Increment")})})
+	return tue.Element("main", nil, []tue.VNode{tue.Element("p", nil, []tue.VNode{tue.Text("Count: "), tue.Text(fmt.Sprint(component.Count()))}), tue.ElementWithEvents("button", []tue.Attribute{tue.Attr("type", "button")}, []tue.EventBinding{tue.EventOf("click", component.increment)}, []tue.VNode{tue.Text("Increment")})})
 }

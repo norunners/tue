@@ -7,7 +7,7 @@ import (
 	"github.com/norunners/tue"
 )
 
-func NewApp() *tue.ComponentInstance {
+func NewApp() *tue.CompInstance {
 	component := &App{}
 	return tue.CompOf(component, renderApp)
 }
@@ -56,8 +56,8 @@ func renderApp(component *App) tue.VNode {
 		__tueNodes := make([]tue.VNode, 0, len(__tueItems))
 		for _, __tueItem := range __tueItems {
 			__tueNodes = append(__tueNodes, func() tue.VNode {
-				__tueVNode := tue.ComponentWithUpdate("UserBadge", func() *tue.ComponentInstance {
-					child := &UserBadge{__tue: newTueUserBadgeContract()}
+				__tueVNode := tue.ComponentWithUpdate("UserBadge", func() *tue.CompInstance {
+					child := &UserBadge{__tue: newTueUserBadgeData()}
 					child.__tue.__propName = func() (string, bool) {
 						return __tueItem.Text, true
 					}
@@ -67,7 +67,7 @@ func renderApp(component *App) tue.VNode {
 					child.__tue.__eventSelect = component.selectUser
 					childComp := tue.CompOf(child, renderUserBadge)
 					return childComp
-				}, func(childComp *tue.ComponentInstance) {
+				}, func(childComp *tue.CompInstance) {
 					child := childComp.Component.(*UserBadge)
 					child.__tue.__propName = func() (string, bool) {
 						return __tueItem.Text, true

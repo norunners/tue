@@ -3,11 +3,11 @@
 		<header>
 			<p class="eyebrow">Executive overview</p>
 			<h1>Dashboard</h1>
-			<p>{{ headline }}</p>
+			<p>{{ Headline }}</p>
 		</header>
 
 		<section class="metrics">
-			<div v-for="metric in metrics" :key="metric.id">
+			<div v-for="metric in Metrics" :key="metric.id">
 				<MetricCard :label="metric.label" :value="metric.value" :tone="metric.tone">
 					<span>{{ metric.detail }}</span>
 				</MetricCard>
@@ -17,7 +17,7 @@
 		<section class="activity">
 			<div class="activity-header">
 				<h2>Recent activity</h2>
-				<button type="button" @click="toggleActivity">{{ activityAction }}</button>
+				<button type="button" @click="toggleActivity">{{ ActivityAction }}</button>
 			</div>
 			<div v-for="item in visibleActivity()" :key="item.id">
 				<ActivityItem :message="item.message" :time="item.time" :tone="item.tone" />
@@ -48,43 +48,44 @@ type activityItem struct {
 }
 
 type App struct {
-	headline        tue.Ref[string]
-	activityAction  tue.Ref[string]
-	showAllActivity tue.Ref[bool]
-	metrics         []metric
-	activity        []activityItem
+	tue.Comp[struct {
+		Headline        string         `state:""`
+		ActivityAction  string         `state:""`
+		ShowAllActivity bool           `state:""`
+		Metrics         []metric       `state:""`
+		Activity        []activityItem `state:""`
+	}]
 }
 
 func (a *App) Init(tue.Context) {
-	a.headline = tue.RefOf("All critical workflows are inside target thresholds.")
-	a.activityAction = tue.RefOf("Show all")
-	a.showAllActivity = tue.RefOf(false)
-	a.metrics = []metric{
+	a.HeadlineSet("All critical workflows are inside target thresholds.")
+	a.ActivityActionSet("Show all")
+	a.MetricsSet([]metric{
 		{id: 1, label: "Open incidents", value: "3", detail: "Two fewer than yesterday", tone: "warning"},
 		{id: 2, label: "SLA health", value: "99.2%", detail: "On track", tone: "healthy"},
 		{id: 3, label: "Deploy queue", value: "7", detail: "Next release at 14:00", tone: "neutral"},
-	}
-	a.activity = []activityItem{
+	})
+	a.ActivitySet([]activityItem{
 		{id: 1, message: "Payments release passed smoke checks", time: "09:12", tone: "healthy", important: true},
 		{id: 2, message: "New support escalation assigned", time: "10:04", tone: "warning", important: true},
 		{id: 3, message: "Analytics backfill completed", time: "10:37", tone: "neutral"},
 		{id: 4, message: "Security review scheduled", time: "11:15", tone: "neutral"},
-	}
+	})
 }
 
 func (a *App) toggleActivity() {
-	a.showAllActivity.Set(!a.showAllActivity.Get())
-	if a.showAllActivity.Get() {
-		a.activityAction.Set("Show important")
+	a.ShowAllActivitySet(!a.ShowAllActivity())
+	if a.ShowAllActivity() {
+		a.ActivityActionSet("Show important")
 	} else {
-		a.activityAction.Set("Show all")
+		a.ActivityActionSet("Show all")
 	}
 }
 
 func (a *App) visibleActivity() []activityItem {
-	visible := make([]activityItem, 0, len(a.activity))
-	for _, item := range a.activity {
-		if a.showAllActivity.Get() || item.important {
+	visible := make([]activityItem, 0, len(a.Activity()))
+	for _, item := range a.Activity() {
+		if a.ShowAllActivity() || item.important {
 			visible = append(visible, item)
 		}
 	}

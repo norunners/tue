@@ -1,6 +1,6 @@
 <template>
 	<main class="page" data-title="A & B">Hello, {{ Name }}!
-	<span>{{ count + 1 }}</span></main>
+	<span>{{ Count + 1 }}</span></main>
 </template>
 
 <script lang="go">
@@ -11,7 +11,7 @@ import tue "github.com/norunners/tue"
 type App struct {
 	tue.Comp[struct {
 		Name string `prop:"name"`
+		Count int   `state:""`
 	}]
-	count tue.Ref[int]
 }
 </script>

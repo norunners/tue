@@ -5,7 +5,9 @@ package fixtures
 
 import tue "github.com/norunners/tue"
 
-type ContractInvalidArity struct {
-	tue.Comp[struct{}, struct{}]
+type ComponentUnexportedField struct {
+	tue.Comp[struct {
+		name string `prop:""`
+	}]
 }
 </script>
