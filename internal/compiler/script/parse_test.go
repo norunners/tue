@@ -50,7 +50,6 @@ func TestParseExtractsComponentDeclaration(t *testing.T) {
 	if diff := cmp.Diff([]structSummary{
 		{Name: "User", Fields: []fieldSummary{}},
 		{Name: "Dashboard", Fields: []fieldSummary{
-			{Kind: FieldKindLocal, Name: "total", Type: "tue.Computed[int]"},
 			{Kind: FieldKindLocal, Name: "user", Type: "tue.Resource[User]"},
 		}},
 	}, summarizeStructs(file.Structs)); diff != "" {
@@ -90,13 +89,18 @@ func TestParseExtractsComponentDeclaration(t *testing.T) {
 	expectedStates := []stateSummary{
 		{Name: "expanded", GoName: "Expanded", Type: "bool"},
 		{Name: "count", GoName: "Count", Type: "int"},
-		{Name: "label", GoName: "Label", Type: "string"},
 	}
 	if diff := cmp.Diff(expectedStates, summarizeStates(component.States)); diff != "" {
 		t.Errorf("mismatch component states (-expected, +actual):\n%s", diff)
 	}
 
-	assertField(t, component.Computed, "total", FieldKindComputed, "tue.Computed[int]", "int")
+	expectedComputeds := []computedSummary{
+		{Name: "label", GoName: "Label", MethodName: "label", Type: "string"},
+		{Name: "total", GoName: "Total", MethodName: "total", Type: "int"},
+	}
+	if diff := cmp.Diff(expectedComputeds, summarizeComputeds(component.Computed)); diff != "" {
+		t.Errorf("mismatch component computeds (-expected, +actual):\n%s", diff)
+	}
 	assertField(t, component.Resources, "user", FieldKindResource, "tue.Resource[User]", "User")
 
 	init, err := requireInit(component)
@@ -128,6 +132,18 @@ func TestParseExtractsComponentDeclaration(t *testing.T) {
 			Results: []parameterSummary{{
 				Type: "string",
 			}},
+		},
+		{
+			Name:            "label",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results:         []parameterSummary{{Type: "string"}},
+		},
+		{
+			Name:            "total",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results:         []parameterSummary{{Type: "int"}},
 		},
 		{
 			Name:            "Name",
@@ -242,10 +258,10 @@ func TestParseExtractsComponentDeclaration(t *testing.T) {
 			Results:         []parameterSummary{{Type: "string"}},
 		},
 		{
-			Name:            "LabelSet",
+			Name:            "Total",
 			ReceiverName:    "Dashboard",
 			PointerReceiver: true,
-			Parameters:      []parameterSummary{{Name: "value", Type: "string"}},
+			Results:         []parameterSummary{{Type: "int"}},
 		},
 	}, summarizeMethods(component.Methods)); diff != "" {
 		t.Errorf("mismatch methods (-expected, +actual):\n%s", diff)
@@ -429,7 +445,7 @@ func TestParseSFCComponentDeclarationDiagnostics(t *testing.T) {
 		{
 			name:     "invalid field",
 			fixture:  "component_invalid_field.tue",
-			expected: []string{`component declaration field "Name": must declare exactly one prop, event, or state tag`},
+			expected: []string{`component declaration field "Name": must declare exactly one prop, event, state, or computed tag`},
 		},
 		{
 			name:     "unknown tag",
@@ -489,7 +505,7 @@ func TestParseSFCComponentDeclarationDiagnostics(t *testing.T) {
 		{
 			name:     "mixed tags",
 			fixture:  "component_mixed_tags.tue",
-			expected: []string{`component declaration field "Name": must declare exactly one prop, event, or state tag`},
+			expected: []string{`component declaration field "Name": must declare exactly one prop, event, state, or computed tag`},
 		},
 		{
 			name:     "named marker",
@@ -525,6 +541,51 @@ func TestParseSFCComponentDeclarationDiagnostics(t *testing.T) {
 			name:     "state outside marker",
 			fixture:  "component_external_state.tue",
 			expected: []string{`component state "Count" must be declared inside embedded tue.Comp`},
+		},
+		{
+			name:     "computed source is required",
+			fixture:  "component_computed_empty_source.tue",
+			expected: []string{`component computed "label" must name its source method`},
+		},
+		{
+			name:     "computed source is an identifier",
+			fixture:  "component_computed_invalid_source.tue",
+			expected: []string{`component computed "label" has invalid source method "label-value"`},
+		},
+		{
+			name:     "computed source exists",
+			fixture:  "component_computed_missing_method.tue",
+			expected: []string{`component computed "label" source method label was not found`},
+		},
+		{
+			name:     "computed source has no parameters",
+			fixture:  "component_computed_signature.tue",
+			expected: []string{`component computed "label" source method label must have signature func() string`},
+		},
+		{
+			name:     "computed source result matches",
+			fixture:  "component_computed_result.tue",
+			expected: []string{`component computed "label" source method label must have signature func() string`},
+		},
+		{
+			name:     "computed source returns one value",
+			fixture:  "component_computed_no_result.tue",
+			expected: []string{`component computed "label" source method label must have signature func() string`},
+		},
+		{
+			name:     "computed getter collision",
+			fixture:  "component_computed_collision.tue",
+			expected: []string{`generated computed getter Label conflicts with a component member`},
+		},
+		{
+			name:     "computed value is not a function",
+			fixture:  "component_computed_function.tue",
+			expected: []string{`component computed "format" must not have a function type`},
+		},
+		{
+			name:     "computed outside marker",
+			fixture:  "component_external_computed.tue",
+			expected: []string{`component computed "Label" must be declared inside embedded tue.Comp`},
 		},
 	}
 
@@ -734,6 +795,13 @@ type stateSummary struct {
 	Type   string
 }
 
+type computedSummary struct {
+	Name       string
+	GoName     string
+	MethodName string
+	Type       string
+}
+
 type fieldSummary struct {
 	Kind      FieldKind
 	Name      string
@@ -805,6 +873,19 @@ func summarizeStates(states []State) []stateSummary {
 	summaries := make([]stateSummary, len(states))
 	for index, state := range states {
 		summaries[index] = stateSummary{Name: state.Name, GoName: state.GoName, Type: state.Type}
+	}
+	return summaries
+}
+
+func summarizeComputeds(computeds []Computed) []computedSummary {
+	summaries := make([]computedSummary, len(computeds))
+	for index, computed := range computeds {
+		summaries[index] = computedSummary{
+			Name:       computed.Name,
+			GoName:     computed.GoName,
+			MethodName: computed.MethodName,
+			Type:       computed.Type,
+		}
 	}
 	return summaries
 }

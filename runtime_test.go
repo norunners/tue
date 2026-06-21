@@ -95,6 +95,18 @@ func TestCompOfCallsOptionalInit(t *testing.T) {
 	}
 }
 
+func TestCompOfRunsGeneratedInitializersBeforeInit(t *testing.T) {
+	component := &generatedInitFixture{}
+
+	CompOf(component, nil, func() {
+		component.value = "generated"
+	})
+
+	if diff := cmp.Diff("generated", component.initializedWith); diff != "" {
+		t.Errorf("mismatch value observed by Init (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestMountComponentRunsLifecycleInOrder(t *testing.T) {
 	events := []string{}
 	component := &lifecycleFixture{events: &events, value: "first"}
@@ -668,6 +680,15 @@ func TestMountValidatesInputBeforePlatformBoundary(t *testing.T) {
 
 type initFixture struct {
 	value string
+}
+
+type generatedInitFixture struct {
+	value           string
+	initializedWith string
+}
+
+func (f *generatedInitFixture) Init(Context) {
+	f.initializedWith = f.value
 }
 
 func (f *initFixture) Init(Context) {

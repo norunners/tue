@@ -1,0 +1,17 @@
+<template></template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type ComponentComputedSignature struct {
+	tue.Comp[struct {
+		Label string `computed:"label"`
+	}]
+}
+
+func (c *ComponentComputedSignature) label(prefix string) string {
+	return prefix
+}
+</script>

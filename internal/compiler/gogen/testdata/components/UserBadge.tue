@@ -11,17 +11,29 @@ type UserBadge struct {
 	tue.Comp[struct {
 		Name     string            `prop:",required"`
 		Active   bool              `prop:"active"`
-		Label    string            `prop:""`
+		Subtitle string            `prop:""`
 		Expanded bool              `state:""`
+		InitialLabel string        `state:""`
+		Label    string            `computed:"label"`
 		Select   func(string)      `event:""`
 		Range    func(string, int) `event:""`
 		Tags     func([]string)    `event:""`
 		Dismiss  func(string)      `event:""`
 	}]
+	labelCalls int
+}
+
+func (u *UserBadge) label() string {
+	u.labelCalls++
+	if u.Expanded() {
+		return u.Name() + " expanded"
+	}
+	return u.Name()
 }
 
 func (u *UserBadge) Init(tue.Context) {
 	u.ExpandedSet(true)
+	u.InitialLabelSet(u.Label())
 }
 
 func (u *UserBadge) choose() {
@@ -29,7 +41,7 @@ func (u *UserBadge) choose() {
 	u.Select(u.Name())
 	u.Range(u.Name(), 1)
 	u.Tags([]string{"featured", "active"})
-	if _, ok := u.LabelOk(); !ok {
+	if _, ok := u.SubtitleOk(); !ok {
 		u.Dismiss("dismissed")
 	}
 }

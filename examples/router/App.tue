@@ -3,36 +3,36 @@
 		<header>
 			<p class="eyebrow">Hash router</p>
 			<h1>Router</h1>
-			<p>Current route: {{ routeLabel }}</p>
+			<p>Current route: {{ RouteLabel }}</p>
 		</header>
 
 		<nav>
-			<a :href="HomeHref" :class="homeClass">Overview</a>
-			<a :href="UserHref" :class="userClass">User 42</a>
-			<a :href="UserProfileHref" :class="userClass">User 42 profile</a>
-			<a :href="SettingsHref" :class="settingsClass">Settings</a>
+			<a :href="HomeHref" :class="HomeClass">Overview</a>
+			<a :href="UserHref" :class="UserClass">User 42</a>
+			<a :href="UserProfileHref" :class="UserClass">User 42 profile</a>
+			<a :href="SettingsHref" :class="SettingsClass">Settings</a>
 			<a :href="MissingHref">Missing route</a>
 		</nav>
 
-		<section v-if="homeActive" class="panel">
+		<section v-if="HomeActive" class="panel">
 			<h2>Overview</h2>
 			<p>The explicit route table matched the static home route.</p>
 		</section>
 
-		<section v-if="userActive" class="panel">
+		<section v-if="UserActive" class="panel">
 			<h2>User detail</h2>
-			<p>User ID: {{ currentUserID }}</p>
-			<p>Tab: {{ currentTab }}</p>
+			<p>User ID: {{ CurrentUserID }}</p>
+			<p>Tab: {{ CurrentTab }}</p>
 		</section>
 
-		<section v-if="settingsActive" class="panel">
+		<section v-if="SettingsActive" class="panel">
 			<h2>Settings</h2>
 			<p>Settings use a static route with the same reactive current-route state.</p>
 		</section>
 
-		<section v-if="notFoundActive" class="panel warning">
+		<section v-if="NotFoundActive" class="panel warning">
 			<h2>Not found</h2>
-			<p>{{ notFoundMessage }}</p>
+			<p>{{ NotFoundMessage }}</p>
 		</section>
 	</main>
 </template>
@@ -49,19 +49,19 @@ type App struct {
 		UserProfileHref string `state:""`
 		SettingsHref    string `state:""`
 		MissingHref     string `state:""`
+		RouteLabel      string `computed:"routeLabel"`
+		CurrentUserID   string `computed:"currentUserID"`
+		CurrentTab      string `computed:"currentTab"`
+		NotFoundMessage string `computed:"notFoundMessage"`
+		HomeActive      bool   `computed:"homeActive"`
+		UserActive      bool   `computed:"userActive"`
+		SettingsActive  bool   `computed:"settingsActive"`
+		NotFoundActive  bool   `computed:"notFoundActive"`
+		HomeClass       string `computed:"homeClass"`
+		UserClass       string `computed:"userClass"`
+		SettingsClass   string `computed:"settingsClass"`
 	}]
-	router          *tue.Router
-	routeLabel      tue.Computed[string]
-	currentUserID   tue.Computed[string]
-	currentTab      tue.Computed[string]
-	notFoundMessage tue.Computed[string]
-	homeActive      tue.Computed[bool]
-	userActive      tue.Computed[bool]
-	settingsActive  tue.Computed[bool]
-	notFoundActive  tue.Computed[bool]
-	homeClass       tue.Computed[string]
-	userClass       tue.Computed[string]
-	settingsClass   tue.Computed[string]
+	router *tue.Router
 }
 
 func (a *App) Init(ctx tue.Context) {
@@ -77,47 +77,58 @@ func (a *App) Init(ctx tue.Context) {
 	a.UserProfileHrefSet(a.router.Href("/users/42?tab=profile"))
 	a.SettingsHrefSet(a.router.Href("/settings"))
 	a.MissingHrefSet(a.router.Href("/missing"))
-	a.routeLabel = tue.ComputedOfFunc(func() string {
-		match := a.router.Current()
-		if !match.Found {
-			return "not found"
-		}
-		return match.Pattern
-	})
-	a.currentUserID = tue.ComputedOfFunc(func() string {
-		return a.router.Current().Param("id")
-	})
-	a.currentTab = tue.ComputedOfFunc(func() string {
-		tab := a.router.Current().QueryParam("tab")
-		if tab == "" {
-			return "summary"
-		}
-		return tab
-	})
-	a.notFoundMessage = tue.ComputedOfFunc(func() string {
-		return "No route matched " + a.router.Current().Path
-	})
-	a.homeActive = tue.ComputedOfFunc(func() bool {
-		return a.router.Current().Pattern == "/"
-	})
-	a.userActive = tue.ComputedOfFunc(func() bool {
-		return a.router.Current().Pattern == "/users/:id"
-	})
-	a.settingsActive = tue.ComputedOfFunc(func() bool {
-		return a.router.Current().Pattern == "/settings"
-	})
-	a.notFoundActive = tue.ComputedOfFunc(func() bool {
-		return !a.router.Current().Found
-	})
-	a.homeClass = tue.ComputedOfFunc(func() string {
-		return navClass(a.homeActive.Get())
-	})
-	a.userClass = tue.ComputedOfFunc(func() string {
-		return navClass(a.userActive.Get())
-	})
-	a.settingsClass = tue.ComputedOfFunc(func() string {
-		return navClass(a.settingsActive.Get())
-	})
+}
+
+func (a *App) routeLabel() string {
+	match := a.router.Current()
+	if !match.Found {
+		return "not found"
+	}
+	return match.Pattern
+}
+
+func (a *App) currentUserID() string {
+	return a.router.Current().Param("id")
+}
+
+func (a *App) currentTab() string {
+	tab := a.router.Current().QueryParam("tab")
+	if tab == "" {
+		return "summary"
+	}
+	return tab
+}
+
+func (a *App) notFoundMessage() string {
+	return "No route matched " + a.router.Current().Path
+}
+
+func (a *App) homeActive() bool {
+	return a.router.Current().Pattern == "/"
+}
+
+func (a *App) userActive() bool {
+	return a.router.Current().Pattern == "/users/:id"
+}
+
+func (a *App) settingsActive() bool {
+	return a.router.Current().Pattern == "/settings"
+}
+
+func (a *App) notFoundActive() bool {
+	return !a.router.Current().Found
+}
+
+func (a *App) homeClass() string {
+	return navClass(a.HomeActive())
+}
+
+func (a *App) userClass() string {
+	return navClass(a.UserActive())
+}
+
+func (a *App) settingsClass() string {
+	return navClass(a.SettingsActive())
 }
 
 func navClass(active bool) string {

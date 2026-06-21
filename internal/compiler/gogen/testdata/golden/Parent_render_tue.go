@@ -20,12 +20,14 @@ func renderParent(component *Parent) tue.VNode {
 				child.__tue.__propActive = func() (bool, bool) {
 					return true, true
 				}
-				child.__tue.__propLabel = nil
+				child.__tue.__propSubtitle = nil
 				child.__tue.__eventSelect = component.selectUser
 				child.__tue.__eventRange = component.selectRange
 				child.__tue.__eventTags = component.selectTags
 				child.__tue.__eventDismiss = nil
-				childComp := tue.CompOf(child, renderUserBadge)
+				childComp := tue.CompOf(child, renderUserBadge, func() {
+					child.__tue.__computedLabel = tue.ComputedOfFunc(child.label)
+				})
 				return childComp
 			}, func(childComp *tue.CompInstance) {
 				child := childComp.Component.(*UserBadge)
@@ -35,7 +37,7 @@ func renderParent(component *Parent) tue.VNode {
 				child.__tue.__propActive = func() (bool, bool) {
 					return true, true
 				}
-				child.__tue.__propLabel = nil
+				child.__tue.__propSubtitle = nil
 				child.__tue.__eventSelect = component.selectUser
 				child.__tue.__eventRange = component.selectRange
 				child.__tue.__eventTags = component.selectTags

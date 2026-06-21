@@ -47,7 +47,8 @@ func (r *StateValue[T]) Watch(effect func(T)) func() {
 	})
 }
 
-// Computed is the read interface exposed to component code.
+// Computed is the read interface used by generated computed accessors and
+// handwritten reactive code.
 type Computed[T any] interface {
 	Get() T
 	Watch(func(T)) func()

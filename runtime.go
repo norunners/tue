@@ -171,17 +171,26 @@ type unmountedComponent interface {
 	OnUnmounted()
 }
 
-// CompOf returns a component wrapper for generated code.
-func CompOf[C any](component *C, render func(*C) VNode) *CompInstance {
+// CompOf returns a component wrapper for generated code. Generated initializers
+// run in component scope before the optional user Init method.
+func CompOf[C any](component *C, render func(*C) VNode, initializers ...func()) *CompInstance {
 	comp := &CompInstance{Component: component}
 	if render != nil {
 		comp.Render = func() VNode {
 			return render(component)
 		}
 	}
-	if initializable, ok := any(component).(initComponent); ok {
+	initializable, hasInit := any(component).(initComponent)
+	if len(initializers) != 0 || hasInit {
 		withComponentScope(comp, func() {
-			initializable.Init(&contextValue{component: comp})
+			for _, initialize := range initializers {
+				if initialize != nil {
+					initialize()
+				}
+			}
+			if hasInit {
+				initializable.Init(&contextValue{component: comp})
+			}
 		})
 	}
 	return comp

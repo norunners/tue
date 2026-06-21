@@ -92,6 +92,7 @@ type extractor struct {
 	props       []Prop
 	events      []Event
 	states      []State
+	computeds   []Computed
 	diagnostics []Diagnostic
 }
 
@@ -239,6 +240,8 @@ func (e *extractor) typeCheck(file *ast.File, componentName string) (*types.Pack
 				diagnostic.Span = e.events[0].Span
 			} else if len(e.states) != 0 {
 				diagnostic.Span = e.states[0].Span
+			} else if len(e.computeds) != 0 {
+				diagnostic.Span = e.computeds[0].Span
 			}
 			diagnostics = append(diagnostics, diagnostic)
 		},
@@ -296,6 +299,13 @@ func (e *extractor) generatedMethodDeclarations(file *ast.File, componentName st
 		if !declared[setter] {
 			fmt.Fprintf(&source, "func (*%s) %s(value %s) { panic(\"generated\") }\n", componentName, setter, state.Type)
 			declared[setter] = true
+		}
+	}
+	for _, computed := range e.computeds {
+		getter := ComputedGetterName(computed.GoName)
+		if !declared[getter] {
+			fmt.Fprintf(&source, "func (*%s) %s() %s { panic(\"generated\") }\n", componentName, getter, computed.Type)
+			declared[getter] = true
 		}
 	}
 
@@ -404,6 +414,7 @@ func (e *extractor) extractComponent(file *File, astFile *ast.File, componentNam
 		Props:    append([]Prop(nil), e.props...),
 		Events:   append([]Event(nil), e.events...),
 		States:   append([]State(nil), e.states...),
+		Computed: append([]Computed(nil), e.computeds...),
 	}
 	if e.hasComp {
 		component.GeneratedType = GeneratedTypeName(componentName)
@@ -489,8 +500,6 @@ func (e *extractor) extractFields(component *Component, structType *ast.StructTy
 		for _, name := range astField.Names {
 			field := e.fieldFromAST(name, astField)
 			switch field.Kind {
-			case FieldKindComputed:
-				component.Computed = append(component.Computed, field)
 			case FieldKindResource:
 				component.Resources = append(component.Resources, field)
 			default:
@@ -533,6 +542,13 @@ func (e *extractor) classifyField(fieldName string, expr ast.Expr) (FieldKind, s
 	if typeName == "State" {
 		e.addDiagnostic(
 			fmt.Sprintf("component state %q must be declared inside embedded tue.Comp", fieldName),
+			e.nodeSpan(expr),
+		)
+		return FieldKindLocal, ""
+	}
+	if typeName == "Computed" {
+		e.addDiagnostic(
+			fmt.Sprintf("component computed %q must be declared inside embedded tue.Comp", fieldName),
 			e.nodeSpan(expr),
 		)
 		return FieldKindLocal, ""
@@ -591,8 +607,6 @@ func (e *extractor) tueTypeName(expr ast.Expr) (string, bool) {
 
 func fieldKindForTueType(name string) (FieldKind, bool) {
 	switch name {
-	case "Computed":
-		return FieldKindComputed, true
 	case "Resource":
 		return FieldKindResource, true
 	default:
@@ -646,6 +660,7 @@ func (e *extractor) validateGeneratedMembers(component *Component) {
 		return
 	}
 
+	authoredMethods := append([]Method(nil), component.Methods...)
 	declared := make(map[string]sfc.Span)
 	if component.Init != nil {
 		declared[component.Init.Name] = component.Init.NameSpan
@@ -653,7 +668,7 @@ func (e *extractor) validateGeneratedMembers(component *Component) {
 	for _, method := range component.Methods {
 		declared[method.Name] = method.NameSpan
 	}
-	for _, fields := range [][]Field{component.LocalFields, component.Computed, component.Resources} {
+	for _, fields := range [][]Field{component.LocalFields, component.Resources} {
 		for _, field := range fields {
 			declared[field.Name] = field.NameSpan
 		}
@@ -747,6 +762,50 @@ func (e *extractor) validateGeneratedMembers(component *Component) {
 			NameSpan:        state.NameSpan,
 		})
 	}
+	e.validateGeneratedComputedMembers(component, declared, authoredMethods)
+}
+
+func (e *extractor) validateGeneratedComputedMembers(component *Component, declared map[string]sfc.Span, authoredMethods []Method) {
+	for _, computed := range component.Computed {
+		getter := ComputedGetterName(computed.GoName)
+		if _, exists := declared[getter]; exists {
+			e.addDiagnostic(fmt.Sprintf("generated computed getter %s conflicts with a component member", getter), computed.NameSpan)
+			continue
+		}
+
+		method, ok := authoredMethod(authoredMethods, computed.MethodName)
+		if !ok {
+			e.addDiagnostic(fmt.Sprintf("component computed %q source method %s was not found", computed.Name, computed.MethodName), computed.NameSpan)
+			continue
+		}
+		if len(method.Parameters) != 0 || len(method.Results) != 1 || strings.TrimSpace(method.Results[0].Type) != strings.TrimSpace(computed.Type) {
+			e.addDiagnostic(
+				fmt.Sprintf("component computed %q source method %s must have signature func() %s", computed.Name, computed.MethodName, computed.Type),
+				method.NameSpan,
+			)
+			continue
+		}
+
+		declared[getter] = computed.NameSpan
+		component.Methods = append(component.Methods, Method{
+			Name:            getter,
+			ReceiverName:    component.Name,
+			PointerReceiver: true,
+			ImplicitGetter:  true,
+			Results:         []Parameter{{Type: computed.Type, Span: computed.TypeSpan, TypeSpan: computed.TypeSpan}},
+			Span:            computed.Span,
+			NameSpan:        computed.NameSpan,
+		})
+	}
+}
+
+func authoredMethod(methods []Method, name string) (*Method, bool) {
+	for index := range methods {
+		if methods[index].Name == name {
+			return &methods[index], true
+		}
+	}
+	return nil, false
 }
 
 func (e *extractor) receiver(function *ast.FuncDecl) (string, bool, *sfc.Span, bool) {

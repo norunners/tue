@@ -9,14 +9,24 @@
 		<input type="number" v-model="query" />
 
 		<input v-model="query.Text" />
+		<input v-model="Label" />
 	</main>
 </template>
 
 <script lang="go">
 package fixtures
 
+import tue "github.com/norunners/tue"
+
 type Parent struct {
+	tue.Comp[struct {
+		Label string `computed:"label"`
+	}]
 	query   string
 	enabled bool
+}
+
+func (p *Parent) label() string {
+	return p.query
 }
 </script>

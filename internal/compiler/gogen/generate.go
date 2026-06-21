@@ -302,7 +302,7 @@ func (g *projectGenerator) generatedComponentSource(file File) ([]byte, bool) {
 	for alias, path := range imports {
 		generated.ImportName(path, alias)
 	}
-	fields := make([]jen.Code, 0, len(component.Props)+len(component.Events)+len(component.States))
+	fields := make([]jen.Code, 0, len(component.Props)+len(component.Events)+len(component.States)+len(component.Computed))
 	for _, prop := range component.Props {
 		valueType, ok := renderGeneratedTypeExpression(prop.Type, imports)
 		if !ok {
@@ -326,6 +326,14 @@ func (g *projectGenerator) generatedComponentSource(file File) ([]byte, bool) {
 			return nil, false
 		}
 		fields = append(fields, jen.Id(script.StateFieldName(state.GoName)).Qual(tueImportPath, "State").Types(valueType))
+	}
+	for _, computed := range component.Computed {
+		valueType, ok := renderGeneratedTypeExpression(computed.Type, imports)
+		if !ok {
+			g.add(filePath(file), fmt.Sprintf("component computed %q has unsupported type %q", computed.Name, computed.Type), computed.TypeSpan)
+			return nil, false
+		}
+		fields = append(fields, jen.Id(script.ComputedFieldName(computed.GoName)).Qual(tueImportPath, "Computed").Types(valueType))
 	}
 	generated.Type().Id(component.GeneratedType).Struct(fields...)
 	initialValues := make([]jen.Code, 0, len(component.States))
@@ -390,6 +398,19 @@ func (g *projectGenerator) generatedComponentSource(file File) ([]byte, bool) {
 				jen.Id("component").Op("==").Nil().Op("||").Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Op("==").Nil(),
 			).Block(jen.Return()),
 			jen.Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Dot("Set").Call(jen.Id("value")),
+		)
+	}
+	for _, computed := range component.Computed {
+		valueType, _ := renderGeneratedTypeExpression(computed.Type, imports)
+		fieldName := script.ComputedFieldName(computed.GoName)
+		generated.Func().Params(jen.Id("component").Op("*").Id(component.Name)).Id(script.ComputedGetterName(computed.GoName)).Params().Add(valueType).Block(
+			jen.If(
+				jen.Id("component").Op("==").Nil().Op("||").Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Op("==").Nil(),
+			).Block(
+				jen.Var().Id("zero").Add(valueType),
+				jen.Return(jen.Id("zero")),
+			),
+			jen.Return(jen.Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Dot("Get").Call()),
 		)
 	}
 
@@ -497,9 +518,13 @@ func (g *fileGenerator) generate(tree *gotemplate.Tree) {
 			jen.Id(script.GeneratedFieldName()).Op(":").Id(script.GeneratedConstructorName(g.component.Name)).Call(),
 		)
 	}
+	compArgs := []jen.Code{jen.Id("component"), jen.Id("render" + componentName)}
+	if initializer := generatedComputedInitializer(g.component, "component"); initializer != nil {
+		compArgs = append(compArgs, initializer)
+	}
 	g.file.Func().Id("New"+componentName).Params().Op("*").Qual(tueImportPath, "CompInstance").Block(
 		jen.Id("component").Op(":=").Op("&").Id(componentName).Values(componentValues...),
-		jen.Return(jen.Qual(tueImportPath, "CompOf").Call(jen.Id("component"), jen.Id("render"+componentName))),
+		jen.Return(jen.Qual(tueImportPath, "CompOf").Call(compArgs...)),
 	)
 	g.file.Line()
 	g.file.Func().Id("render"+componentName).Params(jen.Id("component").Op("*").Id(componentName)).Qual(tueImportPath, "VNode").Block(
@@ -1014,8 +1039,12 @@ func (g *fileGenerator) renderComponent(node *gotemplate.Node) (jen.Code, bool) 
 	for _, field := range fields {
 		statements = append(statements, jen.Id("child").Dot(script.GeneratedFieldName()).Dot(field.Name).Op("=").Add(field.Value))
 	}
+	compArgs := []jen.Code{jen.Id("child"), jen.Id("render" + child.component.Name)}
+	if initializer := generatedComputedInitializer(child.component, "child"); initializer != nil {
+		compArgs = append(compArgs, initializer)
+	}
 	statements = append(statements,
-		jen.Id("childComp").Op(":=").Qual(tueImportPath, "CompOf").Call(jen.Id("child"), jen.Id("render"+child.component.Name)),
+		jen.Id("childComp").Op(":=").Qual(tueImportPath, "CompOf").Call(compArgs...),
 	)
 	if defaultSlot != nil {
 		statements = append(statements, jen.Id("childComp").Dot("DefaultSlot").Op("=").Add(defaultSlot))
@@ -1978,13 +2007,25 @@ func componentFields(component *script.Component) map[string]script.Field {
 	for _, field := range component.LocalFields {
 		fields[field.Name] = field
 	}
-	for _, field := range component.Computed {
-		fields[field.Name] = field
-	}
 	for _, field := range component.Resources {
 		fields[field.Name] = field
 	}
 	return fields
+}
+
+func generatedComputedInitializer(component *script.Component, variable string) jen.Code {
+	if component == nil || len(component.Computed) == 0 {
+		return nil
+	}
+	statements := make([]jen.Code, 0, len(component.Computed))
+	for _, computed := range component.Computed {
+		statements = append(statements,
+			jen.Id(variable).Dot(script.GeneratedFieldName()).Dot(script.ComputedFieldName(computed.GoName)).Op("=").Qual(tueImportPath, "ComputedOfFunc").Call(
+				jen.Id(variable).Dot(computed.MethodName),
+			),
+		)
+	}
+	return jen.Func().Params().Block(statements...)
 }
 
 func componentMethods(component *script.Component) map[string]script.Method {
