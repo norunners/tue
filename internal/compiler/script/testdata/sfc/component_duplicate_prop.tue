@@ -1,0 +1,14 @@
+<template></template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type ComponentDuplicateProp struct {
+	tue.Comp[struct {
+		Name  string `prop:"name"`
+		Label int    `prop:"name"`
+	}]
+}
+</script>

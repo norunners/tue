@@ -43,7 +43,6 @@ p { color: red; }
 	if diff := cmp.Diff("\n  <p>{{ greeting }}</p>\n", file.Template.Content); diff != "" {
 		t.Errorf("mismatch template content (-expected, +actual):\n%s", diff)
 	}
-
 	if file.Script == nil {
 		t.Fatal("file.Script is nil")
 	}

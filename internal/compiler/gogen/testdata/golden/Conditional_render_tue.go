@@ -7,7 +7,7 @@ import (
 	"github.com/norunners/tue"
 )
 
-func NewApp() *tue.Comp {
+func NewApp() *tue.CompInstance {
 	component := &App{}
 	return tue.CompOf(component, renderApp)
 }

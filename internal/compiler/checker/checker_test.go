@@ -55,7 +55,7 @@ func TestCheckProjectReportsTemplateDiagnostics(t *testing.T) {
 		{Path: "testdata/invalid/Parent.tue", Message: `component "UserBadge" has no prop "extra"`, Line: 3, Column: 48},
 		{Path: "testdata/invalid/Parent.tue", Message: `component "UnknownCard" is not registered`, Line: 4, Column: 4},
 		{Path: "testdata/invalid/Parent.tue", Message: `event handler "missingHandler" is not a method on Parent`, Line: 5, Column: 33},
-		{Path: "testdata/invalid/Parent.tue", Message: `v-model target "title" is not writable`, Line: 6, Column: 19},
+		{Path: "testdata/invalid/Parent.tue", Message: `v-model target "Title" is not writable`, Line: 6, Column: 19},
 		{Path: "testdata/invalid/Parent.tue", Message: `v-for requires a :key attribute`, Line: 8, Column: 8},
 		{Path: "testdata/invalid/Parent.tue", Message: `unknown identifier "missing"`, Line: 10, Column: 9},
 		{Path: "testdata/invalid/Parent.tue", Message: `v-if expects bool, got string`, Line: 11, Column: 12},
@@ -106,7 +106,6 @@ func TestCheckProjectReportsUnsupportedComponentEventShapes(t *testing.T) {
 		{Path: "testdata/invalid_component_event/Parent.tue", Message: `event handler "selectUser" does not accept arguments`, Line: 7, Column: 20},
 		{Path: "testdata/invalid_component_event/Parent.tue", Message: `event handler "needsValue" must have signature func()`, Line: 8, Column: 16},
 		{Path: "testdata/invalid_component_event/Parent.tue", Message: `event handler "needsValue" must have signature func(int)`, Line: 9, Column: 19},
-		{Path: "testdata/invalid_component_event/Parent.tue", Message: `component "UserBadge" event "result" must not return values`, Line: 10, Column: 5},
 	}, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
 	}
@@ -197,6 +196,7 @@ func TestCheckProjectReportsExpressionShapeDiagnostics(t *testing.T) {
 	expected := []diagnosticSummary{
 		{Path: "testdata/invalid_expression/Parent.tue", Message: `type User has no field "missing"`, Line: 3, Column: 14},
 		{Path: "testdata/invalid_expression/Parent.tue", Message: `method call "visible" must have signature func() T`, Line: 4, Column: 12},
+		{Path: "testdata/invalid_expression/Parent.tue", Message: `method "visible" must be called`, Line: 5, Column: 9},
 	}
 	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)

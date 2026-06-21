@@ -1,0 +1,14 @@
+<template></template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type ComponentDuplicateEvent struct {
+	tue.Comp[struct {
+		Select func(string) `event:"select"`
+		Choose func(int)    `event:"select"`
+	}]
+}
+</script>

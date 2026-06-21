@@ -3,14 +3,14 @@
 		<header>
 			<p class="eyebrow">Operations</p>
 			<h1>Todo Queue</h1>
-			<p :class="summaryClass">{{ summary }}</p>
+			<p :class="SummaryClass">{{ Summary }}</p>
 		</header>
 
 		<section class="toolbar">
-			<input v-model="newTodo" @input="markEditing" placeholder="Add an operational follow-up" />
+			<input v-model="NewTodo" @input="markEditing" placeholder="Add an operational follow-up" />
 			<button type="button" @click="addTodo">Add</button>
 			<label>
-				<input type="checkbox" v-model="showDone" />
+				<input type="checkbox" v-model="ShowDone" />
 				Show completed
 			</label>
 			<button type="button" @click="archiveDone">Archive completed</button>
@@ -44,75 +44,75 @@ type todo struct {
 }
 
 type App struct {
-	newTodo      tue.Ref[string]
-	showDone     tue.Ref[bool]
-	summary      tue.Ref[string]
-	summaryClass tue.Ref[string]
-	nextID       int
-	todos        []todo
+	tue.Comp[struct {
+		NewTodo      string `state:""`
+		ShowDone     bool   `state:""`
+		Summary      string `state:""`
+		SummaryClass string `state:""`
+		NextID       int    `state:""`
+		Todos        []todo `state:""`
+	}]
 }
 
 func (a *App) Init(tue.Context) {
-	a.newTodo = tue.RefOf("")
-	a.showDone = tue.RefOf(true)
-	a.summary = tue.RefOf("")
-	a.summaryClass = tue.RefOf("summary")
-	a.nextID = 4
-	a.todos = []todo{
+	a.ShowDoneSet(true)
+	a.SummaryClassSet("summary")
+	a.NextIDSet(4)
+	a.TodosSet([]todo{
 		{id: 1, text: "Review support escalations", className: "priority-high"},
 		{id: 2, text: "Prepare weekly metrics", done: true, className: "muted"},
 		{id: 3, text: "Confirm launch checklist", className: "priority-medium"},
-	}
+	})
 	a.updateSummary()
 }
 
 func (a *App) markEditing() {
-	a.summaryClass.Set("summary editing")
+	a.SummaryClassSet("summary editing")
 }
 
 func (a *App) addTodo() {
-	text := strings.TrimSpace(a.newTodo.Get())
+	text := strings.TrimSpace(a.NewTodo())
 	if text == "" {
-		a.summaryClass.Set("summary warning")
+		a.SummaryClassSet("summary warning")
 		return
 	}
-	a.todos = append(a.todos, todo{
-		id:        a.nextID,
+	a.TodosSet(append(a.Todos(), todo{
+		id:        a.NextID(),
 		text:      text,
 		className: "priority-medium",
-	})
-	a.nextID++
-	a.newTodo.Set("")
-	a.summaryClass.Set("summary updated")
+	}))
+	a.NextIDSet(a.NextID() + 1)
+	a.NewTodoSet("")
+	a.SummaryClassSet("summary updated")
 	a.updateSummary()
 }
 
 func (a *App) archiveDone() {
-	open := a.todos[:0]
-	for _, item := range a.todos {
+	open := a.Todos()[:0]
+	for _, item := range a.Todos() {
 		if !item.done {
 			open = append(open, item)
 		}
 	}
-	a.todos = open
-	a.summaryClass.Set("summary updated")
+	a.TodosSet(open)
+	a.SummaryClassSet("summary updated")
 	a.updateSummary()
 }
 
 func (a *App) updateSummary() {
 	open := 0
-	for _, item := range a.todos {
+	for _, item := range a.Todos() {
 		if !item.done {
 			open++
 		}
 	}
-	a.summary.Set("Open items: " + strconv.Itoa(open))
+	a.SummarySet("Open items: " + strconv.Itoa(open))
 }
 
 func (a *App) visibleTodos() []todo {
-	visible := make([]todo, 0, len(a.todos))
-	for _, item := range a.todos {
-		if a.showDone.Get() || !item.done {
+	visible := make([]todo, 0, len(a.Todos()))
+	for _, item := range a.Todos() {
+		if a.ShowDone() || !item.done {
 			visible = append(visible, item)
 		}
 	}

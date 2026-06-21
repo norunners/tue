@@ -1,0 +1,16 @@
+<template></template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type ComponentMultipleMarkers struct {
+	tue.Comp[struct {
+		Name string `prop:""`
+	}]
+	tue.Comp[struct {
+		Ready bool `state:""`
+	}]
+}
+</script>

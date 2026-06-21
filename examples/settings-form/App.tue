@@ -3,23 +3,23 @@
 		<header>
 			<p class="eyebrow">Admin</p>
 			<h1>Settings Form</h1>
-			<p :class="statusClass">{{ status }}</p>
+			<p :class="StatusClass">{{ Status }}</p>
 		</header>
 
 		<section class="settings-grid">
 			<label>
 				Workspace name
-				<input v-model="workspaceName" @input="markDirty" />
+				<input v-model="WorkspaceName" @input="markDirty" />
 			</label>
 
 			<label>
 				Owner email
-				<input v-model="ownerEmail" @input="markDirty" />
+				<input v-model="OwnerEmail" @input="markDirty" />
 			</label>
 
 			<label>
 				Theme
-				<select v-model="theme" @change="markDirty">
+				<select v-model="Theme" @change="markDirty">
 					<option value="system">System</option>
 					<option value="light">Light</option>
 					<option value="dark">Dark</option>
@@ -28,26 +28,26 @@
 
 			<label>
 				Density
-				<select v-model="density" @change="markDirty">
+				<select v-model="Density" @change="markDirty">
 					<option value="comfortable">Comfortable</option>
 					<option value="compact">Compact</option>
 				</select>
 			</label>
 
 			<label class="toggle">
-				<input type="checkbox" v-model="weeklyDigest" @change="markDirty" />
+				<input type="checkbox" v-model="WeeklyDigest" @change="markDirty" />
 				Send weekly digest
 			</label>
 
 			<label class="notes">
 				Release notes
-				<textarea v-model="notes" @input="markDirty"></textarea>
+				<textarea v-model="Notes" @input="markDirty"></textarea>
 			</label>
 		</section>
 
 		<footer>
 			<button type="button" @click="save">Save settings</button>
-			<p v-if="saved" class="saved">Saved changes are ready to publish.</p>
+			<p v-if="Saved" class="saved">Saved changes are ready to publish.</p>
 		</footer>
 	</main>
 </template>
@@ -58,39 +58,40 @@ package app
 import tue "github.com/norunners/tue"
 
 type App struct {
-	workspaceName tue.Ref[string]
-	ownerEmail    tue.Ref[string]
-	theme         tue.Ref[string]
-	density       tue.Ref[string]
-	weeklyDigest  tue.Ref[bool]
-	notes         tue.Ref[string]
-	saved         tue.Ref[bool]
-	status        tue.Ref[string]
-	statusClass   tue.Ref[string]
+	tue.Comp[struct {
+		WorkspaceName string `state:""`
+		OwnerEmail    string `state:""`
+		Theme         string `state:""`
+		Density       string `state:""`
+		WeeklyDigest  bool   `state:""`
+		Notes         string `state:""`
+		Saved         bool   `state:""`
+		Status        string `state:""`
+		StatusClass   string `state:""`
+	}]
 }
 
 func (a *App) Init(tue.Context) {
-	a.workspaceName = tue.RefOf("Control Room")
-	a.ownerEmail = tue.RefOf("ops@example.com")
-	a.theme = tue.RefOf("system")
-	a.density = tue.RefOf("comfortable")
-	a.weeklyDigest = tue.RefOf(true)
-	a.notes = tue.RefOf("Publish weekly status updates every Friday.")
-	a.saved = tue.RefOf(false)
-	a.status = tue.RefOf("No unsaved changes")
-	a.statusClass = tue.RefOf("status")
+	a.WorkspaceNameSet("Control Room")
+	a.OwnerEmailSet("ops@example.com")
+	a.ThemeSet("system")
+	a.DensitySet("comfortable")
+	a.WeeklyDigestSet(true)
+	a.NotesSet("Publish weekly status updates every Friday.")
+	a.StatusSet("No unsaved changes")
+	a.StatusClassSet("status")
 }
 
 func (a *App) markDirty() {
-	a.saved.Set(false)
-	a.status.Set("Unsaved changes")
-	a.statusClass.Set("status dirty")
+	a.SavedSet(false)
+	a.StatusSet("Unsaved changes")
+	a.StatusClassSet("status dirty")
 }
 
 func (a *App) save() {
-	a.saved.Set(true)
-	a.status.Set("Settings saved")
-	a.statusClass.Set("status saved")
+	a.SavedSet(true)
+	a.StatusSet("Settings saved")
+	a.StatusClassSet("status saved")
 }
 </script>
 

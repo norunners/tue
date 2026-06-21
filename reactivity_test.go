@@ -7,33 +7,33 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestRefWatchRunsImmediatelyAndStops(t *testing.T) {
-	count := RefOf(0)
+func TestStateWatchRunsImmediatelyAndStops(t *testing.T) {
+	count := StateOf(0)
 	values := []int{}
 
 	stop := count.Watch(func(value int) {
 		values = append(values, value)
 	})
 	if diff := cmp.Diff([]int{0}, values); diff != "" {
-		t.Errorf("mismatch ref watch initial values (-expected, +actual):\n%s", diff)
+		t.Errorf("mismatch state watch initial values (-expected, +actual):\n%s", diff)
 	}
 
 	count.Set(1)
 	if diff := cmp.Diff([]int{0, 1}, values); diff != "" {
-		t.Errorf("mismatch ref watch values after set (-expected, +actual):\n%s", diff)
+		t.Errorf("mismatch state watch values after set (-expected, +actual):\n%s", diff)
 	}
 
 	stop()
 	count.Set(2)
 	if diff := cmp.Diff([]int{0, 1}, values); diff != "" {
-		t.Errorf("mismatch ref watch values after stop (-expected, +actual):\n%s", diff)
+		t.Errorf("mismatch state watch values after stop (-expected, +actual):\n%s", diff)
 	}
 }
 
 func TestWatchTracksOnlyCurrentDependencies(t *testing.T) {
-	enabled := RefOf(true)
-	first := RefOf("first")
-	second := RefOf("second")
+	enabled := StateOf(true)
+	first := StateOf("first")
+	second := StateOf("second")
 	values := []string{}
 
 	Watch(func() {
@@ -61,7 +61,7 @@ func TestWatchTracksOnlyCurrentDependencies(t *testing.T) {
 }
 
 func TestBatchDeduplicatesNestedWatcherFlushes(t *testing.T) {
-	count := RefOf(0)
+	count := StateOf(0)
 	values := []int{}
 	Watch(func() {
 		values = append(values, count.Get())
@@ -84,7 +84,7 @@ func TestBatchDeduplicatesNestedWatcherFlushes(t *testing.T) {
 }
 
 func TestComputedIsLazyCachedAndInvalidated(t *testing.T) {
-	count := RefOf(1)
+	count := StateOf(1)
 	computeCount := 0
 	double := ComputedOfFunc(func() int {
 		computeCount++
@@ -120,7 +120,7 @@ func TestComputedIsLazyCachedAndInvalidated(t *testing.T) {
 }
 
 func TestComputedInvalidatesWatchers(t *testing.T) {
-	count := RefOf(1)
+	count := StateOf(1)
 	computeCount := 0
 	double := ComputedOfFunc(func() int {
 		computeCount++
@@ -138,25 +138,6 @@ func TestComputedInvalidatesWatchers(t *testing.T) {
 	}
 	if diff := cmp.Diff(2, computeCount); diff != "" {
 		t.Errorf("mismatch compute count for watcher (-expected, +actual):\n%s", diff)
-	}
-}
-
-func TestPropWatchTracksReactiveGetter(t *testing.T) {
-	name := RefOf("Ada")
-	prop := PropOfFunc(func() string {
-		return name.Get()
-	})
-	values := []string{}
-
-	stop := prop.Watch(func(value string) {
-		values = append(values, value)
-	})
-	name.Set("Lin")
-	stop()
-	name.Set("Grace")
-
-	if diff := cmp.Diff([]string{"Ada", "Lin"}, values); diff != "" {
-		t.Errorf("mismatch prop watch values (-expected, +actual):\n%s", diff)
 	}
 }
 
@@ -181,12 +162,12 @@ func TestComponentScopedEffectsStopBeforeUserCleanup(t *testing.T) {
 }
 
 type reactiveCleanupFixture struct {
-	count  *RefValue[int]
+	count  *StateValue[int]
 	events *[]string
 }
 
 func (f *reactiveCleanupFixture) Init(ctx Context) {
-	f.count = RefOf(0)
+	f.count = StateOf(0)
 	ctx.OnCleanup(func() {
 		*f.events = append(*f.events, "cleanup")
 		f.count.Set(1)

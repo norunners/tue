@@ -1,0 +1,13 @@
+<template></template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type ComponentInvalidEventArity struct {
+	tue.Comp[struct {
+		Range func(string) int `event:""`
+	}]
+}
+</script>

@@ -1,69 +1,25 @@
 package tue
 
-// Prop is the read interface exposed to component code.
-type Prop[T any] interface {
-	Get() T
-	Watch(func(T)) func()
-}
-
-// PropValue is the concrete runtime storage for a prop.
-type PropValue[T any] struct {
-	get func() T
-	dep dependency
-}
-
-// PropOf returns a prop with a fixed value.
-func PropOf[T any](value T) *PropValue[T] {
-	return PropOfFunc(func() T {
-		return value
-	})
-}
-
-// PropOfFunc returns a prop backed by a getter function.
-func PropOfFunc[T any](get func() T) *PropValue[T] {
-	return &PropValue[T]{get: get}
-}
-
-// Get returns the current prop value.
-func (p *PropValue[T]) Get() T {
-	if p == nil || p.get == nil {
-		var zero T
-		return zero
-	}
-	p.dep.track()
-	return p.get()
-}
-
-// Watch observes prop changes and returns a stop function.
-func (p *PropValue[T]) Watch(effect func(T)) func() {
-	if effect == nil {
-		return func() {}
-	}
-	return Watch(func() {
-		effect(p.Get())
-	})
-}
-
-// Ref is the read/write interface exposed to component code.
-type Ref[T any] interface {
+// State is the read/write interface used by generated component state.
+type State[T any] interface {
 	Get() T
 	Set(T)
 	Watch(func(T)) func()
 }
 
-// RefValue is the concrete runtime storage for a ref.
-type RefValue[T any] struct {
+// StateValue is the concrete runtime storage for reactive state.
+type StateValue[T any] struct {
 	value T
 	dep   dependency
 }
 
-// RefOf returns a ref with an initial value.
-func RefOf[T any](value T) *RefValue[T] {
-	return &RefValue[T]{value: value}
+// StateOf returns reactive state with an initial value.
+func StateOf[T any](value T) *StateValue[T] {
+	return &StateValue[T]{value: value}
 }
 
-// Get returns the current ref value.
-func (r *RefValue[T]) Get() T {
+// Get returns the current state value.
+func (r *StateValue[T]) Get() T {
 	if r == nil {
 		var zero T
 		return zero
@@ -72,8 +28,8 @@ func (r *RefValue[T]) Get() T {
 	return r.value
 }
 
-// Set updates the ref value and invalidates dependents.
-func (r *RefValue[T]) Set(value T) {
+// Set updates the state value and invalidates dependents.
+func (r *StateValue[T]) Set(value T) {
 	if r == nil {
 		return
 	}
@@ -81,8 +37,8 @@ func (r *RefValue[T]) Set(value T) {
 	r.dep.notify()
 }
 
-// Watch observes ref changes and returns a stop function.
-func (r *RefValue[T]) Watch(effect func(T)) func() {
+// Watch observes state changes and returns a stop function.
+func (r *StateValue[T]) Watch(effect func(T)) func() {
 	if effect == nil {
 		return func() {}
 	}
@@ -405,9 +361,9 @@ func flushSubscribers() {
 	}
 }
 
-var componentScopeStack []*Comp
+var componentScopeStack []*CompInstance
 
-func withComponentScope(component *Comp, fn func()) {
+func withComponentScope(component *CompInstance, fn func()) {
 	componentScopeStack = append(componentScopeStack, component)
 	defer func() {
 		componentScopeStack = componentScopeStack[:len(componentScopeStack)-1]
@@ -415,7 +371,7 @@ func withComponentScope(component *Comp, fn func()) {
 	fn()
 }
 
-func currentComponentScope() (*Comp, bool) {
+func currentComponentScope() (*CompInstance, bool) {
 	if len(componentScopeStack) == 0 {
 		return nil, false
 	}

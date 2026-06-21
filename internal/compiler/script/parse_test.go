@@ -12,11 +12,11 @@ import (
 	"github.com/norunners/tue/internal/compiler/sfc"
 )
 
-//go:embed testdata/contracts/*.go testdata/diagnostics/*.go testdata/sfc/*.tue
+//go:embed testdata/components/*.go testdata/diagnostics/*.go testdata/sfc/*.tue
 var testFixtures embed.FS
 
-func TestParseExtractsComponentContract(t *testing.T) {
-	source, err := testFixture("testdata/contracts/dashboard.go")
+func TestParseExtractsComponentDeclaration(t *testing.T) {
+	source, err := testFixture("testdata/components/dashboard.go")
 	if err != nil {
 		t.Fatalf("read dashboard fixture: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestParseExtractsComponentContract(t *testing.T) {
 		t.Errorf("mismatch imports (-expected, +actual):\n%s", diff)
 	}
 	expectedTypes := map[string]bool{
-		"Dashboard": false,
+		"Dashboard": true,
 		"User":      true,
 	}
 	actualTypes := make(map[string]bool, len(expectedTypes))
@@ -50,12 +50,8 @@ func TestParseExtractsComponentContract(t *testing.T) {
 	if diff := cmp.Diff([]structSummary{
 		{Name: "User", Fields: []fieldSummary{}},
 		{Name: "Dashboard", Fields: []fieldSummary{
-			{Kind: FieldKindState, Name: "name", Type: "tue.Prop[string]"},
-			{Kind: FieldKindState, Name: "count", Type: "tue.Ref[int]"},
-			{Kind: FieldKindState, Name: "total", Type: "tue.Computed[int]"},
-			{Kind: FieldKindState, Name: "user", Type: "tue.Resource[User]"},
-			{Kind: FieldKindState, Name: "onSave", Type: "tue.On[func()]"},
-			{Kind: FieldKindState, Name: "label", Type: "string"},
+			{Kind: FieldKindLocal, Name: "total", Type: "tue.Computed[int]"},
+			{Kind: FieldKindLocal, Name: "user", Type: "tue.Resource[User]"},
 		}},
 	}, summarizeStructs(file.Structs)); diff != "" {
 		t.Errorf("mismatch structs (-expected, +actual):\n%s", diff)
@@ -69,30 +65,39 @@ func TestParseExtractsComponentContract(t *testing.T) {
 		t.Errorf("mismatch component name (-expected, +actual):\n%s", diff)
 	}
 
-	props, err := requireProps(component, 1)
+	props, err := requireProps(component, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	prop := props[0]
-	if diff := cmp.Diff(propSummary{
-		FieldName:  "name",
-		Name:       "name",
-		Required:   true,
-		Exported:   false,
-		Type:       "tue.Prop[string]",
-		ValueType:  "string",
-		FieldKind:  FieldKindProp,
-		StructTag:  `prop:"name,required"`,
-		HasTagSpan: true,
-	}, summarizeProp(prop)); diff != "" {
-		t.Errorf("mismatch prop: %q (-expected, +actual):\n%s", prop.Field.Name, diff)
+	expectedProps := []propSummary{
+		{Name: "name", GoName: "Name", Type: "string", Required: true},
+		{Name: "active", GoName: "Active", Type: "bool"},
+		{Name: "user-id", GoName: "UserID", Type: "string"},
+	}
+	if diff := cmp.Diff(expectedProps, summarizeProps(props)); diff != "" {
+		t.Errorf("mismatch props (-expected, +actual):\n%s", diff)
+	}
+	expectedEvents := []eventSummary{
+		{Name: "close", GoName: "Close", FunctionType: "func()"},
+		{Name: "select", GoName: "Select", FunctionType: "func(name string)"},
+		{Name: "range", GoName: "Range", FunctionType: "func(name string, count int)"},
+		{Name: "pointer", GoName: "Pointer", FunctionType: "func(value *User)"},
+		{Name: "variadic", GoName: "Variadic", FunctionType: "func(values ...string)"},
+	}
+	if diff := cmp.Diff(expectedEvents, summarizeEvents(component.Events)); diff != "" {
+		t.Errorf("mismatch events (-expected, +actual):\n%s", diff)
+	}
+	expectedStates := []stateSummary{
+		{Name: "expanded", GoName: "Expanded", Type: "bool"},
+		{Name: "count", GoName: "Count", Type: "int"},
+		{Name: "label", GoName: "Label", Type: "string"},
+	}
+	if diff := cmp.Diff(expectedStates, summarizeStates(component.States)); diff != "" {
+		t.Errorf("mismatch component states (-expected, +actual):\n%s", diff)
 	}
 
-	assertField(t, component.Refs, "count", FieldKindRef, "tue.Ref[int]", "int")
 	assertField(t, component.Computed, "total", FieldKindComputed, "tue.Computed[int]", "int")
 	assertField(t, component.Resources, "user", FieldKindResource, "tue.Resource[User]", "User")
-	assertField(t, component.Events, "onSave", FieldKindEvent, "tue.On[func()]", "func()")
-	assertField(t, component.State, "label", FieldKindState, "string", "")
 
 	init, err := requireInit(component)
 	if err != nil {
@@ -124,21 +129,138 @@ func TestParseExtractsComponentContract(t *testing.T) {
 				Type: "string",
 			}},
 		},
+		{
+			Name:            "Name",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results:         []parameterSummary{{Type: "string"}},
+		},
+		{
+			Name:            "NameOk",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results: []parameterSummary{
+				{Type: "string"},
+				{Type: "bool"},
+			},
+		},
+		{
+			Name:            "Active",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results:         []parameterSummary{{Type: "bool"}},
+		},
+		{
+			Name:            "ActiveOk",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results: []parameterSummary{
+				{Type: "bool"},
+				{Type: "bool"},
+			},
+		},
+		{
+			Name:            "UserID",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results:         []parameterSummary{{Type: "string"}},
+		},
+		{
+			Name:            "UserIDOk",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results: []parameterSummary{
+				{Type: "string"},
+				{Type: "bool"},
+			},
+		},
+		{
+			Name:            "Close",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results:         []parameterSummary{{Type: "bool"}},
+		},
+		{
+			Name:            "Select",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Parameters:      []parameterSummary{{Name: "name", Type: "string"}},
+			Results:         []parameterSummary{{Type: "bool"}},
+		},
+		{
+			Name:            "Range",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Parameters: []parameterSummary{
+				{Name: "name", Type: "string"},
+				{Name: "count", Type: "int"},
+			},
+			Results: []parameterSummary{{Type: "bool"}},
+		},
+		{
+			Name:            "Pointer",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Parameters:      []parameterSummary{{Name: "value", Type: "*User"}},
+			Results:         []parameterSummary{{Type: "bool"}},
+		},
+		{
+			Name:            "Variadic",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Parameters:      []parameterSummary{{Name: "values", Type: "...string"}},
+			Results:         []parameterSummary{{Type: "bool"}},
+		},
+		{
+			Name:            "Expanded",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results:         []parameterSummary{{Type: "bool"}},
+		},
+		{
+			Name:            "ExpandedSet",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Parameters:      []parameterSummary{{Name: "value", Type: "bool"}},
+		},
+		{
+			Name:            "Count",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results:         []parameterSummary{{Type: "int"}},
+		},
+		{
+			Name:            "CountSet",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Parameters:      []parameterSummary{{Name: "value", Type: "int"}},
+		},
+		{
+			Name:            "Label",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results:         []parameterSummary{{Type: "string"}},
+		},
+		{
+			Name:            "LabelSet",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Parameters:      []parameterSummary{{Name: "value", Type: "string"}},
+		},
 	}, summarizeMethods(component.Methods)); diff != "" {
 		t.Errorf("mismatch methods (-expected, +actual):\n%s", diff)
 	}
 
 	if diff := cmp.Diff(allocationSummary{
 		ComponentName: "Dashboard",
-		PropFields:    []string{"name"},
 		CallsInit:     true,
 	}, summarizeAllocation(component.Allocation)); diff != "" {
 		t.Errorf("mismatch allocation (-expected, +actual):\n%s", diff)
 	}
 }
 
-func TestParseAcceptsDotImportedTueContracts(t *testing.T) {
-	source, err := testFixture("testdata/contracts/dot_import.go")
+func TestParseAcceptsDotImportedTueComponentFields(t *testing.T) {
+	source, err := testFixture("testdata/components/dot_import.go")
 	if err != nil {
 		t.Fatalf("read dot-import fixture: %v", err)
 	}
@@ -151,14 +273,14 @@ func TestParseAcceptsDotImportedTueContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if diff := cmp.Diff([]propSummary{{
-		FieldName: "name",
-		Name:      "name",
-		Type:      "Prop[string]",
-		ValueType: "string",
-		FieldKind: FieldKindProp,
-	}}, summarizeProps(component.Props)); diff != "" {
+	if diff := cmp.Diff([]stateSummary{{Name: "count", GoName: "Count", Type: "int"}}, summarizeStates(component.States)); diff != "" {
+		t.Errorf("mismatch component states (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff([]propSummary{{Name: "name", GoName: "Name", Type: "string", Required: true}}, summarizeProps(component.Props)); diff != "" {
 		t.Errorf("mismatch props (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff([]eventSummary{{Name: "close", GoName: "Close", FunctionType: "func()"}}, summarizeEvents(component.Events)); diff != "" {
+		t.Errorf("mismatch events (-expected, +actual):\n%s", diff)
 	}
 	if component.Init == nil {
 		t.Error("Init is nil")
@@ -175,7 +297,7 @@ func TestParseBlockUsesSFCSourceSpans(t *testing.T) {
 		t.Fatalf("sfc.Parse diagnostics actual = %#v, expected none", sfcDiagnostics)
 	}
 
-	file, diagnostics := ParseBlock(sfcFile.Script, "UserBadge")
+	file, diagnostics := ParseSFC(sfcFile)
 	if len(diagnostics) != 0 {
 		t.Errorf("ParseBlock diagnostics actual = %#v, expected none", diagnosticMessages(diagnostics))
 	}
@@ -190,12 +312,21 @@ func TestParseBlockUsesSFCSourceSpans(t *testing.T) {
 	}
 
 	prop := props[0]
-	nameOffset := bytes.Index(source, []byte("name tue.Prop"))
-	if nameOffset == -1 {
-		t.Fatal(`embedded SFC fixture does not contain "name tue.Prop"`)
+	if diff := cmp.Diff(propSummary{Name: "name", GoName: "Name", Type: "string", Required: true}, summarizeProp(prop)); diff != "" {
+		t.Errorf("mismatch prop: %q (-expected, +actual):\n%s", prop.Name, diff)
 	}
-	if diff := cmp.Diff(sfc.Position{Offset: nameOffset, Line: 9, Column: 2}, prop.Field.NameSpan.Start); diff != "" {
-		t.Errorf("mismatch prop name start: %q (-expected, +actual):\n%s", prop.Field.Name, diff)
+	if diff := cmp.Diff([]eventSummary{{Name: "select", GoName: "Select", FunctionType: "func(value string)"}}, summarizeEvents(component.Events)); diff != "" {
+		t.Errorf("mismatch events (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff("tueUserBadgeData", component.GeneratedType); diff != "" {
+		t.Errorf("mismatch generated component support type (-expected, +actual):\n%s", diff)
+	}
+	nameOffset := bytes.Index(source, []byte("Name     string"))
+	if nameOffset == -1 {
+		t.Fatal(`embedded SFC fixture does not contain "Name     string"`)
+	}
+	if diff := cmp.Diff(sfc.Position{Offset: nameOffset, Line: 10, Column: 3}, prop.NameSpan.Start); diff != "" {
+		t.Errorf("mismatch prop name start: %q (-expected, +actual):\n%s", prop.Name, diff)
 	}
 	packageOffset := bytes.Index(source, []byte("package fixtures"))
 	if packageOffset == -1 {
@@ -254,36 +385,6 @@ func TestParseDiagnostics(t *testing.T) {
 			expected:  []string{`component "App" must be a struct`},
 		},
 		{
-			name:      "prop without type argument",
-			fixture:   "testdata/diagnostics/prop_without_type_argument.go",
-			component: "App",
-			expected:  []string{`field "name" must use tue.Prop[T] with exactly one type argument`},
-		},
-		{
-			name:      "prop with too many type arguments",
-			fixture:   "testdata/diagnostics/prop_with_too_many_type_arguments.go",
-			component: "App",
-			expected:  []string{`field "name" must use tue.Prop[T] with exactly one type argument`},
-		},
-		{
-			name:      "legacy component event",
-			fixture:   "testdata/diagnostics/legacy_component_event.go",
-			component: "App",
-			expected:  []string{`component event field "onSave" must use tue.On[func(...)]`},
-		},
-		{
-			name:      "component event requires function type",
-			fixture:   "testdata/diagnostics/component_event_non_function.go",
-			component: "App",
-			expected:  []string{`field "onSave" must use tue.On[F] with a function type`},
-		},
-		{
-			name:      "component event requires event field name",
-			fixture:   "testdata/diagnostics/component_event_invalid_name.go",
-			component: "App",
-			expected:  []string{`component event field "save" must start with on followed by an uppercase event name`},
-		},
-		{
 			name:      "invalid Init value receiver",
 			fixture:   "testdata/diagnostics/invalid_init_value_receiver.go",
 			component: "App",
@@ -309,6 +410,141 @@ func TestParseDiagnostics(t *testing.T) {
 	}
 }
 
+func TestParseSFCComponentDeclarationDiagnostics(t *testing.T) {
+	tests := []struct {
+		name     string
+		fixture  string
+		expected []string
+	}{
+		{
+			name:     "duplicate event",
+			fixture:  "component_duplicate_event.tue",
+			expected: []string{`duplicate component declaration name "select"`},
+		},
+		{
+			name:     "duplicate prop",
+			fixture:  "component_duplicate_prop.tue",
+			expected: []string{`duplicate component declaration name "name"`},
+		},
+		{
+			name:     "invalid field",
+			fixture:  "component_invalid_field.tue",
+			expected: []string{`component declaration field "Name": must declare exactly one prop, event, or state tag`},
+		},
+		{
+			name:     "unknown tag",
+			fixture:  "component_invalid_prop_marker.tue",
+			expected: []string{`component declaration field "Name": unknown component tag "json"`},
+		},
+		{
+			name:     "member collision",
+			fixture:  "component_member_collision.tue",
+			expected: []string{`generated prop getter Name conflicts with a component member`},
+		},
+		{
+			name:     "reserved storage",
+			fixture:  "component_reserved_storage.tue",
+			expected: []string{`component member __tue is reserved for generated storage`},
+		},
+		{
+			name:     "event result",
+			fixture:  "component_invalid_event_arity.tue",
+			expected: []string{`component event "range" must not return values`},
+		},
+		{
+			name:     "default option",
+			fixture:  "component_prop_default_option.tue",
+			expected: []string{`component prop "Active": unknown option "default=true"`},
+		},
+		{
+			name:     "marker must use anonymous struct",
+			fixture:  "component_must_be_struct.tue",
+			expected: []string{`tue.Comp type argument must be an anonymous struct`},
+		},
+		{
+			name:     "unexported field",
+			fixture:  "component_unexported_field.tue",
+			expected: []string{`component declaration field "name" must be exported`},
+		},
+		{
+			name:     "invalid event tag",
+			fixture:  "component_invalid_event_tag.tue",
+			expected: []string{`component event "Select": tag does not accept option "required"`},
+		},
+		{
+			name:     "event collision",
+			fixture:  "component_event_collision.tue",
+			expected: []string{`generated event method Select conflicts with a component member`},
+		},
+		{
+			name:     "presence collision",
+			fixture:  "component_presence_collision.tue",
+			expected: []string{`generated prop presence getter NameOk conflicts with a component member`},
+		},
+		{
+			name:     "multiple markers",
+			fixture:  "component_multiple_markers.tue",
+			expected: []string{`component may embed at most one tue.Comp marker`},
+		},
+		{
+			name:     "mixed tags",
+			fixture:  "component_mixed_tags.tue",
+			expected: []string{`component declaration field "Name": must declare exactly one prop, event, or state tag`},
+		},
+		{
+			name:     "named marker",
+			fixture:  "component_named_marker.tue",
+			expected: []string{`tue.Comp marker must be embedded anonymously`},
+		},
+		{
+			name:     "state function",
+			fixture:  "component_state_function.tue",
+			expected: []string{`component state "compute" must not have a function type`},
+		},
+		{
+			name:     "state setter collision",
+			fixture:  "component_state_setter_collision.tue",
+			expected: []string{`generated state setter ExpandedSet conflicts with a component member`},
+		},
+		{
+			name:     "duplicate category name",
+			fixture:  "component_duplicate_name.tue",
+			expected: []string{`duplicate component declaration name "value"`},
+		},
+		{
+			name:     "invalid marker arity",
+			fixture:  "component_invalid_arity.tue",
+			expected: []string{`tue.Comp marker requires exactly one anonymous struct type argument`},
+		},
+		{
+			name:     "function prop",
+			fixture:  "component_prop_function.tue",
+			expected: []string{`component prop "format" must not have a function type`},
+		},
+		{
+			name:     "state outside marker",
+			fixture:  "component_external_state.tue",
+			expected: []string{`component state "Count" must be declared inside embedded tue.Comp`},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := "testdata/sfc/" + test.fixture
+			source, err := testFixture(path)
+			if err != nil {
+				t.Fatalf("read component declaration diagnostic fixture: %v", err)
+			}
+			sfcFile, sfcDiagnostics := sfc.Parse(test.fixture, source)
+			if len(sfcDiagnostics) != 0 {
+				t.Fatalf("sfc.Parse diagnostics actual = %#v, expected none", sfcDiagnostics)
+			}
+			_, diagnostics := ParseSFC(sfcFile)
+			assertDiagnosticContains(t, diagnostics, test.expected)
+		})
+	}
+}
+
 func TestParseBlockDiagnostics(t *testing.T) {
 	_, diagnostics := ParseBlock(nil, "App")
 	assertDiagnosticMessages(t, diagnostics, []string{"missing script block"})
@@ -329,6 +565,38 @@ func TestComponentNameFromPath(t *testing.T) {
 		t.Run(test.path, func(t *testing.T) {
 			if diff := cmp.Diff(test.expected, ComponentNameFromPath(test.path)); diff != "" {
 				t.Errorf("mismatch component name from path: %q (-expected, +actual):\n%s", test.path, diff)
+			}
+		})
+	}
+}
+
+func TestLowerIdentifierPreservesGoInitialisms(t *testing.T) {
+	tests := []struct {
+		name     string
+		expected string
+	}{
+		{
+			name:     "Name",
+			expected: "name",
+		},
+		{
+			name:     "UserID",
+			expected: "userID",
+		},
+		{
+			name:     "URL",
+			expected: "url",
+		},
+		{
+			name:     "URLValue",
+			expected: "urlValue",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if diff := cmp.Diff(test.expected, lowerIdentifier(test.name)); diff != "" {
+				t.Errorf("mismatch lower identifier: %q (-expected, +actual):\n%s", test.name, diff)
 			}
 		})
 	}
@@ -448,15 +716,22 @@ type importSummary struct {
 }
 
 type propSummary struct {
-	FieldName  string
-	Name       string
-	Required   bool
-	Exported   bool
-	Type       string
-	ValueType  string
-	FieldKind  FieldKind
-	StructTag  string
-	HasTagSpan bool
+	Name     string
+	GoName   string
+	Type     string
+	Required bool
+}
+
+type eventSummary struct {
+	Name         string
+	GoName       string
+	FunctionType string
+}
+
+type stateSummary struct {
+	Name   string
+	GoName string
+	Type   string
 }
 
 type fieldSummary struct {
@@ -487,7 +762,6 @@ type parameterSummary struct {
 
 type allocationSummary struct {
 	ComponentName string
-	PropFields    []string
 	CallsInit     bool
 }
 
@@ -512,16 +786,27 @@ func summarizeProps(props []Prop) []propSummary {
 
 func summarizeProp(prop Prop) propSummary {
 	return propSummary{
-		FieldName:  prop.Field.Name,
-		Name:       prop.Name,
-		Required:   prop.Required,
-		Exported:   prop.Field.Exported,
-		Type:       prop.Field.Type,
-		ValueType:  prop.Field.ValueType,
-		FieldKind:  prop.Field.Kind,
-		StructTag:  prop.Field.Tag,
-		HasTagSpan: prop.Field.TagSpan.Start.Offset != 0 || prop.Field.TagSpan.End.Offset != 0,
+		Name:     prop.Name,
+		GoName:   prop.GoName,
+		Type:     prop.Type,
+		Required: prop.Required,
 	}
+}
+
+func summarizeEvents(events []Event) []eventSummary {
+	summaries := make([]eventSummary, len(events))
+	for index, event := range events {
+		summaries[index] = eventSummary{Name: event.Name, GoName: event.GoName, FunctionType: event.FunctionType()}
+	}
+	return summaries
+}
+
+func summarizeStates(states []State) []stateSummary {
+	summaries := make([]stateSummary, len(states))
+	for index, state := range states {
+		summaries[index] = stateSummary{Name: state.Name, GoName: state.GoName, Type: state.Type}
+	}
+	return summaries
 }
 
 func summarizeFields(fields []Field) []fieldSummary {
@@ -589,7 +874,6 @@ func summarizeParameters(parameters []Parameter) []parameterSummary {
 func summarizeAllocation(allocation Allocation) allocationSummary {
 	return allocationSummary{
 		ComponentName: allocation.ComponentName,
-		PropFields:    allocation.PropFields,
 		CallsInit:     allocation.CallsInit,
 	}
 }

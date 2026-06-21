@@ -1,13 +1,10 @@
 package script
 
-// FieldKind identifies how a component field participates in the contract.
+// FieldKind identifies a local component field category.
 type FieldKind string
 
 const (
-	FieldKindState    FieldKind = "state"
-	FieldKindEvent    FieldKind = "event"
-	FieldKindProp     FieldKind = "prop"
-	FieldKindRef      FieldKind = "ref"
+	FieldKindLocal    FieldKind = "local"
 	FieldKindComputed FieldKind = "computed"
 	FieldKindResource FieldKind = "resource"
 )

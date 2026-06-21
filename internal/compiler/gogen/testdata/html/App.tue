@@ -3,7 +3,7 @@
 		<section class="body" v-html="body">
 			{{ missing }}
 		</section>
-		<div v-html="summary"></div>
+		<div v-html="Summary"></div>
 	</main>
 </template>
 
@@ -13,7 +13,9 @@ package app
 import tue "github.com/norunners/tue"
 
 type App struct {
-	body    tue.TrustedHTML
-	summary tue.Prop[tue.TrustedHTML] `prop:"summary"`
+	tue.Comp[struct {
+		Summary tue.TrustedHTML `prop:""`
+	}]
+	body tue.TrustedHTML
 }
 </script>

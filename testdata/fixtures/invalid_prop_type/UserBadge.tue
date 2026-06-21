@@ -1,7 +1,7 @@
 <template>
 	<span class="badge">
-		{{ name }}
-		<strong v-if="isAdmin">Admin</strong>
+		{{ Name }}
+		<strong v-if="IsAdmin">Admin</strong>
 	</span>
 </template>
 
@@ -11,7 +11,9 @@ package invalidproptype
 import tue "github.com/norunners/tue"
 
 type UserBadge struct {
-	name    tue.Prop[string] `prop:"name,required"`
-	isAdmin tue.Prop[bool]   `prop:"isAdmin"`
+	tue.Comp[struct {
+		Name    string `prop:",required"`
+		IsAdmin bool   `prop:""`
+	}]
 }
 </script>

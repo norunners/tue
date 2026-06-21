@@ -1,7 +1,7 @@
 <template>
-	<section class="metric-card" :class="tone">
-		<p>{{ label }}</p>
-		<strong>{{ value }}</strong>
+	<section class="metric-card" :class="Tone">
+		<p>{{ Label }}</p>
+		<strong>{{ Value }}</strong>
 		<slot>
 			<span>No detail</span>
 		</slot>
@@ -14,9 +14,11 @@ package app
 import tue "github.com/norunners/tue"
 
 type MetricCard struct {
-	label tue.Prop[string] `prop:"label,required"`
-	value tue.Prop[string] `prop:"value,required"`
-	tone  tue.Prop[string] `prop:"tone"`
+	tue.Comp[struct {
+		Label string `prop:",required"`
+		Value string `prop:",required"`
+		Tone  string `prop:"tone"`
+	}]
 }
 </script>
 

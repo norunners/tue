@@ -7,9 +7,9 @@
 		</header>
 
 		<section class="filters">
-			<input v-model="query" placeholder="Filter by name, email, or role" />
+			<input v-model="Query" placeholder="Filter by name, email, or role" />
 			<label>
-				<input type="checkbox" v-model="showInactive" />
+				<input type="checkbox" v-model="ShowInactive" />
 				Show inactive users
 			</label>
 			<button type="button" @click="toggleInactive">{{ toggleLabel() }}</button>
@@ -57,28 +57,28 @@ type user struct {
 }
 
 type App struct {
-	query        tue.Ref[string]
-	showInactive tue.Ref[bool]
-	users        []user
+	tue.Comp[struct {
+		Query        string `state:""`
+		ShowInactive bool   `state:""`
+		Users        []user `state:""`
+	}]
 }
 
 func (a *App) Init(tue.Context) {
-	a.query = tue.RefOf("")
-	a.showInactive = tue.RefOf(false)
-	a.users = []user{
+	a.UsersSet([]user{
 		{id: 1, name: "Ada Lovelace", email: "ada@example.com", role: "Admin", active: true, status: "Active", rowClass: "active"},
 		{id: 2, name: "Grace Hopper", email: "grace@example.com", role: "Operator", active: true, status: "Active", rowClass: "active"},
 		{id: 3, name: "Katherine Johnson", email: "katherine@example.com", role: "Analyst", active: false, status: "Suspended", rowClass: "inactive"},
 		{id: 4, name: "Mary Jackson", email: "mary@example.com", role: "Reviewer", active: true, status: "Active", rowClass: "active"},
-	}
+	})
 }
 
 func (a *App) toggleInactive() {
-	a.showInactive.Set(!a.showInactive.Get())
+	a.ShowInactiveSet(!a.ShowInactive())
 }
 
 func (a *App) toggleLabel() string {
-	if a.showInactive.Get() {
+	if a.ShowInactive() {
 		return "Hide inactive"
 	}
 	return "Show inactive"
@@ -89,12 +89,12 @@ func (a *App) status() string {
 }
 
 func (a *App) visibleUsers() []user {
-	needle := strings.ToLower(strings.TrimSpace(a.query.Get()))
-	visible := make([]user, 0, len(a.users))
-	for _, item := range a.users {
+	needle := strings.ToLower(strings.TrimSpace(a.Query()))
+	visible := make([]user, 0, len(a.Users()))
+	for _, item := range a.Users() {
 		haystack := strings.ToLower(item.name + " " + item.email + " " + item.role)
 		match := needle == "" || strings.Contains(haystack, needle)
-		if match && (a.showInactive.Get() || item.active) {
+		if match && (a.ShowInactive() || item.active) {
 			visible = append(visible, item)
 		}
 	}

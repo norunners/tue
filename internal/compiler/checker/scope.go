@@ -16,25 +16,19 @@ type scope struct {
 }
 
 type symbol struct {
-	Name       string
-	Type       string
-	ResultType string
-	Writable   bool
-	Method     bool
-	Parameters []string
-	Results    []string
+	Name           string
+	Type           string
+	ResultType     string
+	Writable       bool
+	Method         bool
+	ImplicitGetter bool
+	Parameters     []string
+	Results        []string
 }
 
 func componentScope(component *script.Component) *scope {
 	scope := newScope(nil)
-	for _, prop := range component.Props {
-		fieldType := propType(prop)
-		scope.add(symbol{Name: prop.Field.Name, Type: fieldType})
-	}
-	for _, field := range component.State {
-		scope.add(symbol{Name: field.Name, Type: fieldType(field), Writable: true})
-	}
-	for _, field := range component.Refs {
+	for _, field := range component.LocalFields {
 		scope.add(symbol{Name: field.Name, Type: fieldType(field), Writable: true})
 	}
 	for _, field := range component.Computed {
@@ -45,12 +39,14 @@ func componentScope(component *script.Component) *scope {
 	}
 	for _, method := range component.Methods {
 		scope.add(symbol{
-			Name:       method.Name,
-			Type:       funcType,
-			ResultType: methodResultType(method),
-			Method:     true,
-			Parameters: method.ParameterTypes(),
-			Results:    method.ResultTypes(),
+			Name:           method.Name,
+			Type:           funcType,
+			ResultType:     methodResultType(method),
+			Method:         true,
+			ImplicitGetter: method.ImplicitGetter,
+			Writable:       method.StateGetter,
+			Parameters:     method.ParameterTypes(),
+			Results:        method.ResultTypes(),
 		})
 	}
 	return scope
@@ -77,7 +73,10 @@ func (s *scope) lookup(name string) (*symbol, bool) {
 }
 
 func propType(prop script.Prop) string {
-	return fieldType(prop.Field)
+	if prop.Type == "" {
+		return unknownType
+	}
+	return prop.Type
 }
 
 func fieldType(field script.Field) string {

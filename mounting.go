@@ -4,7 +4,7 @@ import "fmt"
 
 // Mounted is a live component mounted into a runtime target.
 type Mounted struct {
-	component    *Comp
+	component    *CompInstance
 	target       mountTarget
 	tree         *mountedVNode
 	owner        *mountedVNode
@@ -24,7 +24,7 @@ type mountTarget interface {
 	clear() error
 }
 
-func validateMount(target string, component *Comp) error {
+func validateMount(target string, component *CompInstance) error {
 	if target == "" {
 		return fmt.Errorf("mount target is required")
 	}
@@ -34,7 +34,7 @@ func validateMount(target string, component *Comp) error {
 	return nil
 }
 
-func mountComponent(component *Comp, target mountTarget) (*Mounted, error) {
+func mountComponent(component *CompInstance, target mountTarget) (*Mounted, error) {
 	if component == nil {
 		return nil, fmt.Errorf("component is required")
 	}

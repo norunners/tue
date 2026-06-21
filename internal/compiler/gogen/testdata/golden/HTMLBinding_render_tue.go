@@ -4,11 +4,11 @@ package app
 
 import "github.com/norunners/tue"
 
-func NewApp() *tue.Comp {
-	component := &App{}
+func NewApp() *tue.CompInstance {
+	component := &App{__tue: newTueAppData()}
 	return tue.CompOf(component, renderApp)
 }
 
 func renderApp(component *App) tue.VNode {
-	return tue.Element("main", nil, []tue.VNode{tue.ElementWithTrustedHTML("section", []tue.Attribute{tue.Attr("class", "body")}, nil, component.body), tue.ElementWithTrustedHTML("div", nil, nil, component.summary.Get())})
+	return tue.Element("main", nil, []tue.VNode{tue.ElementWithTrustedHTML("section", []tue.Attribute{tue.Attr("class", "body")}, nil, component.body), tue.ElementWithTrustedHTML("div", nil, nil, component.Summary())})
 }

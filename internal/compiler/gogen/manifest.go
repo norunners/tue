@@ -19,12 +19,13 @@ type ManifestAsset struct {
 
 // ManifestFile records the generated output for one source component.
 type ManifestFile struct {
-	Source     string         `json:"source"`
-	Component  string         `json:"component"`
-	ScriptFile string         `json:"scriptFile"`
-	RenderFile string         `json:"renderFile"`
-	ScopeAttr  string         `json:"scopeAttr,omitempty"`
-	Nodes      []ManifestNode `json:"nodes"`
+	Source        string         `json:"source"`
+	Component     string         `json:"component"`
+	ScriptFile    string         `json:"scriptFile"`
+	ComponentFile string         `json:"componentFile,omitempty"`
+	RenderFile    string         `json:"renderFile"`
+	ScopeAttr     string         `json:"scopeAttr,omitempty"`
+	Nodes         []ManifestNode `json:"nodes"`
 }
 
 // ManifestNode records a generated VNode's source span.

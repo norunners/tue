@@ -1,0 +1,15 @@
+<template></template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type ComponentStateSetterCollision struct {
+	tue.Comp[struct {
+		Expanded bool `state:""`
+	}]
+}
+
+func (c *ComponentStateSetterCollision) ExpandedSet(value bool) {}
+</script>

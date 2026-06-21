@@ -1,7 +1,7 @@
 <template>
-<main>
-	<UserBadge v-if="showBadge" :name="name" active @select="selectUser" @range="selectRange" @tags="selectTags" />
-</main>
+	<main>
+		<UserBadge v-if="ShowBadge" :name="Name" active @select="selectUser" @range="selectRange" @tags="selectTags" />
+	</main>
 </template>
 
 <script lang="go">
@@ -10,17 +10,22 @@ package fixtures
 import tue "github.com/norunners/tue"
 
 type Parent struct {
-	name      tue.Ref[string]
-	showBadge bool
+	tue.Comp[struct {
+		Name      string `state:""`
+		ShowBadge bool   `state:""`
+		Selected  string `state:""`
+	}]
 }
 
 func (p *Parent) Init(tue.Context) {
-	p.name = tue.RefOf("Ada")
+	p.NameSet("Ada")
 }
 
-func (p *Parent) selectUser(name string) {}
+func (p *Parent) selectUser(name string) {
+	p.SelectedSet(name)
+}
 
 func (p *Parent) selectRange(name string, count int) {}
 
-func (p *Parent) selectTags(tags ...string) {}
+func (p *Parent) selectTags(tags []string) {}
 </script>

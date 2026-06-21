@@ -7,7 +7,7 @@ import (
 	"syscall/js"
 )
 
-func mount(target string, component *Comp) (*Mounted, error) {
+func mount(target string, component *CompInstance) (*Mounted, error) {
 	if err := validateMount(target, component); err != nil {
 		return nil, err
 	}
@@ -123,7 +123,7 @@ func (t jsMountTarget) removeAttr(node domNode, name string) error {
 	return nil
 }
 
-func (t jsMountTarget) addEventListener(node domNode, name string, handler func(Event)) (func(), error) {
+func (t jsMountTarget) addEventListener(node domNode, name string, handler func(DOMEvent)) (func(), error) {
 	nodeValue, ok := node.(js.Value)
 	if !ok {
 		return nil, fmt.Errorf("expected js.Value element node, got %T", node)

@@ -1,0 +1,13 @@
+<template></template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type ComponentInvalidEventTag struct {
+	tue.Comp[struct {
+		Select func(string) `event:"select,required"`
+	}]
+}
+</script>

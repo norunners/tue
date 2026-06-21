@@ -9,7 +9,6 @@ import (
 	"go/scanner"
 	"go/token"
 	"go/types"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,7 +43,11 @@ func ParseSFC(file *sfc.File) (*File, []Diagnostic) {
 		}}
 	}
 
-	script, diagnostics := ParseBlock(file.Script, ComponentNameFromPath(file.Path))
+	if file.Script == nil {
+		return &File{Path: file.Path}, []Diagnostic{{Message: "missing script block"}}
+	}
+	componentName := ComponentNameFromPath(file.Path)
+	script, diagnostics := parseSource(file.Path, file.Script.Content, componentName, file.Script.ContentSpan.Start)
 	script.Path = file.Path
 	return script, diagnostics
 }
@@ -84,6 +87,11 @@ type extractor struct {
 	tokenFile   *token.File
 	tueNames    map[string]bool
 	tueDot      bool
+	component   string
+	hasComp     bool
+	props       []Prop
+	events      []Event
+	states      []State
 	diagnostics []Diagnostic
 }
 
@@ -119,6 +127,7 @@ func newExtractor(path string, source string, base sfc.Position) *extractor {
 
 func (e *extractor) parse(componentName string) (*File, []Diagnostic) {
 	file := &File{Path: e.path}
+	e.component = componentName
 	if componentName == "" {
 		e.addDiagnostic("component name is required", e.span(len(e.source), len(e.source)))
 	}
@@ -131,7 +140,10 @@ func (e *extractor) parse(componentName string) (*File, []Diagnostic) {
 	file.PackageName = astFile.Name.Name
 	file.PackageSpan = e.posSpan(astFile.Pos(), astFile.Name.End())
 	file.Imports = e.extractImports(astFile)
-	typesPackage, typesInfo := e.typeCheck(astFile)
+	if componentName != "" {
+		e.extractCompDeclaration(astFile, componentName)
+	}
+	typesPackage, typesInfo := e.typeCheck(astFile, componentName)
 	file.Types = e.extractTypes(astFile, typesPackage, typesInfo)
 	file.Structs = e.extractStructs(astFile)
 
@@ -203,7 +215,7 @@ func (e *extractor) extractImports(file *ast.File) []Import {
 	return imports
 }
 
-func (e *extractor) typeCheck(file *ast.File) (*types.Package, *types.Info) {
+func (e *extractor) typeCheck(file *ast.File, componentName string) (*types.Package, *types.Info) {
 	var diagnostics []Diagnostic
 	info := &types.Info{
 		Types: make(map[ast.Expr]types.TypeAndValue),
@@ -218,16 +230,109 @@ func (e *extractor) typeCheck(file *ast.File) (*types.Package, *types.Info) {
 				Message: err.Error(),
 				Span:    e.span(len(e.source), len(e.source)),
 			}
-			if typeErr, ok := err.(types.Error); ok && typeErr.Pos.IsValid() {
+			if typeErr, ok := err.(types.Error); ok && e.scriptPosition(typeErr.Pos) {
 				diagnostic.Message = typeErr.Msg
 				diagnostic.Span = e.posSpan(typeErr.Pos, typeErr.Pos)
+			} else if len(e.props) != 0 {
+				diagnostic.Span = e.props[0].Span
+			} else if len(e.events) != 0 {
+				diagnostic.Span = e.events[0].Span
+			} else if len(e.states) != 0 {
+				diagnostic.Span = e.states[0].Span
 			}
 			diagnostics = append(diagnostics, diagnostic)
 		},
 	}
+	originalDeclarations := len(file.Decls)
+	file.Decls = append(file.Decls, e.generatedMethodDeclarations(file, componentName)...)
 	pkg, _ := config.Check(e.path, e.fset, []*ast.File{file}, info)
+	file.Decls = file.Decls[:originalDeclarations]
 	e.diagnostics = append(e.diagnostics, diagnostics...)
 	return pkg, info
+}
+
+func (e *extractor) scriptPosition(position token.Pos) bool {
+	if e.tokenFile == nil || !position.IsValid() {
+		return false
+	}
+	offset := int(position) - e.tokenFile.Base()
+	return offset >= 0 && offset <= e.tokenFile.Size()
+}
+
+func (e *extractor) generatedMethodDeclarations(file *ast.File, componentName string) []ast.Decl {
+	if !e.hasComp {
+		return nil
+	}
+
+	declared := componentMemberNames(file, componentName)
+	var source strings.Builder
+	fmt.Fprintf(&source, "package %s\n", file.Name.Name)
+	for _, prop := range e.props {
+		getter := PropGetterName(prop.GoName)
+		if !declared[getter] {
+			fmt.Fprintf(&source, "func (*%s) %s() %s { panic(\"generated\") }\n", componentName, getter, prop.Type)
+			declared[getter] = true
+		}
+		presence := PropOKName(prop.GoName)
+		if !declared[presence] {
+			fmt.Fprintf(&source, "func (*%s) %s() (%s, bool) { panic(\"generated\") }\n", componentName, presence, prop.Type)
+			declared[presence] = true
+		}
+	}
+	for _, event := range e.events {
+		method := EventMethodName(event.GoName)
+		if !declared[method] {
+			fmt.Fprintf(&source, "func (*%s) %s%s bool { panic(\"generated\") }\n", componentName, method, strings.TrimPrefix(event.FunctionType(), "func"))
+			declared[method] = true
+		}
+	}
+	for _, state := range e.states {
+		getter := StateGetterName(state.GoName)
+		if !declared[getter] {
+			fmt.Fprintf(&source, "func (*%s) %s() %s { panic(\"generated\") }\n", componentName, getter, state.Type)
+			declared[getter] = true
+		}
+		setter := StateSetterName(state.GoName)
+		if !declared[setter] {
+			fmt.Fprintf(&source, "func (*%s) %s(value %s) { panic(\"generated\") }\n", componentName, setter, state.Type)
+			declared[setter] = true
+		}
+	}
+
+	generated, err := goparser.ParseFile(e.fset, e.path+"#component", source.String(), goparser.AllErrors)
+	if err != nil {
+		e.addDiagnostic(fmt.Sprintf("build generated component methods: %v", err), e.span(len(e.source), len(e.source)))
+		return nil
+	}
+	return generated.Decls
+}
+
+func componentMemberNames(file *ast.File, componentName string) map[string]bool {
+	names := make(map[string]bool)
+	if spec, ok := findTypeSpec(file, componentName); ok {
+		if structure, ok := spec.Type.(*ast.StructType); ok {
+			for _, field := range structure.Fields.List {
+				for _, name := range field.Names {
+					names[name.Name] = true
+				}
+			}
+		}
+	}
+	for _, declaration := range file.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if !ok || function.Recv == nil || len(function.Recv.List) != 1 {
+			continue
+		}
+		receiver := function.Recv.List[0].Type
+		if pointer, ok := receiver.(*ast.StarExpr); ok {
+			receiver = pointer.X
+		}
+		identifier, ok := receiver.(*ast.Ident)
+		if ok && identifier.Name == componentName {
+			names[function.Name.Name] = true
+		}
+	}
+	return names
 }
 
 func (e *extractor) extractTypes(file *ast.File, pkg *types.Package, info *types.Info) []TypeInfo {
@@ -296,9 +401,16 @@ func (e *extractor) extractComponent(file *File, astFile *ast.File, componentNam
 		Name:     componentName,
 		Span:     e.nodeSpan(spec),
 		NameSpan: e.nodeSpan(spec.Name),
+		Props:    append([]Prop(nil), e.props...),
+		Events:   append([]Event(nil), e.events...),
+		States:   append([]State(nil), e.states...),
+	}
+	if e.hasComp {
+		component.GeneratedType = GeneratedTypeName(componentName)
 	}
 	e.extractFields(component, structType)
 	e.extractMethods(component, astFile)
+	e.validateGeneratedMembers(component)
 	component.Allocation = allocationFor(component)
 	file.Component = component
 }
@@ -353,7 +465,7 @@ func (e *extractor) structFields(structType *ast.StructType) []Field {
 		for _, name := range astField.Names {
 			tag, tagSpan := e.fieldTag(astField)
 			fields = append(fields, Field{
-				Kind:     FieldKindState,
+				Kind:     FieldKindLocal,
 				Name:     name.Name,
 				Exported: name.IsExported(),
 				Type:     e.nodeString(astField.Type),
@@ -377,18 +489,12 @@ func (e *extractor) extractFields(component *Component, structType *ast.StructTy
 		for _, name := range astField.Names {
 			field := e.fieldFromAST(name, astField)
 			switch field.Kind {
-			case FieldKindEvent:
-				component.Events = append(component.Events, field)
-			case FieldKindProp:
-				component.Props = append(component.Props, e.propFromField(field))
-			case FieldKindRef:
-				component.Refs = append(component.Refs, field)
 			case FieldKindComputed:
 				component.Computed = append(component.Computed, field)
 			case FieldKindResource:
 				component.Resources = append(component.Resources, field)
 			default:
-				component.State = append(component.State, field)
+				component.LocalFields = append(component.LocalFields, field)
 			}
 		}
 	}
@@ -413,50 +519,34 @@ func (e *extractor) fieldFromAST(name *ast.Ident, astField *ast.Field) Field {
 
 func (e *extractor) classifyField(fieldName string, expr ast.Expr) (FieldKind, string) {
 	if _, ok := expr.(*ast.FuncType); ok {
-		if _, eventNameOK := eventNameFromFieldName(fieldName); eventNameOK {
-			e.addDiagnostic(
-				fmt.Sprintf("component event field %q must use tue.On[func(...)]", fieldName),
-				e.nodeSpan(expr),
-			)
-		}
-		return FieldKindState, ""
+		return FieldKindLocal, ""
 	}
 
 	typeName, args, ok := e.tueGenericType(expr)
 	if !ok {
-		return FieldKindState, ""
+		return FieldKindLocal, ""
 	}
-
+	if typeName == "Comp" {
+		e.addDiagnostic("tue.Comp marker must be embedded anonymously", e.nodeSpan(expr))
+		return FieldKindLocal, ""
+	}
+	if typeName == "State" {
+		e.addDiagnostic(
+			fmt.Sprintf("component state %q must be declared inside embedded tue.Comp", fieldName),
+			e.nodeSpan(expr),
+		)
+		return FieldKindLocal, ""
+	}
 	kind, ok := fieldKindForTueType(typeName)
 	if !ok {
-		return FieldKindState, ""
-	}
-	if kind == FieldKindEvent {
-		if _, eventNameOK := eventNameFromFieldName(fieldName); !eventNameOK {
-			e.addDiagnostic(
-				fmt.Sprintf("component event field %q must start with on followed by an uppercase event name", fieldName),
-				e.nodeSpan(expr),
-			)
-		}
+		return FieldKindLocal, ""
 	}
 	if len(args) != 1 {
-		typeParameter := "T"
-		if kind == FieldKindEvent {
-			typeParameter = "F"
-		}
 		e.addDiagnostic(
-			fmt.Sprintf("field %q must use tue.%s[%s] with exactly one type argument", fieldName, typeName, typeParameter),
+			fmt.Sprintf("field %q must use tue.%s[T] with exactly one type argument", fieldName, typeName),
 			e.nodeSpan(expr),
 		)
 		return kind, ""
-	}
-	if kind == FieldKindEvent {
-		if _, ok := args[0].(*ast.FuncType); !ok {
-			e.addDiagnostic(
-				fmt.Sprintf("field %q must use tue.On[F] with a function type", fieldName),
-				e.nodeSpan(args[0]),
-			)
-		}
 	}
 	return kind, e.nodeString(args[0])
 }
@@ -501,38 +591,13 @@ func (e *extractor) tueTypeName(expr ast.Expr) (string, bool) {
 
 func fieldKindForTueType(name string) (FieldKind, bool) {
 	switch name {
-	case "On":
-		return FieldKindEvent, true
-	case "Prop":
-		return FieldKindProp, true
-	case "Ref":
-		return FieldKindRef, true
 	case "Computed":
 		return FieldKindComputed, true
 	case "Resource":
 		return FieldKindResource, true
 	default:
-		return FieldKindState, false
+		return FieldKindLocal, false
 	}
-}
-
-func eventNameFromFieldName(fieldName string) (string, bool) {
-	const prefix = "on"
-	if !strings.HasPrefix(fieldName, prefix) {
-		return "", false
-	}
-
-	suffix := strings.TrimPrefix(fieldName, prefix)
-	if suffix == "" {
-		return "", false
-	}
-
-	runes := []rune(suffix)
-	if !unicode.IsUpper(runes[0]) {
-		return "", false
-	}
-	runes[0] = unicode.ToLower(runes[0])
-	return string(runes), true
 }
 
 func (e *extractor) fieldTag(field *ast.Field) (string, sfc.Span) {
@@ -545,25 +610,6 @@ func (e *extractor) fieldTag(field *ast.Field) (string, sfc.Span) {
 		return "", e.nodeSpan(field.Tag)
 	}
 	return tag, e.nodeSpan(field.Tag)
-}
-
-func (e *extractor) propFromField(field Field) Prop {
-	prop := Prop{
-		Field: field,
-		Name:  field.Name,
-	}
-	if value, ok := reflect.StructTag(field.Tag).Lookup("prop"); ok {
-		parts := strings.Split(value, ",")
-		if len(parts) > 0 && strings.TrimSpace(parts[0]) != "" {
-			prop.Name = strings.TrimSpace(parts[0])
-		}
-		for _, option := range parts[1:] {
-			if strings.TrimSpace(option) == "required" {
-				prop.Required = true
-			}
-		}
-	}
-	return prop
 }
 
 func (e *extractor) extractMethods(component *Component, file *ast.File) {
@@ -591,6 +637,115 @@ func (e *extractor) extractMethods(component *Component, file *ast.File) {
 			continue
 		}
 		component.Methods = append(component.Methods, method)
+	}
+}
+
+func (e *extractor) validateGeneratedMembers(component *Component) {
+	if !e.hasComp {
+		component.GeneratedType = ""
+		return
+	}
+
+	declared := make(map[string]sfc.Span)
+	if component.Init != nil {
+		declared[component.Init.Name] = component.Init.NameSpan
+	}
+	for _, method := range component.Methods {
+		declared[method.Name] = method.NameSpan
+	}
+	for _, fields := range [][]Field{component.LocalFields, component.Computed, component.Resources} {
+		for _, field := range fields {
+			declared[field.Name] = field.NameSpan
+		}
+	}
+	if span, exists := declared[GeneratedFieldName()]; exists {
+		e.addDiagnostic(fmt.Sprintf("component member %s is reserved for generated storage", GeneratedFieldName()), span)
+	}
+
+	for _, prop := range component.Props {
+		name := PropGetterName(prop.GoName)
+		if _, exists := declared[name]; exists {
+			e.addDiagnostic(fmt.Sprintf("generated prop getter %s conflicts with a component member", name), prop.NameSpan)
+		} else {
+			declared[name] = prop.NameSpan
+			component.Methods = append(component.Methods, Method{
+				Name:            name,
+				ReceiverName:    component.Name,
+				PointerReceiver: true,
+				ImplicitGetter:  true,
+				Results:         []Parameter{{Type: prop.Type, Span: prop.TypeSpan, TypeSpan: prop.TypeSpan}},
+				Span:            prop.Span,
+				NameSpan:        prop.NameSpan,
+			})
+		}
+
+		presence := PropOKName(prop.GoName)
+		if _, exists := declared[presence]; exists {
+			e.addDiagnostic(fmt.Sprintf("generated prop presence getter %s conflicts with a component member", presence), prop.NameSpan)
+			continue
+		}
+		declared[presence] = prop.NameSpan
+		component.Methods = append(component.Methods, Method{
+			Name:            presence,
+			ReceiverName:    component.Name,
+			PointerReceiver: true,
+			Results: []Parameter{
+				{Type: prop.Type, Span: prop.TypeSpan, TypeSpan: prop.TypeSpan},
+				{Type: "bool", Span: prop.Span, TypeSpan: prop.Span},
+			},
+			Span:     prop.Span,
+			NameSpan: prop.NameSpan,
+		})
+	}
+	for _, event := range component.Events {
+		name := EventMethodName(event.GoName)
+		if _, exists := declared[name]; exists {
+			e.addDiagnostic(fmt.Sprintf("generated event method %s conflicts with a component member", name), event.NameSpan)
+			continue
+		}
+		declared[name] = event.NameSpan
+		component.Methods = append(component.Methods, Method{
+			Name:            name,
+			ReceiverName:    component.Name,
+			PointerReceiver: true,
+			Parameters:      append([]Parameter(nil), event.Parameters...),
+			Results:         []Parameter{{Type: "bool", Span: event.Span, TypeSpan: event.Span}},
+			Span:            event.Span,
+			NameSpan:        event.NameSpan,
+		})
+	}
+	for _, state := range component.States {
+		getter := StateGetterName(state.GoName)
+		if _, exists := declared[getter]; exists {
+			e.addDiagnostic(fmt.Sprintf("generated state getter %s conflicts with a component member", getter), state.NameSpan)
+		} else {
+			declared[getter] = state.NameSpan
+			component.Methods = append(component.Methods, Method{
+				Name:            getter,
+				ReceiverName:    component.Name,
+				PointerReceiver: true,
+				ImplicitGetter:  true,
+				StateGetter:     true,
+				Results:         []Parameter{{Type: state.Type, Span: state.TypeSpan, TypeSpan: state.TypeSpan}},
+				Span:            state.Span,
+				NameSpan:        state.NameSpan,
+			})
+		}
+
+		setter := StateSetterName(state.GoName)
+		if _, exists := declared[setter]; exists {
+			e.addDiagnostic(fmt.Sprintf("generated state setter %s conflicts with a component member", setter), state.NameSpan)
+			continue
+		}
+		declared[setter] = state.NameSpan
+		component.Methods = append(component.Methods, Method{
+			Name:            setter,
+			ReceiverName:    component.Name,
+			PointerReceiver: true,
+			Parameters:      []Parameter{{Name: "value", Type: state.Type, Span: state.TypeSpan, TypeSpan: state.TypeSpan}},
+			Span:            state.Span,
+			NameSpan:        state.NameSpan,
+		})
 	}
 }
 
@@ -679,14 +834,10 @@ func (e *extractor) isTueContext(expr ast.Expr) bool {
 }
 
 func allocationFor(component *Component) Allocation {
-	allocation := Allocation{
+	return Allocation{
 		ComponentName: component.Name,
 		CallsInit:     component.Init != nil,
 	}
-	for _, prop := range component.Props {
-		allocation.PropFields = append(allocation.PropFields, prop.Field.Name)
-	}
-	return allocation
 }
 
 func defaultImportName(path string) string {

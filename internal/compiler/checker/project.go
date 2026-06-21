@@ -29,7 +29,7 @@ type componentBinding struct {
 	path      string
 	component *script.Component
 	props     map[string]script.Prop
-	events    map[string]script.Field
+	events    map[string]script.Event
 }
 
 func (c *projectChecker) indexComponents(files []File) {
@@ -49,7 +49,7 @@ func (c *projectChecker) indexComponents(files []File) {
 		for _, prop := range component.Props {
 			props[prop.Name] = prop
 		}
-		events := make(map[string]script.Field, len(component.Events))
+		events := make(map[string]script.Event, len(component.Events))
 		for _, event := range component.Events {
 			name, ok := script.EventName(event)
 			if ok {
@@ -72,7 +72,7 @@ func (c *projectChecker) checkFile(file File) {
 		return
 	}
 	if file.Script == nil || file.Script.Component == nil {
-		c.add(path, "missing component contract", file.Template.Span)
+		c.add(path, "missing component declaration", file.Template.Span)
 		return
 	}
 

@@ -7,17 +7,17 @@ import (
 	"github.com/norunners/tue"
 )
 
-func NewApp() *tue.Comp {
+func NewApp() *tue.CompInstance {
 	component := &App{}
 	return tue.CompOf(component, renderApp)
 }
 
 func renderApp(component *App) tue.VNode {
-	return tue.Element("main", []tue.Attribute{tue.Attr("class", "page"), tue.BoolAttr("data-tue-c-d8d60a14")}, []tue.VNode{tue.WithScopeAttrs(tue.ComponentWithUpdate("Banner", func() *tue.Comp {
+	return tue.Element("main", []tue.Attribute{tue.Attr("class", "page"), tue.BoolAttr("data-tue-c-d8d60a14")}, []tue.VNode{tue.WithScopeAttrs(tue.ComponentWithUpdate("Banner", func() *tue.CompInstance {
 		child := &Banner{}
 		childComp := tue.CompOf(child, renderBanner)
 		return childComp
-	}, func(childComp *tue.Comp) {
+	}, func(childComp *tue.CompInstance) {
 		childComp.DefaultSlot = nil
 	}), "data-tue-c-d8d60a14"), tue.Element("section", []tue.Attribute{tue.Attr("class", "card"), tue.BoolAttr("data-tue-c-d8d60a14")}, []tue.VNode{tue.Element("h1", []tue.Attribute{tue.BoolAttr("data-tue-c-d8d60a14")}, []tue.VNode{tue.Text(fmt.Sprint(component.title))})}), func() tue.VNode {
 		if component.enabled {

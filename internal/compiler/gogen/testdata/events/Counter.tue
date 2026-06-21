@@ -1,6 +1,6 @@
 <template>
 	<main>
-		<p>Count: {{ count }}</p>
+		<p>Count: {{ Count }}</p>
 		<button type="button" @click="increment">Increment</button>
 	</main>
 </template>
@@ -11,14 +11,12 @@ package fixtures
 import tue "github.com/norunners/tue"
 
 type Counter struct {
-	count tue.Ref[int]
-}
-
-func (c *Counter) Init(ctx tue.Context) {
-	c.count = tue.RefOf(0)
+	tue.Comp[struct {
+		Count int `state:""`
+	}]
 }
 
 func (c *Counter) increment() {
-	c.count.Set(c.count.Get() + 1)
+	c.CountSet(c.Count() + 1)
 }
 </script>

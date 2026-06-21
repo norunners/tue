@@ -185,6 +185,9 @@ func (c *fileChecker) checkStaticComponentProp(node *gotemplate.Node, child comp
 }
 
 func (c *fileChecker) checkBoundComponentProp(node *gotemplate.Node, child componentBinding, attr gotemplate.Attr, scope *scope, seen map[string]bool) {
+	if attr.Argument == "key" {
+		return
+	}
 	prop, ok := child.props[attr.Argument]
 	if !ok {
 		c.add(fmt.Sprintf("component %q has no prop %q", node.Tag, attr.Argument), attr.ArgumentSpan)
@@ -203,9 +206,10 @@ func (c *fileChecker) checkComponentEvent(node *gotemplate.Node, child component
 		return
 	}
 
-	signature, ok := typecap.ParseFunction(event.ValueType)
+	eventType := event.FunctionType()
+	signature, ok := typecap.ParseFunction(eventType)
 	if !ok {
-		c.add(fmt.Sprintf("component %q event %q has invalid function type %q", node.Tag, attr.Argument, event.ValueType), attr.ArgumentSpan)
+		c.add(fmt.Sprintf("component %q event %q has invalid function type %q", node.Tag, attr.Argument, eventType), attr.ArgumentSpan)
 		return
 	}
 	if len(signature.Results) != 0 {

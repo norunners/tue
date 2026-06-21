@@ -1,0 +1,15 @@
+<template></template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type ComponentMemberCollision struct {
+	tue.Comp[struct {
+		Name string `prop:""`
+	}]
+}
+
+func (c *ComponentMemberCollision) Name() string { return "local" }
+</script>

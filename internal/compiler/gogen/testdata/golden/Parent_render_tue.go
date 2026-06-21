@@ -4,31 +4,42 @@ package fixtures
 
 import "github.com/norunners/tue"
 
-func NewParent() *tue.Comp {
-	component := &Parent{}
+func NewParent() *tue.CompInstance {
+	component := &Parent{__tue: newTueParentData()}
 	return tue.CompOf(component, renderParent)
 }
 
 func renderParent(component *Parent) tue.VNode {
 	return tue.Element("main", nil, []tue.VNode{func() tue.VNode {
-		if component.showBadge {
-			return tue.ComponentWithUpdate("UserBadge", func() *tue.Comp {
-				child := &UserBadge{name: tue.PropOfFunc(func() string {
-					return component.name.Get()
-				}), active: tue.PropOf(true), label: tue.PropOf(""), onSelect: tue.OnOf(component.selectUser), onRange: tue.OnOf(component.selectRange), onTags: tue.OnOf(component.selectTags), onDismiss: tue.On[func(string)]{}}
+		if component.ShowBadge() {
+			return tue.ComponentWithUpdate("UserBadge", func() *tue.CompInstance {
+				child := &UserBadge{__tue: newTueUserBadgeData()}
+				child.__tue.__propName = func() (string, bool) {
+					return component.Name(), true
+				}
+				child.__tue.__propActive = func() (bool, bool) {
+					return true, true
+				}
+				child.__tue.__propLabel = nil
+				child.__tue.__eventSelect = component.selectUser
+				child.__tue.__eventRange = component.selectRange
+				child.__tue.__eventTags = component.selectTags
+				child.__tue.__eventDismiss = nil
 				childComp := tue.CompOf(child, renderUserBadge)
 				return childComp
-			}, func(childComp *tue.Comp) {
+			}, func(childComp *tue.CompInstance) {
 				child := childComp.Component.(*UserBadge)
-				child.name = tue.PropOfFunc(func() string {
-					return component.name.Get()
-				})
-				child.active = tue.PropOf(true)
-				child.label = tue.PropOf("")
-				child.onSelect = tue.OnOf(component.selectUser)
-				child.onRange = tue.OnOf(component.selectRange)
-				child.onTags = tue.OnOf(component.selectTags)
-				child.onDismiss = tue.On[func(string)]{}
+				child.__tue.__propName = func() (string, bool) {
+					return component.Name(), true
+				}
+				child.__tue.__propActive = func() (bool, bool) {
+					return true, true
+				}
+				child.__tue.__propLabel = nil
+				child.__tue.__eventSelect = component.selectUser
+				child.__tue.__eventRange = component.selectRange
+				child.__tue.__eventTags = component.selectTags
+				child.__tue.__eventDismiss = nil
 				childComp.DefaultSlot = nil
 			})
 		}

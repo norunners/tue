@@ -44,7 +44,7 @@ func (m RouteMatch) QueryParam(name string) string {
 type Router struct {
 	routes   []compiledRoute
 	notFound func(RouteMatch) VNode
-	current  *RefValue[RouteMatch]
+	current  *StateValue[RouteMatch]
 	location routeLocation
 }
 
@@ -80,7 +80,7 @@ func RouterOf(ctx Context, routes []Route, notFound func(RouteMatch) VNode) *Rou
 	if router.location != nil {
 		initialPath = router.location.Path()
 	}
-	router.current = RefOf(router.match(initialPath))
+	router.current = StateOf(router.match(initialPath))
 	if router.location != nil {
 		stop := router.location.Watch(router.setPath)
 		if ctx != nil {
