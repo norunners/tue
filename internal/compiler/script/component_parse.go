@@ -92,6 +92,8 @@ func (e *extractor) extractComponentField(field *ast.Field, names map[string]boo
 		e.extractComponentEvent(field, fieldName, value, names)
 	case "state":
 		e.extractComponentState(field, fieldName, value, names)
+	case "computed":
+		e.extractComponentComputed(field, fieldName, value, names)
 	}
 }
 
@@ -198,9 +200,45 @@ func (e *extractor) extractComponentState(field *ast.Field, fieldName *ast.Ident
 	})
 }
 
+func (e *extractor) extractComponentComputed(field *ast.Field, fieldName *ast.Ident, value string, names map[string]bool) {
+	name := lowerIdentifier(fieldName.Name)
+	if names[name] {
+		e.addDiagnostic(fmt.Sprintf("duplicate component declaration name %q", name), e.nodeSpan(fieldName))
+		return
+	}
+	if value == "" {
+		e.addDiagnostic(fmt.Sprintf("component computed %q must name its source method", name), componentTagSpan(e, field))
+		return
+	}
+	if !token.IsIdentifier(value) {
+		e.addDiagnostic(fmt.Sprintf("component computed %q has invalid source method %q", name, value), componentTagSpan(e, field))
+		return
+	}
+	if _, ok := field.Type.(*ast.FuncType); ok {
+		e.addDiagnostic(fmt.Sprintf("component computed %q must not have a function type", name), e.nodeSpan(field.Type))
+		return
+	}
+	typeName, ok := formatNode(e.fset, field.Type)
+	if !ok {
+		e.addDiagnostic(fmt.Sprintf("component computed %q has an unsupported Go type", name), e.nodeSpan(field.Type))
+		return
+	}
+
+	names[name] = true
+	e.computeds = append(e.computeds, Computed{
+		Name:       name,
+		GoName:     fieldName.Name,
+		MethodName: value,
+		Type:       typeName,
+		Span:       e.nodeSpan(field),
+		NameSpan:   e.nodeSpan(fieldName),
+		TypeSpan:   e.nodeSpan(field.Type),
+	})
+}
+
 func componentFieldCategory(field *ast.Field) (string, string, error) {
 	if field.Tag == nil {
-		return "", "", fmt.Errorf("must declare exactly one prop, event, or state tag")
+		return "", "", fmt.Errorf("must declare exactly one prop, event, state, or computed tag")
 	}
 	raw, err := strconv.Unquote(field.Tag.Value)
 	if err != nil {
@@ -211,9 +249,9 @@ func componentFieldCategory(field *ast.Field) (string, string, error) {
 		return "", "", err
 	}
 	if len(tags) != 1 {
-		return "", "", fmt.Errorf("must declare exactly one prop, event, or state tag")
+		return "", "", fmt.Errorf("must declare exactly one prop, event, state, or computed tag")
 	}
-	for _, key := range []string{"prop", "event", "state"} {
+	for _, key := range []string{"prop", "event", "state", "computed"} {
 		if value, ok := tags[key]; ok {
 			return key, value, nil
 		}
@@ -221,7 +259,7 @@ func componentFieldCategory(field *ast.Field) (string, string, error) {
 	for key := range tags {
 		return "", "", fmt.Errorf("unknown component tag %q", key)
 	}
-	return "", "", fmt.Errorf("must declare exactly one prop, event, or state tag")
+	return "", "", fmt.Errorf("must declare exactly one prop, event, state, or computed tag")
 }
 
 func parseStructTags(raw string) (map[string]string, error) {
@@ -367,6 +405,11 @@ func PropFieldName(name string) string {
 	return "__prop" + exportedIdentifier(name)
 }
 
+// InputVersionFieldName returns the hidden generated prop binding version field.
+func InputVersionFieldName() string {
+	return "__inputVersion"
+}
+
 // EventFieldName returns the hidden generated event callback field.
 func EventFieldName(name string) string {
 	return "__event" + exportedIdentifier(name)
@@ -385,6 +428,16 @@ func StateSetterName(name string) string {
 // StateFieldName returns the hidden generated reactive state field.
 func StateFieldName(name string) string {
 	return "__state" + exportedIdentifier(name)
+}
+
+// ComputedGetterName returns the generated computed getter.
+func ComputedGetterName(name string) string {
+	return exportedIdentifier(name)
+}
+
+// ComputedFieldName returns the hidden generated computed field.
+func ComputedFieldName(name string) string {
+	return "__computed" + exportedIdentifier(name)
 }
 
 func lowerIdentifier(name string) string {

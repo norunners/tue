@@ -5,6 +5,5 @@ type FieldKind string
 
 const (
 	FieldKindLocal    FieldKind = "local"
-	FieldKindComputed FieldKind = "computed"
 	FieldKindResource FieldKind = "resource"
 )

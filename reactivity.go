@@ -47,7 +47,8 @@ func (r *StateValue[T]) Watch(effect func(T)) func() {
 	})
 }
 
-// Computed is the read interface exposed to component code.
+// Computed is the read interface used by generated computed accessors and
+// handwritten reactive code.
 type Computed[T any] interface {
 	Get() T
 	Watch(func(T)) func()
@@ -221,6 +222,7 @@ func (w *watcher) run() {
 	if w == nil || w.stopped {
 		return
 	}
+	w.queued = false
 	w.dispose()
 	pushSubscriber(w)
 	defer popSubscriber()
@@ -355,6 +357,9 @@ func flushSubscribers() {
 		pending := scheduler.pending
 		scheduler.pending = nil
 		for _, subscriber := range pending {
+			if !subscriber.isQueued() {
+				continue
+			}
 			subscriber.setQueued(false)
 			subscriber.run()
 		}

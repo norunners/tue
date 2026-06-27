@@ -5,15 +5,23 @@ package app
 import "github.com/norunners/tue"
 
 type tueAppData struct {
-	__propName   func() (string, bool)
-	__stateCount tue.State[int]
+	__propName     func() (string, bool)
+	__inputVersion tue.State[int]
+	__stateCount   tue.State[int]
 }
 
 func newTueAppData() tueAppData {
-	return tueAppData{__stateCount: tue.StateOf(*new(int))}
+	return tueAppData{__inputVersion: tue.StateOf(0), __stateCount: tue.StateOf(*new(int))}
 }
 func (component *App) NameOk() (string, bool) {
-	if component == nil || component.__tue.__propName == nil {
+	if component == nil {
+		var zero string
+		return zero, false
+	}
+	if component.__tue.__inputVersion != nil {
+		_ = component.__tue.__inputVersion.Get()
+	}
+	if component.__tue.__propName == nil {
 		var zero string
 		return zero, false
 	}

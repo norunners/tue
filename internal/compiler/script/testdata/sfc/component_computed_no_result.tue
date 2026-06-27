@@ -1,0 +1,15 @@
+<template></template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type ComponentComputedNoResult struct {
+	tue.Comp[struct {
+		Label string `computed:"label"`
+	}]
+}
+
+func (c *ComponentComputedNoResult) label() {}
+</script>

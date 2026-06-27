@@ -161,6 +161,33 @@ func TestComponentScopedEffectsStopBeforeUserCleanup(t *testing.T) {
 	}
 }
 
+func TestCompOfScopesGeneratedInitializerEffects(t *testing.T) {
+	state := StateOf(0)
+	values := []int{}
+	component := &struct{}{}
+	comp := CompOf(component, func(*struct{}) VNode {
+		return Text("initializer")
+	}, func() {
+		Watch(func() {
+			values = append(values, state.Get())
+		})
+	})
+
+	mounted, err := mountComponent(comp, newStubDOMTarget())
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+	state.Set(1)
+	if err := mounted.Unmount(); err != nil {
+		t.Fatalf("Unmount returned error: %v", err)
+	}
+	state.Set(2)
+
+	if diff := cmp.Diff([]int{0, 1}, values); diff != "" {
+		t.Errorf("mismatch generated initializer effect values (-expected, +actual):\n%s", diff)
+	}
+}
+
 type reactiveCleanupFixture struct {
 	count  *StateValue[int]
 	events *[]string

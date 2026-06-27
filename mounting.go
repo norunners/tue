@@ -122,6 +122,7 @@ func (e *componentRenderEffect) run() {
 	if e == nil || e.stopped || e.mounted == nil || e.mounted.unmounted {
 		return
 	}
+	e.queued = false
 
 	e.dispose()
 	var vnode VNode

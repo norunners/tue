@@ -41,8 +41,8 @@ type Component struct {
 	Props         []Prop
 	Events        []Event
 	States        []State
+	Computed      []Computed
 	LocalFields   []Field
-	Computed      []Field
 	Resources     []Field
 	Methods       []Method
 	Init          *Method
@@ -83,6 +83,17 @@ type State struct {
 	Span     sfc.Span
 	NameSpan sfc.Span
 	TypeSpan sfc.Span
+}
+
+// Computed is a generated read-only reactive value declared by a Comp marker.
+type Computed struct {
+	Name       string
+	GoName     string
+	MethodName string
+	Type       string
+	Span       sfc.Span
+	NameSpan   sfc.Span
+	TypeSpan   sfc.Span
 }
 
 // FunctionType returns the Go callback type represented by the event.

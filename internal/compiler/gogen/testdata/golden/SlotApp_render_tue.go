@@ -33,6 +33,9 @@ func renderApp(component *App) tue.VNode {
 		child.__tue.__propTitle = func() (string, bool) {
 			return "Status", true
 		}
+		if child.__tue.__inputVersion != nil {
+			child.__tue.__inputVersion.Set(child.__tue.__inputVersion.Get() + 1)
+		}
 		childComp.DefaultSlot = func() tue.VNode {
 			return tue.Fragment([]tue.VNode{tue.Element("p", []tue.Attribute{tue.Attr("class", "body")}, []tue.VNode{tue.Text(fmt.Sprint(component.message))}), func() tue.VNode {
 				if component.ready {
@@ -52,6 +55,9 @@ func renderApp(component *App) tue.VNode {
 		child := childComp.Component.(*Card)
 		child.__tue.__propTitle = func() (string, bool) {
 			return "Empty", true
+		}
+		if child.__tue.__inputVersion != nil {
+			child.__tue.__inputVersion.Set(child.__tue.__inputVersion.Get() + 1)
 		}
 		childComp.DefaultSlot = nil
 	})})

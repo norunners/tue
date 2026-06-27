@@ -1,0 +1,21 @@
+<template></template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type ComponentComputedCollision struct {
+	tue.Comp[struct {
+		Label string `computed:"label"`
+	}]
+}
+
+func (c *ComponentComputedCollision) label() string {
+	return "label"
+}
+
+func (c *ComponentComputedCollision) Label() string {
+	return "collision"
+}
+</script>

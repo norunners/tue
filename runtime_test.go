@@ -95,6 +95,18 @@ func TestCompOfCallsOptionalInit(t *testing.T) {
 	}
 }
 
+func TestCompOfRunsGeneratedInitializersBeforeInit(t *testing.T) {
+	component := &generatedInitFixture{}
+
+	CompOf(component, nil, func() {
+		component.value = "generated"
+	})
+
+	if diff := cmp.Diff("generated", component.initializedWith); diff != "" {
+		t.Errorf("mismatch value observed by Init (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestMountComponentRunsLifecycleInOrder(t *testing.T) {
 	events := []string{}
 	component := &lifecycleFixture{events: &events, value: "first"}
@@ -562,6 +574,52 @@ func TestMountedComponentVNodeRefreshesDefaultSlotOnPatch(t *testing.T) {
 	}
 }
 
+func TestMountedComponentVNodeBatchesUpdaterInvalidations(t *testing.T) {
+	label := "first"
+	renderCount := 0
+	target := newStubDOMTarget()
+	mounted, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
+		return ComponentWithUpdate("Child", func() *CompInstance {
+			child := &componentUpdaterInvalidationFixture{
+				label:       func() string { return label },
+				version:     StateOf(0),
+				renderCount: &renderCount,
+			}
+			return CompOf(child, func(child *componentUpdaterInvalidationFixture) VNode {
+				*child.renderCount++
+				_ = child.version.Get()
+				return Text(child.label())
+			})
+		}, func(childComp *CompInstance) {
+			child := childComp.Component.(*componentUpdaterInvalidationFixture)
+			child.label = func() string { return label }
+			child.version.Set(child.version.Get() + 1)
+		})
+	}), target)
+	if err != nil {
+		t.Fatalf("mountComponent returned error: %v", err)
+	}
+
+	if diff := cmp.Diff("first", target.html()); diff != "" {
+		t.Errorf("mismatch mounted component HTML (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff(1, renderCount); diff != "" {
+		t.Errorf("mismatch mounted child render count (-expected, +actual):\n%s", diff)
+	}
+
+	label = "second"
+	if err := mounted.Update(); err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+
+	if diff := cmp.Diff("second", target.html()); diff != "" {
+		t.Errorf("mismatch patched component HTML (-expected, +actual):\n%s", diff)
+	}
+	if diff := cmp.Diff(2, renderCount); diff != "" {
+		t.Errorf("mismatch patched child render count (-expected, +actual):\n%s", diff)
+	}
+}
+
 func TestMountedComponentVNodeRendersSlotFallback(t *testing.T) {
 	target := newStubDOMTarget()
 	_, err := mountComponent(CompOf(&patchFixture{}, func(*patchFixture) VNode {
@@ -670,6 +728,15 @@ type initFixture struct {
 	value string
 }
 
+type generatedInitFixture struct {
+	value           string
+	initializedWith string
+}
+
+func (f *generatedInitFixture) Init(Context) {
+	f.initializedWith = f.value
+}
+
 func (f *initFixture) Init(Context) {
 	f.value = "initialized"
 }
@@ -742,6 +809,12 @@ func (f *componentVNodeFixture) OnUnmounted() {
 type componentSlotPatchFixture struct {
 	label     func() string
 	initCount *int
+}
+
+type componentUpdaterInvalidationFixture struct {
+	label       func() string
+	version     State[int]
+	renderCount *int
 }
 
 func (f *componentSlotPatchFixture) Init(Context) {

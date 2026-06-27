@@ -1028,11 +1028,23 @@ func TestGeneratedComponentAPI(t *testing.T) {
 	if _, ok := child.NameOk(); !ok {
 		t.Error("NameOk() did not report the supplied prop")
 	}
-	if actual := child.Label(); actual != "" {
-		t.Errorf("Label() actual = %q, expected zero value", actual)
+	if actual := child.Label(); actual != "Ada expanded" {
+		t.Errorf("Label() actual = %q, expected Ada expanded", actual)
 	}
-	if _, ok := child.LabelOk(); ok {
-		t.Error("LabelOk() reported an omitted prop as supplied")
+	if actual := child.InitialLabel(); actual != "Ada expanded" {
+		t.Errorf("InitialLabel() actual = %q, expected Init to read Ada expanded", actual)
+	}
+	if actual := child.SubtitleLabel(); actual != "none" {
+		t.Errorf("SubtitleLabel() actual = %q, expected none", actual)
+	}
+	if actual := child.Label(); actual != "Ada expanded" {
+		t.Errorf("cached Label() actual = %q, expected Ada expanded", actual)
+	}
+	if child.labelCalls != 1 {
+		t.Errorf("label calls actual = %d, expected one cached evaluation", child.labelCalls)
+	}
+	if _, ok := child.SubtitleOk(); ok {
+		t.Error("SubtitleOk() reported an omitted prop as supplied")
 	}
 	observedNames := []string{}
 	stopNames := tue.Watch(func() {
@@ -1050,6 +1062,12 @@ func TestGeneratedComponentAPI(t *testing.T) {
 	if child.Expanded() {
 		t.Error("Expanded() actual = true after ExpandedSet(false)")
 	}
+	if actual := child.Label(); actual != "Marie" {
+		t.Errorf("Label() after state change actual = %q, expected Marie", actual)
+	}
+	if child.labelCalls != 2 {
+		t.Errorf("label calls after invalidation actual = %d, expected 2", child.labelCalls)
+	}
 	called := child.Select("Grace")
 	if !called || parent.Selected() != "Grace" {
 		t.Errorf("Select() actual = (%v, %q), expected (true, Grace)", called, parent.Selected())
@@ -1064,8 +1082,34 @@ func TestGeneratedComponentAPI(t *testing.T) {
 	if actual := child.Name(); actual != "Lin" {
 		t.Errorf("Name() after patch actual = %q, expected Lin", actual)
 	}
+	if actual := child.Label(); actual != "Lin" {
+		t.Errorf("Label() after patch actual = %q, expected Lin", actual)
+	}
 	if child.Expanded() {
 		t.Error("generated state was reset while patching parent bindings")
+	}
+
+	parent.UseAlternateSet(true)
+	patched = renderParent(parent).Children[0]
+	patched.ComponentUpdater(childInstance)
+	if actual := child.Name(); actual != "Zoe" {
+		t.Errorf("Name() after prop source swap actual = %q, expected Zoe", actual)
+	}
+	if actual := child.Label(); actual != "Zoe" {
+		t.Errorf("Label() after prop source swap actual = %q, expected Zoe", actual)
+	}
+	if actual := child.SubtitleLabel(); actual != "alternate" {
+		t.Errorf("SubtitleLabel() after optional prop appears actual = %q, expected alternate", actual)
+	}
+
+	parent.UseAlternateSet(false)
+	patched = renderParent(parent).Children[0]
+	patched.ComponentUpdater(childInstance)
+	if actual := child.Name(); actual != "Lin" {
+		t.Errorf("Name() after prop source swap back actual = %q, expected Lin", actual)
+	}
+	if actual := child.SubtitleLabel(); actual != "none" {
+		t.Errorf("SubtitleLabel() after optional prop disappears actual = %q, expected none", actual)
 	}
 }
 `

@@ -312,6 +312,7 @@ func TestCheckProjectReportsModelBindingDiagnostics(t *testing.T) {
 		{Path: "testdata/invalid_model_binding/Parent.tue", Message: `v-model expects string, got bool`, Line: 4, Column: 20},
 		{Path: "testdata/invalid_model_binding/Parent.tue", Message: `v-model is not supported for input type "number"`, Line: 9, Column: 24},
 		{Path: "testdata/invalid_model_binding/Parent.tue", Message: `type string has no field "Text"`, Line: 11, Column: 25},
+		{Path: "testdata/invalid_model_binding/Parent.tue", Message: `v-model target "Label" is not writable`, Line: 12, Column: 19},
 	}
 	if diff := cmp.Diff(expected, summarizeDiagnostics(diagnostics)); diff != "" {
 		t.Errorf("mismatch diagnostics (-expected, +actual):\n%s", diff)
