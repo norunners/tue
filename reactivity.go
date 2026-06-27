@@ -222,6 +222,7 @@ func (w *watcher) run() {
 	if w == nil || w.stopped {
 		return
 	}
+	w.queued = false
 	w.dispose()
 	pushSubscriber(w)
 	defer popSubscriber()
@@ -356,6 +357,9 @@ func flushSubscribers() {
 		pending := scheduler.pending
 		scheduler.pending = nil
 		for _, subscriber := range pending {
+			if !subscriber.isQueued() {
+				continue
+			}
 			subscriber.setQueued(false)
 			subscriber.run()
 		}

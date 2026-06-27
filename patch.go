@@ -268,13 +268,17 @@ func patchComponentVNode(old *mountedVNode, next VNode) (*mountedVNode, error) {
 	if old.component == nil {
 		return nil, fmt.Errorf("mounted component %q is required", old.vnode.Tag)
 	}
-	if next.ComponentUpdater != nil {
-		next.ComponentUpdater(old.component.component)
-	}
-	old.component.scopeAttrs = next.scopeAttrs
-	old.vnode = next
-	if err := old.component.Update(); err != nil {
-		return nil, err
+	var updateErr error
+	Batch(func() {
+		if next.ComponentUpdater != nil {
+			next.ComponentUpdater(old.component.component)
+		}
+		old.component.scopeAttrs = next.scopeAttrs
+		old.vnode = next
+		updateErr = old.component.Update()
+	})
+	if updateErr != nil {
+		return nil, updateErr
 	}
 	old.nodes = mountedNodes(old.component.tree)
 	return old, nil

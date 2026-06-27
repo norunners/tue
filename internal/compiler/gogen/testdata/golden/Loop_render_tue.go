@@ -76,6 +76,9 @@ func renderApp(component *App) tue.VNode {
 						return true, true
 					}
 					child.__tue.__eventSelect = component.selectUser
+					if child.__tue.__inputVersion != nil {
+						child.__tue.__inputVersion.Set(child.__tue.__inputVersion.Get() + 1)
+					}
 					childComp.DefaultSlot = nil
 				})
 				__tueVNode.Key = fmt.Sprint(__tueItem.ID)

@@ -11,6 +11,48 @@ func NewParent() *tue.CompInstance {
 
 func renderParent(component *Parent) tue.VNode {
 	return tue.Element("main", nil, []tue.VNode{func() tue.VNode {
+		if component.ShowBadge() && component.UseAlternate() {
+			return tue.ComponentWithUpdate("UserBadge", func() *tue.CompInstance {
+				child := &UserBadge{__tue: newTueUserBadgeData()}
+				child.__tue.__propName = func() (string, bool) {
+					return component.AlternateName(), true
+				}
+				child.__tue.__propActive = func() (bool, bool) {
+					return true, true
+				}
+				child.__tue.__propSubtitle = func() (string, bool) {
+					return "alternate", true
+				}
+				child.__tue.__eventSelect = component.selectUser
+				child.__tue.__eventRange = component.selectRange
+				child.__tue.__eventTags = component.selectTags
+				child.__tue.__eventDismiss = nil
+				childComp := tue.CompOf(child, renderUserBadge, func() {
+					child.__tue.__computedLabel = tue.ComputedOfFunc(child.label)
+					child.__tue.__computedSubtitleLabel = tue.ComputedOfFunc(child.subtitleLabel)
+				})
+				return childComp
+			}, func(childComp *tue.CompInstance) {
+				child := childComp.Component.(*UserBadge)
+				child.__tue.__propName = func() (string, bool) {
+					return component.AlternateName(), true
+				}
+				child.__tue.__propActive = func() (bool, bool) {
+					return true, true
+				}
+				child.__tue.__propSubtitle = func() (string, bool) {
+					return "alternate", true
+				}
+				child.__tue.__eventSelect = component.selectUser
+				child.__tue.__eventRange = component.selectRange
+				child.__tue.__eventTags = component.selectTags
+				child.__tue.__eventDismiss = nil
+				if child.__tue.__inputVersion != nil {
+					child.__tue.__inputVersion.Set(child.__tue.__inputVersion.Get() + 1)
+				}
+				childComp.DefaultSlot = nil
+			})
+		}
 		if component.ShowBadge() {
 			return tue.ComponentWithUpdate("UserBadge", func() *tue.CompInstance {
 				child := &UserBadge{__tue: newTueUserBadgeData()}
@@ -27,6 +69,7 @@ func renderParent(component *Parent) tue.VNode {
 				child.__tue.__eventDismiss = nil
 				childComp := tue.CompOf(child, renderUserBadge, func() {
 					child.__tue.__computedLabel = tue.ComputedOfFunc(child.label)
+					child.__tue.__computedSubtitleLabel = tue.ComputedOfFunc(child.subtitleLabel)
 				})
 				return childComp
 			}, func(childComp *tue.CompInstance) {
@@ -42,6 +85,9 @@ func renderParent(component *Parent) tue.VNode {
 				child.__tue.__eventRange = component.selectRange
 				child.__tue.__eventTags = component.selectTags
 				child.__tue.__eventDismiss = nil
+				if child.__tue.__inputVersion != nil {
+					child.__tue.__inputVersion.Set(child.__tue.__inputVersion.Get() + 1)
+				}
 				childComp.DefaultSlot = nil
 			})
 		}

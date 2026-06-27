@@ -1,6 +1,7 @@
 <template>
 	<main>
-		<UserBadge v-if="ShowBadge" :name="Name" active @select="selectUser" @range="selectRange" @tags="selectTags" />
+		<UserBadge v-if="ShowBadge && UseAlternate" :name="AlternateName" active subtitle="alternate" @select="selectUser" @range="selectRange" @tags="selectTags" />
+		<UserBadge v-else-if="ShowBadge" :name="Name" active @select="selectUser" @range="selectRange" @tags="selectTags" />
 	</main>
 </template>
 
@@ -11,14 +12,17 @@ import tue "github.com/norunners/tue"
 
 type Parent struct {
 	tue.Comp[struct {
-		Name      string `state:""`
-		ShowBadge bool   `state:""`
-		Selected  string `state:""`
+		Name          string `state:""`
+		AlternateName string `state:""`
+		ShowBadge     bool   `state:""`
+		UseAlternate  bool   `state:""`
+		Selected      string `state:""`
 	}]
 }
 
 func (p *Parent) Init(tue.Context) {
 	p.NameSet("Ada")
+	p.AlternateNameSet("Zoe")
 }
 
 func (p *Parent) selectUser(name string) {

@@ -302,7 +302,7 @@ func (g *projectGenerator) generatedComponentSource(file File) ([]byte, bool) {
 	for alias, path := range imports {
 		generated.ImportName(path, alias)
 	}
-	fields := make([]jen.Code, 0, len(component.Props)+len(component.Events)+len(component.States)+len(component.Computed))
+	fields := make([]jen.Code, 0, len(component.Props)+len(component.Events)+len(component.States)+len(component.Computed)+1)
 	for _, prop := range component.Props {
 		valueType, ok := renderGeneratedTypeExpression(prop.Type, imports)
 		if !ok {
@@ -310,6 +310,9 @@ func (g *projectGenerator) generatedComponentSource(file File) ([]byte, bool) {
 			return nil, false
 		}
 		fields = append(fields, jen.Id(script.PropFieldName(prop.GoName)).Func().Params().Params(valueType, jen.Bool()))
+	}
+	if len(component.Props) != 0 {
+		fields = append(fields, jen.Id(script.InputVersionFieldName()).Qual(tueImportPath, "State").Types(jen.Int()))
 	}
 	for _, event := range component.Events {
 		callbackType, ok := renderGeneratedTypeExpression(event.FunctionType(), imports)
@@ -336,7 +339,12 @@ func (g *projectGenerator) generatedComponentSource(file File) ([]byte, bool) {
 		fields = append(fields, jen.Id(script.ComputedFieldName(computed.GoName)).Qual(tueImportPath, "Computed").Types(valueType))
 	}
 	generated.Type().Id(component.GeneratedType).Struct(fields...)
-	initialValues := make([]jen.Code, 0, len(component.States))
+	initialValues := make([]jen.Code, 0, len(component.States)+1)
+	if len(component.Props) != 0 {
+		initialValues = append(initialValues,
+			jen.Id(script.InputVersionFieldName()).Op(":").Qual(tueImportPath, "StateOf").Call(jen.Lit(0)),
+		)
+	}
 	for _, state := range component.States {
 		valueType, _ := renderGeneratedTypeExpression(state.Type, imports)
 		initialValues = append(initialValues,
@@ -352,7 +360,14 @@ func (g *projectGenerator) generatedComponentSource(file File) ([]byte, bool) {
 		fieldName := script.PropFieldName(prop.GoName)
 		presenceName := script.PropOKName(prop.GoName)
 		presenceStatements := []jen.Code{
-			jen.If(jen.Id("component").Op("==").Nil().Op("||").Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Op("==").Nil()).Block(
+			jen.If(jen.Id("component").Op("==").Nil()).Block(
+				jen.Var().Id("zero").Add(valueType),
+				jen.Return(jen.Id("zero"), jen.False()),
+			),
+			jen.If(jen.Id("component").Dot(script.GeneratedFieldName()).Dot(script.InputVersionFieldName()).Op("!=").Nil()).Block(
+				jen.Id("_").Op("=").Id("component").Dot(script.GeneratedFieldName()).Dot(script.InputVersionFieldName()).Dot("Get").Call(),
+			),
+			jen.If(jen.Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Op("==").Nil()).Block(
 				jen.Var().Id("zero").Add(valueType),
 				jen.Return(jen.Id("zero"), jen.False()),
 			),
@@ -1080,6 +1095,16 @@ func (g *fileGenerator) renderComponentUpdater(child componentBinding, fields []
 		)
 		for _, field := range fields {
 			statements = append(statements, jen.Id("child").Dot(script.GeneratedFieldName()).Dot(field.Name).Op("=").Add(field.Value))
+		}
+		if len(child.component.Props) != 0 {
+			inputVersion := func() *jen.Statement {
+				return jen.Id("child").Dot(script.GeneratedFieldName()).Dot(script.InputVersionFieldName())
+			}
+			statements = append(statements,
+				jen.If(inputVersion().Op("!=").Nil()).Block(
+					inputVersion().Dot("Set").Call(inputVersion().Dot("Get").Call().Op("+").Lit(1)),
+				),
+			)
 		}
 	}
 	if defaultSlot == nil {

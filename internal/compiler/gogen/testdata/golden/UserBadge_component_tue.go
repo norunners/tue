@@ -5,23 +5,32 @@ package fixtures
 import "github.com/norunners/tue"
 
 type tueUserBadgeData struct {
-	__propName          func() (string, bool)
-	__propActive        func() (bool, bool)
-	__propSubtitle      func() (string, bool)
-	__eventSelect       func(value string)
-	__eventRange        func(value1 string, value2 int)
-	__eventTags         func(value []string)
-	__eventDismiss      func(value string)
-	__stateExpanded     tue.State[bool]
-	__stateInitialLabel tue.State[string]
-	__computedLabel     tue.Computed[string]
+	__propName              func() (string, bool)
+	__propActive            func() (bool, bool)
+	__propSubtitle          func() (string, bool)
+	__inputVersion          tue.State[int]
+	__eventSelect           func(value string)
+	__eventRange            func(value1 string, value2 int)
+	__eventTags             func(value []string)
+	__eventDismiss          func(value string)
+	__stateExpanded         tue.State[bool]
+	__stateInitialLabel     tue.State[string]
+	__computedLabel         tue.Computed[string]
+	__computedSubtitleLabel tue.Computed[string]
 }
 
 func newTueUserBadgeData() tueUserBadgeData {
-	return tueUserBadgeData{__stateExpanded: tue.StateOf(*new(bool)), __stateInitialLabel: tue.StateOf(*new(string))}
+	return tueUserBadgeData{__inputVersion: tue.StateOf(0), __stateExpanded: tue.StateOf(*new(bool)), __stateInitialLabel: tue.StateOf(*new(string))}
 }
 func (component *UserBadge) NameOk() (string, bool) {
-	if component == nil || component.__tue.__propName == nil {
+	if component == nil {
+		var zero string
+		return zero, false
+	}
+	if component.__tue.__inputVersion != nil {
+		_ = component.__tue.__inputVersion.Get()
+	}
+	if component.__tue.__propName == nil {
 		var zero string
 		return zero, false
 	}
@@ -36,7 +45,14 @@ func (component *UserBadge) Name() string {
 	return value
 }
 func (component *UserBadge) ActiveOk() (bool, bool) {
-	if component == nil || component.__tue.__propActive == nil {
+	if component == nil {
+		var zero bool
+		return zero, false
+	}
+	if component.__tue.__inputVersion != nil {
+		_ = component.__tue.__inputVersion.Get()
+	}
+	if component.__tue.__propActive == nil {
 		var zero bool
 		return zero, false
 	}
@@ -51,7 +67,14 @@ func (component *UserBadge) Active() bool {
 	return value
 }
 func (component *UserBadge) SubtitleOk() (string, bool) {
-	if component == nil || component.__tue.__propSubtitle == nil {
+	if component == nil {
+		var zero string
+		return zero, false
+	}
+	if component.__tue.__inputVersion != nil {
+		_ = component.__tue.__inputVersion.Get()
+	}
+	if component.__tue.__propSubtitle == nil {
 		var zero string
 		return zero, false
 	}
@@ -125,4 +148,11 @@ func (component *UserBadge) Label() string {
 		return zero
 	}
 	return component.__tue.__computedLabel.Get()
+}
+func (component *UserBadge) SubtitleLabel() string {
+	if component == nil || component.__tue.__computedSubtitleLabel == nil {
+		var zero string
+		return zero
+	}
+	return component.__tue.__computedSubtitleLabel.Get()
 }

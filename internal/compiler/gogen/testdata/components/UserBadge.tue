@@ -9,16 +9,17 @@ import tue "github.com/norunners/tue"
 
 type UserBadge struct {
 	tue.Comp[struct {
-		Name     string            `prop:",required"`
-		Active   bool              `prop:"active"`
-		Subtitle string            `prop:""`
-		Expanded bool              `state:""`
-		InitialLabel string        `state:""`
-		Label    string            `computed:"label"`
-		Select   func(string)      `event:""`
-		Range    func(string, int) `event:""`
-		Tags     func([]string)    `event:""`
-		Dismiss  func(string)      `event:""`
+		Name          string       `prop:",required"`
+		Active        bool         `prop:"active"`
+		Subtitle      string       `prop:""`
+		Expanded      bool         `state:""`
+		InitialLabel  string       `state:""`
+		Label         string       `computed:"label"`
+		SubtitleLabel string       `computed:"subtitleLabel"`
+		Select        func(string)      `event:""`
+		Range         func(string, int) `event:""`
+		Tags          func([]string)    `event:""`
+		Dismiss       func(string)      `event:""`
 	}]
 	labelCalls int
 }
@@ -29,6 +30,13 @@ func (u *UserBadge) label() string {
 		return u.Name() + " expanded"
 	}
 	return u.Name()
+}
+
+func (u *UserBadge) subtitleLabel() string {
+	if subtitle, ok := u.SubtitleOk(); ok {
+		return subtitle
+	}
+	return "none"
 }
 
 func (u *UserBadge) Init(tue.Context) {

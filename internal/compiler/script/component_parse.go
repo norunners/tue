@@ -405,6 +405,11 @@ func PropFieldName(name string) string {
 	return "__prop" + exportedIdentifier(name)
 }
 
+// InputVersionFieldName returns the hidden generated prop binding version field.
+func InputVersionFieldName() string {
+	return "__inputVersion"
+}
+
 // EventFieldName returns the hidden generated event callback field.
 func EventFieldName(name string) string {
 	return "__event" + exportedIdentifier(name)

@@ -1034,6 +1034,9 @@ func TestGeneratedComponentAPI(t *testing.T) {
 	if actual := child.InitialLabel(); actual != "Ada expanded" {
 		t.Errorf("InitialLabel() actual = %q, expected Init to read Ada expanded", actual)
 	}
+	if actual := child.SubtitleLabel(); actual != "none" {
+		t.Errorf("SubtitleLabel() actual = %q, expected none", actual)
+	}
 	if actual := child.Label(); actual != "Ada expanded" {
 		t.Errorf("cached Label() actual = %q, expected Ada expanded", actual)
 	}
@@ -1084,6 +1087,29 @@ func TestGeneratedComponentAPI(t *testing.T) {
 	}
 	if child.Expanded() {
 		t.Error("generated state was reset while patching parent bindings")
+	}
+
+	parent.UseAlternateSet(true)
+	patched = renderParent(parent).Children[0]
+	patched.ComponentUpdater(childInstance)
+	if actual := child.Name(); actual != "Zoe" {
+		t.Errorf("Name() after prop source swap actual = %q, expected Zoe", actual)
+	}
+	if actual := child.Label(); actual != "Zoe" {
+		t.Errorf("Label() after prop source swap actual = %q, expected Zoe", actual)
+	}
+	if actual := child.SubtitleLabel(); actual != "alternate" {
+		t.Errorf("SubtitleLabel() after optional prop appears actual = %q, expected alternate", actual)
+	}
+
+	parent.UseAlternateSet(false)
+	patched = renderParent(parent).Children[0]
+	patched.ComponentUpdater(childInstance)
+	if actual := child.Name(); actual != "Lin" {
+		t.Errorf("Name() after prop source swap back actual = %q, expected Lin", actual)
+	}
+	if actual := child.SubtitleLabel(); actual != "none" {
+		t.Errorf("SubtitleLabel() after optional prop disappears actual = %q, expected none", actual)
 	}
 }
 `
