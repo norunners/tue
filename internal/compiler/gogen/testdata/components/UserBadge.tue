@@ -1,11 +1,19 @@
 <template>
-	<button type="button" @click="choose">{{ Name }} {{ Active }} {{ Label }} {{ Expanded }}</button>
+	<button type="button" @click="choose">{{ Name }} {{ Active }} {{ Label }} {{ Expanded }} {{ Profile.Name }} {{ ProfileLoading }}</button>
 </template>
 
 <script lang="go">
 package fixtures
 
-import tue "github.com/norunners/tue"
+import (
+	"context"
+
+	tue "github.com/norunners/tue"
+)
+
+type BadgeProfile struct {
+	Name string
+}
 
 type UserBadge struct {
 	tue.Comp[struct {
@@ -16,6 +24,7 @@ type UserBadge struct {
 		InitialLabel  string       `state:""`
 		Label         string       `computed:"label"`
 		SubtitleLabel string       `computed:"subtitleLabel"`
+		Profile       BadgeProfile `resource:"loadProfile"`
 		Select        func(string)      `event:""`
 		Range         func(string, int) `event:""`
 		Tags          func([]string)    `event:""`
@@ -37,6 +46,10 @@ func (u *UserBadge) subtitleLabel() string {
 		return subtitle
 	}
 	return "none"
+}
+
+func (u *UserBadge) loadProfile(context.Context) (BadgeProfile, error) {
+	return BadgeProfile{Name: u.Name()}, nil
 }
 
 func (u *UserBadge) Init(tue.Context) {

@@ -98,7 +98,7 @@ func TestCompOfCallsOptionalInit(t *testing.T) {
 func TestCompOfRunsGeneratedInitializersBeforeInit(t *testing.T) {
 	component := &generatedInitFixture{}
 
-	CompOf(component, nil, func() {
+	CompOf(component, nil, func(Context) {
 		component.value = "generated"
 	})
 

@@ -4,6 +4,5 @@ package script
 type FieldKind string
 
 const (
-	FieldKindLocal    FieldKind = "local"
-	FieldKindResource FieldKind = "resource"
+	FieldKindLocal FieldKind = "local"
 )

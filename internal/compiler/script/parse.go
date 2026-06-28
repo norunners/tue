@@ -93,6 +93,7 @@ type extractor struct {
 	events      []Event
 	states      []State
 	computeds   []Computed
+	resources   []Resource
 	diagnostics []Diagnostic
 }
 
@@ -308,6 +309,33 @@ func (e *extractor) generatedMethodDeclarations(file *ast.File, componentName st
 			declared[getter] = true
 		}
 	}
+	for _, resource := range e.resources {
+		getter := ResourceGetterName(resource.GoName)
+		if !declared[getter] {
+			fmt.Fprintf(&source, "func (*%s) %s() %s { panic(\"generated\") }\n", componentName, getter, resource.Type)
+			declared[getter] = true
+		}
+		presence := ResourceOKName(resource.GoName)
+		if !declared[presence] {
+			fmt.Fprintf(&source, "func (*%s) %s() (%s, bool) { panic(\"generated\") }\n", componentName, presence, resource.Type)
+			declared[presence] = true
+		}
+		loading := ResourceLoadingName(resource.GoName)
+		if !declared[loading] {
+			fmt.Fprintf(&source, "func (*%s) %s() bool { panic(\"generated\") }\n", componentName, loading)
+			declared[loading] = true
+		}
+		failure := ResourceErrorName(resource.GoName)
+		if !declared[failure] {
+			fmt.Fprintf(&source, "func (*%s) %s() error { panic(\"generated\") }\n", componentName, failure)
+			declared[failure] = true
+		}
+		reload := ResourceReloadName(resource.GoName)
+		if !declared[reload] {
+			fmt.Fprintf(&source, "func (*%s) %s() { panic(\"generated\") }\n", componentName, reload)
+			declared[reload] = true
+		}
+	}
 
 	generated, err := goparser.ParseFile(e.fset, e.path+"#component", source.String(), goparser.AllErrors)
 	if err != nil {
@@ -408,13 +436,14 @@ func (e *extractor) extractComponent(file *File, astFile *ast.File, componentNam
 	}
 
 	component := &Component{
-		Name:     componentName,
-		Span:     e.nodeSpan(spec),
-		NameSpan: e.nodeSpan(spec.Name),
-		Props:    append([]Prop(nil), e.props...),
-		Events:   append([]Event(nil), e.events...),
-		States:   append([]State(nil), e.states...),
-		Computed: append([]Computed(nil), e.computeds...),
+		Name:      componentName,
+		Span:      e.nodeSpan(spec),
+		NameSpan:  e.nodeSpan(spec.Name),
+		Props:     append([]Prop(nil), e.props...),
+		Events:    append([]Event(nil), e.events...),
+		States:    append([]State(nil), e.states...),
+		Computed:  append([]Computed(nil), e.computeds...),
+		Resources: append([]Resource(nil), e.resources...),
 	}
 	if e.hasComp {
 		component.GeneratedType = GeneratedTypeName(componentName)
@@ -498,13 +527,7 @@ func (e *extractor) extractFields(component *Component, structType *ast.StructTy
 		}
 
 		for _, name := range astField.Names {
-			field := e.fieldFromAST(name, astField)
-			switch field.Kind {
-			case FieldKindResource:
-				component.Resources = append(component.Resources, field)
-			default:
-				component.LocalFields = append(component.LocalFields, field)
-			}
+			component.LocalFields = append(component.LocalFields, e.fieldFromAST(name, astField))
 		}
 	}
 }
@@ -553,18 +576,15 @@ func (e *extractor) classifyField(fieldName string, expr ast.Expr) (FieldKind, s
 		)
 		return FieldKindLocal, ""
 	}
-	kind, ok := fieldKindForTueType(typeName)
-	if !ok {
-		return FieldKindLocal, ""
-	}
-	if len(args) != 1 {
+	if typeName == "Resource" {
 		e.addDiagnostic(
-			fmt.Sprintf("field %q must use tue.%s[T] with exactly one type argument", fieldName, typeName),
+			fmt.Sprintf("component resource %q must be declared inside embedded tue.Comp", fieldName),
 			e.nodeSpan(expr),
 		)
-		return kind, ""
+		return FieldKindLocal, ""
 	}
-	return kind, e.nodeString(args[0])
+	_ = args
+	return FieldKindLocal, ""
 }
 
 func (e *extractor) tueGenericType(expr ast.Expr) (string, []ast.Expr, bool) {
@@ -602,15 +622,6 @@ func (e *extractor) tueTypeName(expr ast.Expr) (string, bool) {
 		return "", false
 	default:
 		return "", false
-	}
-}
-
-func fieldKindForTueType(name string) (FieldKind, bool) {
-	switch name {
-	case "Resource":
-		return FieldKindResource, true
-	default:
-		return FieldKindLocal, false
 	}
 }
 
@@ -668,10 +679,8 @@ func (e *extractor) validateGeneratedMembers(component *Component) {
 	for _, method := range component.Methods {
 		declared[method.Name] = method.NameSpan
 	}
-	for _, fields := range [][]Field{component.LocalFields, component.Resources} {
-		for _, field := range fields {
-			declared[field.Name] = field.NameSpan
-		}
+	for _, field := range component.LocalFields {
+		declared[field.Name] = field.NameSpan
 	}
 	if span, exists := declared[GeneratedFieldName()]; exists {
 		e.addDiagnostic(fmt.Sprintf("component member %s is reserved for generated storage", GeneratedFieldName()), span)
@@ -763,6 +772,7 @@ func (e *extractor) validateGeneratedMembers(component *Component) {
 		})
 	}
 	e.validateGeneratedComputedMembers(component, declared, authoredMethods)
+	e.validateGeneratedResourceMembers(component, declared, authoredMethods)
 }
 
 func (e *extractor) validateGeneratedComputedMembers(component *Component, declared map[string]sfc.Span, authoredMethods []Method) {
@@ -797,6 +807,108 @@ func (e *extractor) validateGeneratedComputedMembers(component *Component, decla
 			NameSpan:        computed.NameSpan,
 		})
 	}
+}
+
+func (e *extractor) validateGeneratedResourceMembers(component *Component, declared map[string]sfc.Span, authoredMethods []Method) {
+	for _, resource := range component.Resources {
+		if !e.validateGeneratedResourceMethodNames(component, declared, resource) {
+			continue
+		}
+
+		method, ok := authoredMethod(authoredMethods, resource.MethodName)
+		if !ok {
+			e.addDiagnostic(fmt.Sprintf("component resource %q loader method %s was not found", resource.Name, resource.MethodName), resource.NameSpan)
+			continue
+		}
+		if !resourceLoaderSignatureOK(method, resource.Type) {
+			e.addDiagnostic(
+				fmt.Sprintf("component resource %q loader method %s must have signature func(context.Context) (%s, error)", resource.Name, resource.MethodName, resource.Type),
+				method.NameSpan,
+			)
+			continue
+		}
+
+		component.Methods = append(component.Methods,
+			Method{
+				Name:            ResourceGetterName(resource.GoName),
+				ReceiverName:    component.Name,
+				PointerReceiver: true,
+				ImplicitGetter:  true,
+				Results:         []Parameter{{Type: resource.Type, Span: resource.TypeSpan, TypeSpan: resource.TypeSpan}},
+				Span:            resource.Span,
+				NameSpan:        resource.NameSpan,
+			},
+			Method{
+				Name:            ResourceOKName(resource.GoName),
+				ReceiverName:    component.Name,
+				PointerReceiver: true,
+				Results: []Parameter{
+					{Type: resource.Type, Span: resource.TypeSpan, TypeSpan: resource.TypeSpan},
+					{Type: "bool", Span: resource.Span, TypeSpan: resource.Span},
+				},
+				Span:     resource.Span,
+				NameSpan: resource.NameSpan,
+			},
+			Method{
+				Name:            ResourceLoadingName(resource.GoName),
+				ReceiverName:    component.Name,
+				PointerReceiver: true,
+				ImplicitGetter:  true,
+				Results:         []Parameter{{Type: "bool", Span: resource.Span, TypeSpan: resource.Span}},
+				Span:            resource.Span,
+				NameSpan:        resource.NameSpan,
+			},
+			Method{
+				Name:            ResourceErrorName(resource.GoName),
+				ReceiverName:    component.Name,
+				PointerReceiver: true,
+				ImplicitGetter:  true,
+				Results:         []Parameter{{Type: "error", Span: resource.Span, TypeSpan: resource.Span}},
+				Span:            resource.Span,
+				NameSpan:        resource.NameSpan,
+			},
+			Method{
+				Name:            ResourceReloadName(resource.GoName),
+				ReceiverName:    component.Name,
+				PointerReceiver: true,
+				Span:            resource.Span,
+				NameSpan:        resource.NameSpan,
+			},
+		)
+	}
+}
+
+func (e *extractor) validateGeneratedResourceMethodNames(component *Component, declared map[string]sfc.Span, resource Resource) bool {
+	methods := []struct {
+		name        string
+		description string
+	}{
+		{name: ResourceGetterName(resource.GoName), description: "getter"},
+		{name: ResourceOKName(resource.GoName), description: "presence getter"},
+		{name: ResourceLoadingName(resource.GoName), description: "loading getter"},
+		{name: ResourceErrorName(resource.GoName), description: "error getter"},
+		{name: ResourceReloadName(resource.GoName), description: "reload method"},
+	}
+
+	valid := true
+	for _, method := range methods {
+		if _, exists := declared[method.name]; exists {
+			e.addDiagnostic(fmt.Sprintf("generated resource %s %s conflicts with a component member", method.description, method.name), resource.NameSpan)
+			valid = false
+			continue
+		}
+		declared[method.name] = resource.NameSpan
+	}
+	return valid
+}
+
+func resourceLoaderSignatureOK(method *Method, resourceType string) bool {
+	return method != nil &&
+		len(method.Parameters) == 1 &&
+		len(method.Results) == 2 &&
+		strings.TrimSpace(method.Parameters[0].Type) == "context.Context" &&
+		strings.TrimSpace(method.Results[0].Type) == strings.TrimSpace(resourceType) &&
+		strings.TrimSpace(method.Results[1].Type) == "error"
 }
 
 func authoredMethod(methods []Method, name string) (*Method, bool) {

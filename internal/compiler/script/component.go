@@ -42,8 +42,8 @@ type Component struct {
 	Events        []Event
 	States        []State
 	Computed      []Computed
+	Resources     []Resource
 	LocalFields   []Field
-	Resources     []Field
 	Methods       []Method
 	Init          *Method
 	Allocation    Allocation
@@ -87,6 +87,17 @@ type State struct {
 
 // Computed is a generated read-only reactive value declared by a Comp marker.
 type Computed struct {
+	Name       string
+	GoName     string
+	MethodName string
+	Type       string
+	Span       sfc.Span
+	NameSpan   sfc.Span
+	TypeSpan   sfc.Span
+}
+
+// Resource is a generated async value declared by a Comp marker.
+type Resource struct {
 	Name       string
 	GoName     string
 	MethodName string

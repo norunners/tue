@@ -31,9 +31,6 @@ func componentScope(component *script.Component) *scope {
 	for _, field := range component.LocalFields {
 		scope.add(symbol{Name: field.Name, Type: fieldType(field), Writable: true})
 	}
-	for _, field := range component.Resources {
-		scope.add(symbol{Name: field.Name, Type: fieldType(field)})
-	}
 	for _, method := range component.Methods {
 		scope.add(symbol{
 			Name:           method.Name,

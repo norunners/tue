@@ -28,10 +28,10 @@ func TestParseExtractsComponentDeclaration(t *testing.T) {
 	if diff := cmp.Diff("fixtures", file.PackageName); diff != "" {
 		t.Errorf("mismatch package name (-expected, +actual):\n%s", diff)
 	}
-	if diff := cmp.Diff([]importSummary{{
-		Name: "tue",
-		Path: "github.com/norunners/tue",
-	}}, summarizeImports(file.Imports)); diff != "" {
+	if diff := cmp.Diff([]importSummary{
+		{Name: "context", Path: "context"},
+		{Name: "tue", Path: "github.com/norunners/tue"},
+	}, summarizeImports(file.Imports)); diff != "" {
 		t.Errorf("mismatch imports (-expected, +actual):\n%s", diff)
 	}
 	expectedTypes := map[string]bool{
@@ -49,9 +49,7 @@ func TestParseExtractsComponentDeclaration(t *testing.T) {
 	}
 	if diff := cmp.Diff([]structSummary{
 		{Name: "User", Fields: []fieldSummary{}},
-		{Name: "Dashboard", Fields: []fieldSummary{
-			{Kind: FieldKindLocal, Name: "user", Type: "tue.Resource[User]"},
-		}},
+		{Name: "Dashboard", Fields: []fieldSummary{}},
 	}, summarizeStructs(file.Structs)); diff != "" {
 		t.Errorf("mismatch structs (-expected, +actual):\n%s", diff)
 	}
@@ -101,7 +99,12 @@ func TestParseExtractsComponentDeclaration(t *testing.T) {
 	if diff := cmp.Diff(expectedComputeds, summarizeComputeds(component.Computed)); diff != "" {
 		t.Errorf("mismatch component computeds (-expected, +actual):\n%s", diff)
 	}
-	assertField(t, component.Resources, "user", FieldKindResource, "tue.Resource[User]", "User")
+	expectedResources := []resourceSummary{
+		{Name: "user", GoName: "User", MethodName: "loadUser", Type: "User"},
+	}
+	if diff := cmp.Diff(expectedResources, summarizeResources(component.Resources)); diff != "" {
+		t.Errorf("mismatch component resources (-expected, +actual):\n%s", diff)
+	}
 
 	init, err := requireInit(component)
 	if err != nil {
@@ -144,6 +147,16 @@ func TestParseExtractsComponentDeclaration(t *testing.T) {
 			ReceiverName:    "Dashboard",
 			PointerReceiver: true,
 			Results:         []parameterSummary{{Type: "int"}},
+		},
+		{
+			Name:            "loadUser",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Parameters:      []parameterSummary{{Type: "context.Context"}},
+			Results: []parameterSummary{
+				{Type: "User"},
+				{Type: "error"},
+			},
 		},
 		{
 			Name:            "Name",
@@ -262,6 +275,38 @@ func TestParseExtractsComponentDeclaration(t *testing.T) {
 			ReceiverName:    "Dashboard",
 			PointerReceiver: true,
 			Results:         []parameterSummary{{Type: "int"}},
+		},
+		{
+			Name:            "User",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results:         []parameterSummary{{Type: "User"}},
+		},
+		{
+			Name:            "UserOk",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results: []parameterSummary{
+				{Type: "User"},
+				{Type: "bool"},
+			},
+		},
+		{
+			Name:            "UserLoading",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results:         []parameterSummary{{Type: "bool"}},
+		},
+		{
+			Name:            "UserError",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
+			Results:         []parameterSummary{{Type: "error"}},
+		},
+		{
+			Name:            "UserReload",
+			ReceiverName:    "Dashboard",
+			PointerReceiver: true,
 		},
 	}, summarizeMethods(component.Methods)); diff != "" {
 		t.Errorf("mismatch methods (-expected, +actual):\n%s", diff)
@@ -445,7 +490,7 @@ func TestParseSFCComponentDeclarationDiagnostics(t *testing.T) {
 		{
 			name:     "invalid field",
 			fixture:  "component_invalid_field.tue",
-			expected: []string{`component declaration field "Name": must declare exactly one prop, event, state, or computed tag`},
+			expected: []string{`component declaration field "Name": must declare exactly one prop, event, state, computed, or resource tag`},
 		},
 		{
 			name:     "unknown tag",
@@ -505,7 +550,7 @@ func TestParseSFCComponentDeclarationDiagnostics(t *testing.T) {
 		{
 			name:     "mixed tags",
 			fixture:  "component_mixed_tags.tue",
-			expected: []string{`component declaration field "Name": must declare exactly one prop, event, state, or computed tag`},
+			expected: []string{`component declaration field "Name": must declare exactly one prop, event, state, computed, or resource tag`},
 		},
 		{
 			name:     "named marker",
@@ -586,6 +631,41 @@ func TestParseSFCComponentDeclarationDiagnostics(t *testing.T) {
 			name:     "computed outside marker",
 			fixture:  "component_external_computed.tue",
 			expected: []string{`component computed "Label" must be declared inside embedded tue.Comp`},
+		},
+		{
+			name:     "resource loader is required",
+			fixture:  "component_resource_empty_loader.tue",
+			expected: []string{`component resource "user" must name its loader method`},
+		},
+		{
+			name:     "resource loader is an identifier",
+			fixture:  "component_resource_invalid_loader.tue",
+			expected: []string{`component resource "user" has invalid loader method "load-user"`},
+		},
+		{
+			name:     "resource loader exists",
+			fixture:  "component_resource_missing_loader.tue",
+			expected: []string{`component resource "user" loader method loadUser was not found`},
+		},
+		{
+			name:     "resource loader signature",
+			fixture:  "component_resource_signature.tue",
+			expected: []string{`component resource "user" loader method loadUser must have signature func(context.Context) (User, error)`},
+		},
+		{
+			name:     "resource getter collision",
+			fixture:  "component_resource_collision.tue",
+			expected: []string{`generated resource getter User conflicts with a component member`},
+		},
+		{
+			name:     "resource value is not a function",
+			fixture:  "component_resource_function.tue",
+			expected: []string{`component resource "load" must not have a function type`},
+		},
+		{
+			name:     "resource outside marker",
+			fixture:  "component_external_resource.tue",
+			expected: []string{`component resource "User" must be declared inside embedded tue.Comp`},
 		},
 	}
 
@@ -717,26 +797,6 @@ func requireInit(component *Component) (*Method, error) {
 	return component.Init, nil
 }
 
-func assertField(t *testing.T, fields []Field, name string, kind FieldKind, fieldType string, valueType string) {
-	t.Helper()
-
-	for _, field := range fields {
-		if field.Name == name {
-			if diff := cmp.Diff(fieldSummary{
-				Kind:      kind,
-				Name:      name,
-				Type:      fieldType,
-				ValueType: valueType,
-				Exported:  false,
-			}, summarizeField(field)); diff != "" {
-				t.Errorf("mismatch field: %q (-expected, +actual):\n%s", name, diff)
-			}
-			return
-		}
-	}
-	t.Errorf("field %q not found in %#v", name, summarizeFields(fields))
-}
-
 func assertDiagnosticMessages(t *testing.T, diagnostics []Diagnostic, expected []string) {
 	t.Helper()
 
@@ -796,6 +856,13 @@ type stateSummary struct {
 }
 
 type computedSummary struct {
+	Name       string
+	GoName     string
+	MethodName string
+	Type       string
+}
+
+type resourceSummary struct {
 	Name       string
 	GoName     string
 	MethodName string
@@ -885,6 +952,19 @@ func summarizeComputeds(computeds []Computed) []computedSummary {
 			GoName:     computed.GoName,
 			MethodName: computed.MethodName,
 			Type:       computed.Type,
+		}
+	}
+	return summaries
+}
+
+func summarizeResources(resources []Resource) []resourceSummary {
+	summaries := make([]resourceSummary, len(resources))
+	for index, resource := range resources {
+		summaries[index] = resourceSummary{
+			Name:       resource.Name,
+			GoName:     resource.GoName,
+			MethodName: resource.MethodName,
+			Type:       resource.Type,
 		}
 	}
 	return summaries

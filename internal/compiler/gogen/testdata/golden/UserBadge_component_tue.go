@@ -17,6 +17,7 @@ type tueUserBadgeData struct {
 	__stateInitialLabel     tue.State[string]
 	__computedLabel         tue.Computed[string]
 	__computedSubtitleLabel tue.Computed[string]
+	__resourceProfile       tue.Resource[BadgeProfile]
 }
 
 func newTueUserBadgeData() tueUserBadgeData {
@@ -128,6 +129,7 @@ func (component *UserBadge) ExpandedSet(value bool) {
 		return
 	}
 	component.__tue.__stateExpanded.Set(value)
+	component.ProfileReload()
 }
 func (component *UserBadge) InitialLabel() string {
 	if component == nil || component.__tue.__stateInitialLabel == nil {
@@ -141,6 +143,7 @@ func (component *UserBadge) InitialLabelSet(value string) {
 		return
 	}
 	component.__tue.__stateInitialLabel.Set(value)
+	component.ProfileReload()
 }
 func (component *UserBadge) Label() string {
 	if component == nil || component.__tue.__computedLabel == nil {
@@ -155,4 +158,33 @@ func (component *UserBadge) SubtitleLabel() string {
 		return zero
 	}
 	return component.__tue.__computedSubtitleLabel.Get()
+}
+func (component *UserBadge) ProfileOk() (BadgeProfile, bool) {
+	if component == nil || component.__tue.__resourceProfile == nil {
+		var zero BadgeProfile
+		return zero, false
+	}
+	return component.__tue.__resourceProfile.Value()
+}
+func (component *UserBadge) Profile() BadgeProfile {
+	value, _ := component.ProfileOk()
+	return value
+}
+func (component *UserBadge) ProfileLoading() bool {
+	if component == nil || component.__tue.__resourceProfile == nil {
+		return false
+	}
+	return component.__tue.__resourceProfile.Loading()
+}
+func (component *UserBadge) ProfileError() error {
+	if component == nil || component.__tue.__resourceProfile == nil {
+		return nil
+	}
+	return component.__tue.__resourceProfile.Error()
+}
+func (component *UserBadge) ProfileReload() {
+	if component == nil || component.__tue.__resourceProfile == nil {
+		return
+	}
+	component.__tue.__resourceProfile.Reload()
 }

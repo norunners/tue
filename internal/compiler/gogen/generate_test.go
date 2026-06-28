@@ -1003,9 +1003,30 @@ func TestGeneratedComponentBehavior(t *testing.T) {
 
 import (
 	"testing"
+	"time"
 
 	tue "github.com/norunners/tue"
 )
+
+func waitForProfileName(t *testing.T, child *UserBadge, expected string) {
+	t.Helper()
+
+	deadline := time.After(time.Second)
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		profile, ok := child.ProfileOk()
+		if ok && profile.Name == expected && !child.ProfileLoading() && child.ProfileError() == nil {
+			return
+		}
+
+		select {
+		case <-ticker.C:
+		case <-deadline:
+			t.Fatalf("timed out waiting for profile %q; actual = %#v ok=%v loading=%v err=%v", expected, profile, ok, child.ProfileLoading(), child.ProfileError())
+		}
+	}
+}
 
 func TestGeneratedComponentAPI(t *testing.T) {
 	parentInstance := NewParent()
@@ -1028,6 +1049,7 @@ func TestGeneratedComponentAPI(t *testing.T) {
 	if _, ok := child.NameOk(); !ok {
 		t.Error("NameOk() did not report the supplied prop")
 	}
+	waitForProfileName(t, child, "Ada")
 	if actual := child.Label(); actual != "Ada expanded" {
 		t.Errorf("Label() actual = %q, expected Ada expanded", actual)
 	}
@@ -1065,6 +1087,7 @@ func TestGeneratedComponentAPI(t *testing.T) {
 	if actual := child.Label(); actual != "Marie" {
 		t.Errorf("Label() after state change actual = %q, expected Marie", actual)
 	}
+	waitForProfileName(t, child, "Marie")
 	if child.labelCalls != 2 {
 		t.Errorf("label calls after invalidation actual = %d, expected 2", child.labelCalls)
 	}
@@ -1085,6 +1108,7 @@ func TestGeneratedComponentAPI(t *testing.T) {
 	if actual := child.Label(); actual != "Lin" {
 		t.Errorf("Label() after patch actual = %q, expected Lin", actual)
 	}
+	waitForProfileName(t, child, "Lin")
 	if child.Expanded() {
 		t.Error("generated state was reset while patching parent bindings")
 	}
@@ -1098,6 +1122,7 @@ func TestGeneratedComponentAPI(t *testing.T) {
 	if actual := child.Label(); actual != "Zoe" {
 		t.Errorf("Label() after prop source swap actual = %q, expected Zoe", actual)
 	}
+	waitForProfileName(t, child, "Zoe")
 	if actual := child.SubtitleLabel(); actual != "alternate" {
 		t.Errorf("SubtitleLabel() after optional prop appears actual = %q, expected alternate", actual)
 	}
@@ -1108,6 +1133,7 @@ func TestGeneratedComponentAPI(t *testing.T) {
 	if actual := child.Name(); actual != "Lin" {
 		t.Errorf("Name() after prop source swap back actual = %q, expected Lin", actual)
 	}
+	waitForProfileName(t, child, "Lin")
 	if actual := child.SubtitleLabel(); actual != "none" {
 		t.Errorf("SubtitleLabel() after optional prop disappears actual = %q, expected none", actual)
 	}

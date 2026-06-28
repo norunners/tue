@@ -1,0 +1,27 @@
+<template></template>
+
+<script lang="go">
+package fixtures
+
+import (
+	"context"
+
+	tue "github.com/norunners/tue"
+)
+
+type User struct{}
+
+type ComponentResourceCollision struct {
+	tue.Comp[struct {
+		User User `resource:"loadUser"`
+	}]
+}
+
+func (c *ComponentResourceCollision) User() User {
+	return User{}
+}
+
+func (c *ComponentResourceCollision) loadUser(context.Context) (User, error) {
+	return User{}, nil
+}
+</script>

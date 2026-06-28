@@ -138,13 +138,7 @@ func (g expressionGenerator) ident(ident *ast.Ident) jen.Code {
 		return jen.Id(ident.Name)
 	}
 
-	access := jen.Id("component").Dot(field.Name)
-	switch field.Kind {
-	case script.FieldKindResource:
-		return access.Dot("Get").Call()
-	default:
-		return access
-	}
+	return jen.Id("component").Dot(field.Name)
 }
 
 func basicLiteral(lit *ast.BasicLit) (jen.Code, bool) {

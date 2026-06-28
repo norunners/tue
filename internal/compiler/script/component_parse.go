@@ -94,6 +94,8 @@ func (e *extractor) extractComponentField(field *ast.Field, names map[string]boo
 		e.extractComponentState(field, fieldName, value, names)
 	case "computed":
 		e.extractComponentComputed(field, fieldName, value, names)
+	case "resource":
+		e.extractComponentResource(field, fieldName, value, names)
 	}
 }
 
@@ -236,9 +238,45 @@ func (e *extractor) extractComponentComputed(field *ast.Field, fieldName *ast.Id
 	})
 }
 
+func (e *extractor) extractComponentResource(field *ast.Field, fieldName *ast.Ident, value string, names map[string]bool) {
+	name := lowerIdentifier(fieldName.Name)
+	if names[name] {
+		e.addDiagnostic(fmt.Sprintf("duplicate component declaration name %q", name), e.nodeSpan(fieldName))
+		return
+	}
+	if value == "" {
+		e.addDiagnostic(fmt.Sprintf("component resource %q must name its loader method", name), componentTagSpan(e, field))
+		return
+	}
+	if !token.IsIdentifier(value) {
+		e.addDiagnostic(fmt.Sprintf("component resource %q has invalid loader method %q", name, value), componentTagSpan(e, field))
+		return
+	}
+	if _, ok := field.Type.(*ast.FuncType); ok {
+		e.addDiagnostic(fmt.Sprintf("component resource %q must not have a function type", name), e.nodeSpan(field.Type))
+		return
+	}
+	typeName, ok := formatNode(e.fset, field.Type)
+	if !ok {
+		e.addDiagnostic(fmt.Sprintf("component resource %q has an unsupported Go type", name), e.nodeSpan(field.Type))
+		return
+	}
+
+	names[name] = true
+	e.resources = append(e.resources, Resource{
+		Name:       name,
+		GoName:     fieldName.Name,
+		MethodName: value,
+		Type:       typeName,
+		Span:       e.nodeSpan(field),
+		NameSpan:   e.nodeSpan(fieldName),
+		TypeSpan:   e.nodeSpan(field.Type),
+	})
+}
+
 func componentFieldCategory(field *ast.Field) (string, string, error) {
 	if field.Tag == nil {
-		return "", "", fmt.Errorf("must declare exactly one prop, event, state, or computed tag")
+		return "", "", fmt.Errorf("must declare exactly one prop, event, state, computed, or resource tag")
 	}
 	raw, err := strconv.Unquote(field.Tag.Value)
 	if err != nil {
@@ -249,9 +287,9 @@ func componentFieldCategory(field *ast.Field) (string, string, error) {
 		return "", "", err
 	}
 	if len(tags) != 1 {
-		return "", "", fmt.Errorf("must declare exactly one prop, event, state, or computed tag")
+		return "", "", fmt.Errorf("must declare exactly one prop, event, state, computed, or resource tag")
 	}
-	for _, key := range []string{"prop", "event", "state", "computed"} {
+	for _, key := range []string{"prop", "event", "state", "computed", "resource"} {
 		if value, ok := tags[key]; ok {
 			return key, value, nil
 		}
@@ -259,7 +297,7 @@ func componentFieldCategory(field *ast.Field) (string, string, error) {
 	for key := range tags {
 		return "", "", fmt.Errorf("unknown component tag %q", key)
 	}
-	return "", "", fmt.Errorf("must declare exactly one prop, event, state, or computed tag")
+	return "", "", fmt.Errorf("must declare exactly one prop, event, state, computed, or resource tag")
 }
 
 func parseStructTags(raw string) (map[string]string, error) {
@@ -438,6 +476,36 @@ func ComputedGetterName(name string) string {
 // ComputedFieldName returns the hidden generated computed field.
 func ComputedFieldName(name string) string {
 	return "__computed" + exportedIdentifier(name)
+}
+
+// ResourceGetterName returns the generated resource value getter.
+func ResourceGetterName(name string) string {
+	return exportedIdentifier(name)
+}
+
+// ResourceOKName returns the generated resource value/presence getter.
+func ResourceOKName(name string) string {
+	return exportedIdentifier(name) + "Ok"
+}
+
+// ResourceLoadingName returns the generated resource loading getter.
+func ResourceLoadingName(name string) string {
+	return exportedIdentifier(name) + "Loading"
+}
+
+// ResourceErrorName returns the generated resource error getter.
+func ResourceErrorName(name string) string {
+	return exportedIdentifier(name) + "Error"
+}
+
+// ResourceReloadName returns the generated resource reload method.
+func ResourceReloadName(name string) string {
+	return exportedIdentifier(name) + "Reload"
+}
+
+// ResourceFieldName returns the hidden generated resource field.
+func ResourceFieldName(name string) string {
+	return "__resource" + exportedIdentifier(name)
 }
 
 func lowerIdentifier(name string) string {

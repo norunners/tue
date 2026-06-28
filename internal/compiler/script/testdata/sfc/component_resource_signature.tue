@@ -1,0 +1,19 @@
+<template></template>
+
+<script lang="go">
+package fixtures
+
+import tue "github.com/norunners/tue"
+
+type User struct{}
+
+type ComponentResourceSignature struct {
+	tue.Comp[struct {
+		User User `resource:"loadUser"`
+	}]
+}
+
+func (c *ComponentResourceSignature) loadUser() (User, error) {
+	return User{}, nil
+}
+</script>

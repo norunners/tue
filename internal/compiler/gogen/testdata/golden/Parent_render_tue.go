@@ -27,9 +27,10 @@ func renderParent(component *Parent) tue.VNode {
 				child.__tue.__eventRange = component.selectRange
 				child.__tue.__eventTags = component.selectTags
 				child.__tue.__eventDismiss = nil
-				childComp := tue.CompOf(child, renderUserBadge, func() {
+				childComp := tue.CompOf(child, renderUserBadge, func(ctx tue.Context) {
 					child.__tue.__computedLabel = tue.ComputedOfFunc(child.label)
 					child.__tue.__computedSubtitleLabel = tue.ComputedOfFunc(child.subtitleLabel)
+					child.__tue.__resourceProfile = tue.ResourceOfContextFunc(ctx, child.loadProfile)
 				})
 				return childComp
 			}, func(childComp *tue.CompInstance) {
@@ -50,6 +51,7 @@ func renderParent(component *Parent) tue.VNode {
 				if child.__tue.__inputVersion != nil {
 					child.__tue.__inputVersion.Set(child.__tue.__inputVersion.Get() + 1)
 				}
+				child.ProfileReload()
 				childComp.DefaultSlot = nil
 			})
 		}
@@ -67,9 +69,10 @@ func renderParent(component *Parent) tue.VNode {
 				child.__tue.__eventRange = component.selectRange
 				child.__tue.__eventTags = component.selectTags
 				child.__tue.__eventDismiss = nil
-				childComp := tue.CompOf(child, renderUserBadge, func() {
+				childComp := tue.CompOf(child, renderUserBadge, func(ctx tue.Context) {
 					child.__tue.__computedLabel = tue.ComputedOfFunc(child.label)
 					child.__tue.__computedSubtitleLabel = tue.ComputedOfFunc(child.subtitleLabel)
+					child.__tue.__resourceProfile = tue.ResourceOfContextFunc(ctx, child.loadProfile)
 				})
 				return childComp
 			}, func(childComp *tue.CompInstance) {
@@ -88,6 +91,7 @@ func renderParent(component *Parent) tue.VNode {
 				if child.__tue.__inputVersion != nil {
 					child.__tue.__inputVersion.Set(child.__tue.__inputVersion.Get() + 1)
 				}
+				child.ProfileReload()
 				childComp.DefaultSlot = nil
 			})
 		}

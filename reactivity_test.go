@@ -167,7 +167,7 @@ func TestCompOfScopesGeneratedInitializerEffects(t *testing.T) {
 	component := &struct{}{}
 	comp := CompOf(component, func(*struct{}) VNode {
 		return Text("initializer")
-	}, func() {
+	}, func(Context) {
 		Watch(func() {
 			values = append(values, state.Get())
 		})

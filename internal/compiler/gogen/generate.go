@@ -302,7 +302,7 @@ func (g *projectGenerator) generatedComponentSource(file File) ([]byte, bool) {
 	for alias, path := range imports {
 		generated.ImportName(path, alias)
 	}
-	fields := make([]jen.Code, 0, len(component.Props)+len(component.Events)+len(component.States)+len(component.Computed)+1)
+	fields := make([]jen.Code, 0, len(component.Props)+len(component.Events)+len(component.States)+len(component.Computed)+len(component.Resources)+1)
 	for _, prop := range component.Props {
 		valueType, ok := renderGeneratedTypeExpression(prop.Type, imports)
 		if !ok {
@@ -337,6 +337,14 @@ func (g *projectGenerator) generatedComponentSource(file File) ([]byte, bool) {
 			return nil, false
 		}
 		fields = append(fields, jen.Id(script.ComputedFieldName(computed.GoName)).Qual(tueImportPath, "Computed").Types(valueType))
+	}
+	for _, resource := range component.Resources {
+		valueType, ok := renderGeneratedTypeExpression(resource.Type, imports)
+		if !ok {
+			g.add(filePath(file), fmt.Sprintf("component resource %q has unsupported type %q", resource.Name, resource.Type), resource.TypeSpan)
+			return nil, false
+		}
+		fields = append(fields, jen.Id(script.ResourceFieldName(resource.GoName)).Qual(tueImportPath, "Resource").Types(valueType))
 	}
 	generated.Type().Id(component.GeneratedType).Struct(fields...)
 	initialValues := make([]jen.Code, 0, len(component.States)+1)
@@ -408,12 +416,14 @@ func (g *projectGenerator) generatedComponentSource(file File) ([]byte, bool) {
 			),
 			jen.Return(jen.Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Dot("Get").Call()),
 		)
-		generated.Func().Params(jen.Id("component").Op("*").Id(component.Name)).Id(script.StateSetterName(state.GoName)).Params(jen.Id("value").Add(valueType)).Block(
+		setterStatements := []jen.Code{
 			jen.If(
 				jen.Id("component").Op("==").Nil().Op("||").Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Op("==").Nil(),
 			).Block(jen.Return()),
 			jen.Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Dot("Set").Call(jen.Id("value")),
-		)
+		}
+		setterStatements = append(setterStatements, generatedResourceReloadStatements(component, "component")...)
+		generated.Func().Params(jen.Id("component").Op("*").Id(component.Name)).Id(script.StateSetterName(state.GoName)).Params(jen.Id("value").Add(valueType)).Block(setterStatements...)
 	}
 	for _, computed := range component.Computed {
 		valueType, _ := renderGeneratedTypeExpression(computed.Type, imports)
@@ -426,6 +436,42 @@ func (g *projectGenerator) generatedComponentSource(file File) ([]byte, bool) {
 				jen.Return(jen.Id("zero")),
 			),
 			jen.Return(jen.Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Dot("Get").Call()),
+		)
+	}
+	for _, resource := range component.Resources {
+		valueType, _ := renderGeneratedTypeExpression(resource.Type, imports)
+		fieldName := script.ResourceFieldName(resource.GoName)
+		okName := script.ResourceOKName(resource.GoName)
+		generated.Func().Params(jen.Id("component").Op("*").Id(component.Name)).Id(okName).Params().Params(valueType, jen.Bool()).Block(
+			jen.If(
+				jen.Id("component").Op("==").Nil().Op("||").Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Op("==").Nil(),
+			).Block(
+				jen.Var().Id("zero").Add(valueType),
+				jen.Return(jen.Id("zero"), jen.False()),
+			),
+			jen.Return(jen.Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Dot("Value").Call()),
+		)
+		generated.Func().Params(jen.Id("component").Op("*").Id(component.Name)).Id(script.ResourceGetterName(resource.GoName)).Params().Add(valueType).Block(
+			jen.List(jen.Id("value"), jen.Id("_")).Op(":=").Id("component").Dot(okName).Call(),
+			jen.Return(jen.Id("value")),
+		)
+		generated.Func().Params(jen.Id("component").Op("*").Id(component.Name)).Id(script.ResourceLoadingName(resource.GoName)).Params().Bool().Block(
+			jen.If(
+				jen.Id("component").Op("==").Nil().Op("||").Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Op("==").Nil(),
+			).Block(jen.Return(jen.False())),
+			jen.Return(jen.Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Dot("Loading").Call()),
+		)
+		generated.Func().Params(jen.Id("component").Op("*").Id(component.Name)).Id(script.ResourceErrorName(resource.GoName)).Params().Error().Block(
+			jen.If(
+				jen.Id("component").Op("==").Nil().Op("||").Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Op("==").Nil(),
+			).Block(jen.Return(jen.Nil())),
+			jen.Return(jen.Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Dot("Error").Call()),
+		)
+		generated.Func().Params(jen.Id("component").Op("*").Id(component.Name)).Id(script.ResourceReloadName(resource.GoName)).Params().Block(
+			jen.If(
+				jen.Id("component").Op("==").Nil().Op("||").Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Op("==").Nil(),
+			).Block(jen.Return()),
+			jen.Id("component").Dot(script.GeneratedFieldName()).Dot(fieldName).Dot("Reload").Call(),
 		)
 	}
 
@@ -534,7 +580,7 @@ func (g *fileGenerator) generate(tree *gotemplate.Tree) {
 		)
 	}
 	compArgs := []jen.Code{jen.Id("component"), jen.Id("render" + componentName)}
-	if initializer := generatedComputedInitializer(g.component, "component"); initializer != nil {
+	if initializer := generatedReactiveInitializer(g.component, "component"); initializer != nil {
 		compArgs = append(compArgs, initializer)
 	}
 	g.file.Func().Id("New"+componentName).Params().Op("*").Qual(tueImportPath, "CompInstance").Block(
@@ -1055,7 +1101,7 @@ func (g *fileGenerator) renderComponent(node *gotemplate.Node) (jen.Code, bool) 
 		statements = append(statements, jen.Id("child").Dot(script.GeneratedFieldName()).Dot(field.Name).Op("=").Add(field.Value))
 	}
 	compArgs := []jen.Code{jen.Id("child"), jen.Id("render" + child.component.Name)}
-	if initializer := generatedComputedInitializer(child.component, "child"); initializer != nil {
+	if initializer := generatedReactiveInitializer(child.component, "child"); initializer != nil {
 		compArgs = append(compArgs, initializer)
 	}
 	statements = append(statements,
@@ -1105,6 +1151,7 @@ func (g *fileGenerator) renderComponentUpdater(child componentBinding, fields []
 					inputVersion().Dot("Set").Call(inputVersion().Dot("Get").Call().Op("+").Lit(1)),
 				),
 			)
+			statements = append(statements, generatedResourceReloadStatements(child.component, "child")...)
 		}
 	}
 	if defaultSlot == nil {
@@ -2032,17 +2079,14 @@ func componentFields(component *script.Component) map[string]script.Field {
 	for _, field := range component.LocalFields {
 		fields[field.Name] = field
 	}
-	for _, field := range component.Resources {
-		fields[field.Name] = field
-	}
 	return fields
 }
 
-func generatedComputedInitializer(component *script.Component, variable string) jen.Code {
-	if component == nil || len(component.Computed) == 0 {
+func generatedReactiveInitializer(component *script.Component, variable string) jen.Code {
+	if component == nil || (len(component.Computed) == 0 && len(component.Resources) == 0) {
 		return nil
 	}
-	statements := make([]jen.Code, 0, len(component.Computed))
+	statements := make([]jen.Code, 0, len(component.Computed)+len(component.Resources))
 	for _, computed := range component.Computed {
 		statements = append(statements,
 			jen.Id(variable).Dot(script.GeneratedFieldName()).Dot(script.ComputedFieldName(computed.GoName)).Op("=").Qual(tueImportPath, "ComputedOfFunc").Call(
@@ -2050,7 +2094,26 @@ func generatedComputedInitializer(component *script.Component, variable string) 
 			),
 		)
 	}
-	return jen.Func().Params().Block(statements...)
+	for _, resource := range component.Resources {
+		statements = append(statements,
+			jen.Id(variable).Dot(script.GeneratedFieldName()).Dot(script.ResourceFieldName(resource.GoName)).Op("=").Qual(tueImportPath, "ResourceOfContextFunc").Call(
+				jen.Id("ctx"),
+				jen.Id(variable).Dot(resource.MethodName),
+			),
+		)
+	}
+	return jen.Func().Params(jen.Id("ctx").Qual(tueImportPath, "Context")).Block(statements...)
+}
+
+func generatedResourceReloadStatements(component *script.Component, variable string) []jen.Code {
+	if component == nil || len(component.Resources) == 0 {
+		return nil
+	}
+	statements := make([]jen.Code, 0, len(component.Resources))
+	for _, resource := range component.Resources {
+		statements = append(statements, jen.Id(variable).Dot(script.ResourceReloadName(resource.GoName)).Call())
+	}
+	return statements
 }
 
 func componentMethods(component *script.Component) map[string]script.Method {
